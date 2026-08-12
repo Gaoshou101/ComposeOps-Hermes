@@ -3,6 +3,7 @@ import websocket from '@fastify/websocket';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import serviceRoutes from './routes/services.js';
+import composeRoutes from './routes/compose.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -24,7 +25,8 @@ await fastify.register(websocket, {
 await fastify.register(
   async (api) => {
     await api.register(serviceRoutes, { prefix: '/services' });
-    // compose / ws / ai / system 路由将在后续 phase 注册
+    await api.register(composeRoutes, { prefix: '/compose' });
+    // ws / ai / system 路由将在后续 phase 注册
   },
   { prefix: '/api/v1' }
 );
