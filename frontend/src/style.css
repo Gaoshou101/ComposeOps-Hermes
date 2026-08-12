@@ -22,6 +22,12 @@
   .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-500; }
   .btn-ghost { @apply btn text-surface-300 hover:bg-surface-800; }
 
+  /* 禁用态：不可编辑/不可控制的项目按钮 */
+  .btn-primary:disabled,
+  .btn-secondary:disabled,
+  .btn-ghost:disabled,
+  .btn-danger:disabled { @apply opacity-40 cursor-not-allowed hover:bg-inherit; }
+
   .card { @apply bg-surface-900 border border-surface-800 rounded-lg; }
   .input { @apply bg-surface-800 border border-surface-700 rounded px-3 py-1.5 text-sm text-surface-100 focus:outline-none focus:ring-1 focus:ring-accent; }
 }

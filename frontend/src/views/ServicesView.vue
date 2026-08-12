@@ -41,14 +41,24 @@
           </div>
 
           <div class="mt-3 flex flex-wrap gap-1.5">
-            <button class="btn-primary" @click="control(p, 'up')">up</button>
-            <button class="btn-secondary" @click="control(p, 'down')">down</button>
-            <button class="btn-secondary" @click="control(p, 'restart')">restart</button>
-            <button class="btn-secondary" @click="control(p, 'pull')">pull</button>
-            <button class="btn-ghost" @click="control(p, 'ps')">ps</button>
+            <button class="btn-primary" :disabled="!p.editable" @click="control(p, 'up')">up</button>
+            <button class="btn-secondary" :disabled="!p.editable" @click="control(p, 'down')">down</button>
+            <button class="btn-secondary" :disabled="!p.editable" @click="control(p, 'restart')">restart</button>
+            <button class="btn-secondary" :disabled="!p.editable" @click="control(p, 'pull')">pull</button>
+            <button class="btn-ghost" :disabled="!p.editable" @click="control(p, 'ps')">ps</button>
             <router-link class="btn-ghost" :to="`/logs?project=${encodeURIComponent(p.name)}`">logs</router-link>
-            <router-link class="btn-ghost" :to="`/compose?path=${encodeURIComponent(p.workingDir)}`">编辑</router-link>
+            <router-link
+              class="btn-ghost"
+              :class="{ 'pointer-events-none opacity-40': !p.editable }"
+              :to="p.editable ? `/compose?path=${encodeURIComponent(p.composeFile || p.workingDir)}` : ''"
+            >
+              编辑
+            </router-link>
           </div>
+
+          <p v-if="!p.editable" class="mt-2 text-xs text-amber-400">
+            compose 文件未挂载进容器，不可编辑/控制（在 docker-compose.yml 挂载该目录即可）
+          </p>
 
           <div class="mt-3 flex flex-wrap gap-1.5">
             <span
@@ -94,13 +104,14 @@ function refresh() {
 }
 
 async function control(project, action) {
+  if (!project.editable) return;
   output.open = true;
   output.text = `$ docker compose ${action}\n`;
   output.action = action;
   output.name = project.name;
   try {
     await streamComposeControl(
-      { workingDir: project.workingDir, action },
+      { workingDir: project.workingDir, file: project.composeFile, action },
       (frame) => {
         if (frame.type === 'stdout' || frame.type === 'stderr') {
           output.text += frame.data;

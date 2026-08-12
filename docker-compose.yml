@@ -1,17 +1,27 @@
 # OpsDash — launch the whole panel with `docker compose up`.
 #
 # Quick start:
-#   1. Set COMPOSE_PROJECTS_DIR below to the host directory that holds YOUR
-#      docker-compose projects (the ones OpsDash should manage).
+#   1. (Optional) mount the host dirs that hold YOUR compose projects so they're
+#      editable from inside the panel. Without any mount the panel still
+#      discovers and lists every compose project on the host (read-only).
 #   2. docker compose up -d --build
 #   3. open http://localhost:3001
 #
-# Why the projects dir is mounted at the SAME path inside the container:
+# Discovery is automatic: OpsDash lists containers via the Docker socket and
+# groups them by the `com.docker.compose.project` label. It needs NO configured
+# directory to discover projects — that's purely from container labels.
+#
+# Why you might mount project dirs at the SAME path inside the container:
 #   OpsDash groups compose projects by the `com.docker.compose.project.working_dir`
 #   label, whose value is the HOST path where `docker compose` was run. For file
 #   editing / lifecycle ops to work from inside the container, that host path must
-#   be reachable at the identical path here — hence `${COMPOSE_PROJECTS_DIR}:${COMPOSE_PROJECTS_DIR}`.
-#   ALLOWED_ROOT is set to the same path so the backend's path guard allows it.
+#   be reachable at the identical path here — hence `${DIR}:${DIR}` (same path
+#   both sides). The backend's allowlist only ever permits paths Docker itself
+#   reported, so mounting a dir is what makes its compose files editable.
+#
+#   Mount as many dirs as you like (one `- /host/path:/host/path` line each).
+#   Projects whose dir isn't mounted still show up — their Edit / up / down
+#   buttons are just disabled ("compose file not mounted").
 
 services:
   opsdash:
@@ -23,9 +33,13 @@ services:
       - "3001:3001"
     volumes:
       # Talk to the host Docker engine (dockerode + `docker compose` CLI).
+      # This alone is enough to DISCOVER all compose projects (read-only list).
       - /var/run/docker.sock:/var/run/docker.sock
-      # Your compose projects — mounted at the SAME path so working_dir labels match.
-      - ${COMPOSE_PROJECTS_DIR:-/home/sgy/compose-projects}:${COMPOSE_PROJECTS_DIR:-/home/sgy/compose-projects}
+      # --- Optional: mount your compose project dirs (same path both sides) ---
+      # Uncomment / add one line per host dir you want to be EDITABLE from the panel.
+      # Projects in unmounted dirs are still listed, just not editable.
+      # - /home/sgy/compose-projects:/home/sgy/compose-projects
+      # - /opt/app:/opt/app
       # SQLite DB (AI config + API key + history) persists across rebuilds.
       - opsdash-data:/app/backend/data
     environment:
@@ -33,8 +47,10 @@ services:
       - PORT=3001
       - HOST=0.0.0.0
       - LOG_LEVEL=info
-      # Restrict compose file ops to this host path (backend denyIfRestricted guard).
-      - ALLOWED_ROOT=${COMPOSE_PROJECTS_DIR:-/home/sgy/compose-projects}
+      # Optional advanced override: additionally allow this host root for compose
+      # file ops (e.g. a parent dir not itself a compose working_dir). Normally
+      # leave unset — the backend auto-allows whatever Docker reports.
+      # - ALLOWED_ROOT=/home/sgy/compose-projects
       # Optional: override docker binary, e.g. COMPOSE_BIN=docker-compose
       # - COMPOSE_BIN=docker
 

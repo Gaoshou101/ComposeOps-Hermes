@@ -1,8 +1,11 @@
 import { spawn } from 'child_process';
 import path from 'path';
 import { readText, writeText, validateYaml } from '../lib/files.js';
+import { discoverComposeRoots } from '../services/scanner.js';
 
 const COMPOSE_BIN = process.env.COMPOSE_BIN || 'docker'; // 'docker' -> 'docker compose'
+// 可选高级覆盖：若设置，则额外放行该根目录（用于挂载了 scanner 发现不到的目录的场景）。
+// 未设置时，仅放行 Docker 自己上报的 compose working_dir（discoverComposeRoots）。
 const ALLOWED_ROOT = process.env.ALLOWED_ROOT || '';
 
 /**
@@ -15,12 +18,22 @@ function composeBase() {
   return COMPOSE_BIN.split(/\s+/);
 }
 
-function denyIfRestricted(absPath) {
-  if (!ALLOWED_ROOT) return;
-  const root = path.resolve(ALLOWED_ROOT);
-  if (!absPath.startsWith(root + path.sep) && absPath !== root) {
-    throw new Error(`path outside allowed root: ${absPath}`);
+/**
+ * 放行校验：路径要么落在 ALLOWED_ROOT（可选配置）下，
+ * 要么是 Docker 自己上报的某个 compose working_dir 之下（动态发现，零配置）。
+ * 这样编辑器只能碰已被 Docker 标记的 compose 项目，碰不到 SQLite 里的 API Key 等无关文件。
+ */
+async function assertAllowed(absPath) {
+  if (ALLOWED_ROOT) {
+    const root = path.resolve(ALLOWED_ROOT);
+    if (absPath.startsWith(root + path.sep) || absPath === root) return;
   }
+  const roots = await discoverComposeRoots();
+  for (const r of roots) {
+    const root = path.resolve(r);
+    if (absPath.startsWith(root + path.sep) || absPath === root) return;
+  }
+  throw new Error(`path outside allowed compose roots: ${absPath}`);
 }
 
 export default async function composeRoutes(fastify) {
@@ -29,10 +42,13 @@ export default async function composeRoutes(fastify) {
     const { path: file } = request.query;
     if (!file) return reply.code(400).send({ error: 'missing path param' });
     try {
-      denyIfRestricted(path.resolve(file));
+      await assertAllowed(path.resolve(file));
       const content = await readText(file);
       return { path: file, content };
     } catch (e) {
+      if (e.message?.startsWith('path outside allowed')) {
+        return reply.code(403).send({ error: 'forbidden', message: e.message });
+      }
       if (e.code === 'ENOENT') return reply.code(404).send({ error: 'not_found', message: e.message });
       return reply.code(400).send({ error: 'read_failed', message: e.message });
     }
@@ -44,7 +60,11 @@ export default async function composeRoutes(fastify) {
     if (!file || typeof content !== 'string') {
       return reply.code(400).send({ error: 'missing path or content' });
     }
-    denyIfRestricted(path.resolve(file));
+    try {
+      await assertAllowed(path.resolve(file));
+    } catch (e) {
+      return reply.code(403).send({ error: 'forbidden', message: e.message });
+    }
     try {
       validateYaml(content);
     } catch (e) {
@@ -74,7 +94,11 @@ export default async function composeRoutes(fastify) {
       return reply.code(400).send({ error: 'unsupported_command', command });
     }
     if (!workingDir) return reply.code(400).send({ error: 'missing workingDir' });
-    denyIfRestricted(path.resolve(workingDir));
+    try {
+      await assertAllowed(path.resolve(workingDir));
+    } catch (e) {
+      return reply.code(403).send({ error: 'forbidden', message: e.message });
+    }
 
     const base = composeBase();
     const args = [...base.slice(1), '-f', file, command, ...extraArgs];
