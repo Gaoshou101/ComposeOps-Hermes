@@ -4,6 +4,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import serviceRoutes from './routes/services.js';
 import composeRoutes from './routes/compose.js';
+import wsRoutes from './routes/ws.js';
+import docker from './services/docker.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -21,15 +23,21 @@ await fastify.register(websocket, {
   options: { maxPayload: 10 * 1024 * 1024 },
 });
 
+// dockerode 实例挂载到 fastify 上供 ws 路由使用
+fastify.decorate('docker', docker);
+
 // REST API 前缀：/api/v1
 await fastify.register(
   async (api) => {
     await api.register(serviceRoutes, { prefix: '/services' });
     await api.register(composeRoutes, { prefix: '/compose' });
-    // ws / ai / system 路由将在后续 phase 注册
+    // ai / system 路由将在后续 phase 注册
   },
   { prefix: '/api/v1' }
 );
+
+// WebSocket 路由前缀（不经过 /api/v1，便于代理区分）
+await fastify.register(wsRoutes, { prefix: '/ws' });
 
 // 健康检查
 fastify.get('/health', async () => ({ status: 'ok', ts: Date.now() }));
