@@ -1,0 +1,19 @@
+{
+  "name": "composeops-backend",
+  "version": "1.0.0",
+  "description": "OpsDash backend - Docker Compose management API",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@fastify/static": "^7.0.4",
+    "@fastify/websocket": "^10.0.1",
+    "better-sqlite3": "^11.3.0",
+    "dockerode": "^4.0.2",
+    "fastify": "^4.28.1",
+    "yaml": "^2.5.1"
+  }
+}
