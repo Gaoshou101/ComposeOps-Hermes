@@ -4,6 +4,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import serviceRoutes from './routes/services.js';
 import composeRoutes from './routes/compose.js';
+import aiRoutes from './routes/ai.js';
+import systemRoutes from './routes/system.js';
 import wsRoutes from './routes/ws.js';
 import docker from './services/docker.js';
 
@@ -31,7 +33,8 @@ await fastify.register(
   async (api) => {
     await api.register(serviceRoutes, { prefix: '/services' });
     await api.register(composeRoutes, { prefix: '/compose' });
-    // ai / system 路由将在后续 phase 注册
+    await api.register(aiRoutes, { prefix: '/ai' });
+    await api.register(systemRoutes, { prefix: '/system' });
   },
   { prefix: '/api/v1' }
 );

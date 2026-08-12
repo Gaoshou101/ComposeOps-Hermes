@@ -1,0 +1,153 @@
+import { readFileSync } from 'fs';
+import { execSync } from 'child_process';
+import os from 'os';
+import docker from '../services/docker.js';
+
+/**
+ * 宿主机指标：CPU / 内存 / 磁盘 / 网络
+ * 纯 Node 实现，避免额外依赖。
+ */
+function readHostMetrics() {
+  const cpus = os.cpusInfo ? os.cpusInfo() : os.cpus();
+  let cpuUser = 0, cpuNice = 0, cpuSys = 0, cpuIdle = 0;
+  for (const c of cpus || []) {
+    cpuUser += c.times.user;
+    cpuNice += c.times.nice;
+    cpuSys += c.times.sys;
+    cpuIdle += c.times.idle;
+  }
+  const total = cpuUser + cpuNice + cpuSys + cpuIdle;
+  const cpuUsed = total - cpuIdle;
+  const cpuPercent = total > 0 ? +(cpuUsed / total * 100).toFixed(1) : 0;
+
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const usedMem = totalMem - freeMem;
+
+  return {
+    cpu: { percent: cpuPercent, cores: cpus?.length || 0, loadavg: os.loadavg() },
+    memory: {
+      total: totalMem,
+      used: usedMem,
+      free: freeMem,
+      percent: +(usedMem / totalMem * 100).toFixed(1),
+    },
+    uptime: os.uptime(),
+    hostname: os.hostname(),
+    platform: `${os.type()} ${os.release()}`,
+  };
+}
+
+/** 用 `df -B1` 解析磁盘占用（关注 / 与 /var/lib/docker） */
+function readDiskStats() {
+  const disk = [];
+  const wanted = new Set(['/', '/var/lib/docker']);
+  try {
+    const out = execSync("df -B1 --output=target,size,used,avail,pcent 2>/dev/null", { encoding: 'utf8' });
+    for (const line of out.split('\n').slice(1)) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 5) continue;
+      const mountpoint = parts[0];
+      if (!wanted.has(mountpoint)) continue;
+      const size = parseInt(parts[1], 10) || 0;
+      const used = parseInt(parts[2], 10) || 0;
+      const avail = parseInt(parts[3], 10) || 0;
+      const pcent = parseInt(parts[4], 10) || 0;
+      disk.push({ mountpoint, total: size, used, free: avail, percent: pcent });
+    }
+  } catch {}
+  return disk;
+}
+
+/** 网络累计字节 -> 增量速率（每调用周期） */
+function readNetStats(prev) {
+  let net = { rx: 0, tx: 0 };
+  try {
+    const netDev = readFileSync('/proc/net/dev', 'utf8');
+    let rx = 0, tx = 0;
+    for (const line of netDev.split('\n')) {
+      const m = line.trim().match(/^(\S+):\s*(\d+)\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)/);
+      if (!m) continue;
+      if (m[1] === 'lo:') continue;
+      rx += parseInt(m[2], 10);
+      tx += parseInt(m[3], 10);
+    }
+    const now = Date.now();
+    if (prev && prev.ts) {
+      const dt = (now - prev.ts) / 1000;
+      net = {
+        rx: dt > 0 ? Math.max(0, Math.round((rx - (prev.netRx || 0)) / dt)) : 0,
+        tx: dt > 0 ? Math.max(0, Math.round((tx - (prev.netTx || 0)) / dt)) : 0,
+        rxTotal: rx,
+        txTotal: tx,
+      };
+    } else {
+      net = { rx: 0, tx: 0, rxTotal: rx, txTotal: tx };
+    }
+    prev.netRx = rx;
+    prev.netTx = tx;
+    prev.ts = now;
+  } catch {}
+  return net;
+}
+async function readContainerStats() {
+  const containers = await docker.listContainers({ all: false });
+  const stats = [];
+  const prevCpu = readContainerStats._prevCpu || {};
+
+  for (const c of containers) {
+    try {
+      const stat = await docker.getContainer(c.Id).stats({ stream: false });
+      // CPU percent
+      const cpu = stat.cpu_stats?.cpu_usage?.total_usage || 0;
+      const sys = stat.cpu_stats?.system_cpu_usage || 0;
+      const onlineCpus = stat.cpu_stats?.online_cpus || stat.cpu_stats?.cpu_usage?.percpu_usage?.length || 1;
+      const prev = prevCpu[c.Id] || { cpu: 0, sys: 0 };
+      let cpuPercent = 0;
+      if (prev.sys && sys > prev.sys) {
+        const cpuDelta = cpu - prev.cpu;
+        const sysDelta = sys - prev.sys;
+        cpuPercent = sysDelta > 0 ? (cpuDelta / sysDelta * onlineCpus * 100) : 0;
+      }
+      prevCpu[c.Id] = { cpu, sys };
+
+      // 内存
+      const memUsage = stat.memory_stats?.usage || 0;
+      const memLimit = stat.memory_stats?.limit || 0;
+      stats.push({
+        id: c.Id,
+        name: (c.Names[0] || '').replace(/^\//, ''),
+        image: c.Image,
+        cpuPercent: +cpuPercent.toFixed(2),
+        memUsage,
+        memLimit,
+        memPercent: memLimit > 0 ? +(memUsage / memLimit * 100).toFixed(2) : 0,
+      });
+    } catch {}
+  }
+  readContainerStats._prevCpu = prevCpu;
+
+  // 按内存排序取前 5
+  stats.sort((a, b) => b.memUsage - a.memUsage);
+  return stats.slice(0, 5);
+}
+
+// 模块级状态：前一次网络/容器快照
+const prevNet = {};
+const prevContainer = readContainerStats._prevCpu || (readContainerStats._prevCpu = {});
+
+export default async function systemRoutes(fastify) {
+  // GET /api/v1/system/metrics
+  fastify.get('/metrics', async () => {
+    const host = readHostMetrics();
+    const disk = readDiskStats();
+    const net = readNetStats(prevNet);
+    let containers = [];
+    try {
+      containers = await readContainerStats();
+    } catch (e) {
+      containers = [];
+    }
+    return { host, disk, network: net, containers };
+  });
+}
