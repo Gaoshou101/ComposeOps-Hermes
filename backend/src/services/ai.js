@@ -40,6 +40,9 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, stream = fa
   const body = { model, messages, stream };
   let fullText = '';
 
+  // Node 22 的全局 fetch 已内置对 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 环境变量的支持
+  // （大小写不敏感），无需额外代理库。容器化下把宿主机代理透传进 env，AI 出站
+  // 即走代理；不设则直连。这里保持零配置影响——不手动构造 dispatcher。
   const resp = await fetch(url, {
     method: 'POST',
     headers: {

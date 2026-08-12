@@ -1,10 +1,8 @@
 # OpsDash — launch the whole panel with `docker compose up`.
 #
 # Quick start:
-#   1. (Optional) mount the host dirs that hold YOUR compose projects so they're
-#      editable from inside the panel. Without any mount the panel still
-#      discovers and lists every compose project on the host (read-only).
-#   2. docker compose up -d --build
+#   1. docker compose build    # builds the image (uses host proxy if set)
+#   2. docker compose up -d
 #   3. open http://localhost:3001
 #
 # Discovery is automatic: OpsDash lists containers via the Docker socket and
@@ -22,10 +20,20 @@
 #   Mount as many dirs as you like (one `- /host/path:/host/path` line each).
 #   Projects whose dir isn't mounted still show up — their Edit / up / down
 #   buttons are just disabled ("compose file not mounted").
+#
+# Proxy (build + AI calls):
+#   Build-time apt/npm need network. If you're behind a proxy (e.g. Clash on
+#   127.0.0.1:7897), set HTTP_PROXY/HTTPS_PROXY in your shell BEFORE
+#   `docker compose build` — BuildKit forwards them into the build stages.
+#   At runtime the same vars (if set below) also route the AI assistant's
+#   outbound calls through the proxy. Leave them unset for direct connectivity.
 
 services:
   opsdash:
-    build: .
+    build:
+      context: .
+      # BuildKit 自动把宿主 shell 的 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 透传进构建阶段。
+      # 你只需在 `docker compose build` 前设好这俩 env（例如 export HTTPS_PROXY=http://127.0.0.1:7897）。
     image: composeops/opsdash:latest
     container_name: opsdash
     restart: unless-stopped
@@ -47,6 +55,11 @@ services:
       - PORT=3001
       - HOST=0.0.0.0
       - LOG_LEVEL=info
+      # 运行时 AI 出站走代理（若你的 AI Base URL 需翻墙）。Node 22 内置 fetch
+      # 自动识别 HTTP_PROXY/HTTPS_PROXY/NO_PROXY。不需要时整段注释掉。
+      # - HTTP_PROXY=http://host.docker.internal:7897
+      # - HTTPS_PROXY=http://host.docker.internal:7897
+      # - NO_PROXY=localhost,127.0.0.1
       # Optional advanced override: additionally allow this host root for compose
       # file ops (e.g. a parent dir not itself a compose working_dir). Normally
       # leave unset — the backend auto-allows whatever Docker reports.

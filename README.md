@@ -37,6 +37,10 @@ cd frontend && npm install && npm run dev
 整个面板用一条命令拉起：
 
 ```bash
+# 0.（若你需要翻墙）在构建前把代理告诉 shell，BuildKit 会自动透传进构建阶段
+export HTTP_PROXY=http://127.0.0.1:7897
+export HTTPS_PROXY=http://127.0.0.1:7897
+
 # 1.（可选）挂载你想在面板里编辑的 compose 项目目录，见下方说明
 #    不挂载也能用：所有 compose 项目照样被自动发现、只读列出
 
@@ -47,6 +51,20 @@ docker compose up -d --build
 ```
 
 镜像为多阶段构建：前端 Vite 产物 + 后端 Node 运行时（内含 `docker` CLI 与 compose v2 插件）合入单容器，由后端 Fastify 以静态 SPA 形式托管（`SERVE_FRONTEND=1`）。
+
+### 构建时网络：走你的代理，不硬编码镜像源
+
+Dockerfile 不写死任何 apt/npm 镜像源，保持镜像在任何网络下都通用。如果你在能直连的环境，直接 `docker compose build` 即可。如果你的网络需要代理（如 Clash），只需在**构建前**把代理变量 export 到 shell：
+
+```bash
+export HTTP_PROXY=http://127.0.0.1:7897
+export HTTPS_PROXY=http://127.0.0.1:7897
+docker compose build   # BuildKit 自动把这两个变量透传进 apt / npm / curl
+```
+
+> ℹ️ WSL2 + Clash 用户注意：Clash 默认只监听 Windows 的 `127.0.0.1:7897`，Docker 构建容器是独立网络命名空间，**到不了宿主的 127.0.0.1**。需要让 Clash 监听到容器可达的地址。两种做法任选其一：
+> - **Clash 开 `allow-lan`**（设置 → 局域网连接 → 允许局域网），然后在 `docker-compose.yml` 的 `environment` 里加 `- HTTP_PROXY=http://host.docker.internal:7897`（运行时 AI 出站用）；
+> - 构建用 `DOCKER_BUILDKIT=1 docker build --network=host`（容器共享 WSL 网络栈，能直接 `127.0.0.1:7897`）。
 
 ### 服务发现：全自动，零配置
 
