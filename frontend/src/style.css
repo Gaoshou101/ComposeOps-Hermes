@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 滚动条美化 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #3a414f; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #4b5463; }
+
+/* xterm 容器 */
+.terminal-host {
+  padding: 8px;
+  background: #000;
+  border-radius: 6px;
+}
+
+@layer components {
+  .btn { @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors; }
+  .btn-primary { @apply btn bg-accent text-white hover:bg-accent-hover; }
+  .btn-secondary { @apply btn bg-surface-700 text-surface-100 hover:bg-surface-600; }
+  .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-500; }
+  .btn-ghost { @apply btn text-surface-300 hover:bg-surface-800; }
+
+  .card { @apply bg-surface-900 border border-surface-800 rounded-lg; }
+  .input { @apply bg-surface-800 border border-surface-700 rounded px-3 py-1.5 text-sm text-surface-100 focus:outline-none focus:ring-1 focus:ring-accent; }
+}
