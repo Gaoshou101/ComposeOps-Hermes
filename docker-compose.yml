@@ -1,0 +1,42 @@
+# OpsDash — launch the whole panel with `docker compose up`.
+#
+# Quick start:
+#   1. Set COMPOSE_PROJECTS_DIR below to the host directory that holds YOUR
+#      docker-compose projects (the ones OpsDash should manage).
+#   2. docker compose up -d --build
+#   3. open http://localhost:3001
+#
+# Why the projects dir is mounted at the SAME path inside the container:
+#   OpsDash groups compose projects by the `com.docker.compose.project.working_dir`
+#   label, whose value is the HOST path where `docker compose` was run. For file
+#   editing / lifecycle ops to work from inside the container, that host path must
+#   be reachable at the identical path here — hence `${COMPOSE_PROJECTS_DIR}:${COMPOSE_PROJECTS_DIR}`.
+#   ALLOWED_ROOT is set to the same path so the backend's path guard allows it.
+
+services:
+  opsdash:
+    build: .
+    image: composeops/opsdash:latest
+    container_name: opsdash
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      # Talk to the host Docker engine (dockerode + `docker compose` CLI).
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Your compose projects — mounted at the SAME path so working_dir labels match.
+      - ${COMPOSE_PROJECTS_DIR:-/home/sgy/compose-projects}:${COMPOSE_PROJECTS_DIR:-/home/sgy/compose-projects}
+      # SQLite DB (AI config + API key + history) persists across rebuilds.
+      - opsdash-data:/app/backend/data
+    environment:
+      - SERVE_FRONTEND=1
+      - PORT=3001
+      - HOST=0.0.0.0
+      - LOG_LEVEL=info
+      # Restrict compose file ops to this host path (backend denyIfRestricted guard).
+      - ALLOWED_ROOT=${COMPOSE_PROJECTS_DIR:-/home/sgy/compose-projects}
+      # Optional: override docker binary, e.g. COMPOSE_BIN=docker-compose
+      # - COMPOSE_BIN=docker
+
+volumes:
+  opsdash-data:
