@@ -13,7 +13,18 @@ export const useServicesStore = defineStore('services', () => {
     error.value = '';
     try {
       const data = await api.getServices();
-      groups.value = data.groups || data || [];
+      // 后端返回 { owners:[...], groupedByOwner:{owner:[projects]} };
+      // 前端模板按 [{owner, projects}] 数组遍历，这里做一次归一。
+      if (data?.groupedByOwner) {
+        const order = data.owners || Object.keys(data.groupedByOwner);
+        groups.value = order
+          .filter((o) => data.groupedByOwner[o]?.length)
+          .map((o) => ({ owner: o, projects: data.groupedByOwner[o] }));
+      } else if (Array.isArray(data?.groups)) {
+        groups.value = data.groups;
+      } else {
+        groups.value = [];
+      }
     } catch (e) {
       error.value = e.message;
     } finally {
