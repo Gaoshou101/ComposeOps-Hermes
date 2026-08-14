@@ -2,6 +2,7 @@ import docker from '../services/docker.js';
 import { findProject, scanProjects } from '../services/scanner.js';
 import { buildMountPlan } from '../services/mount-plan.js';
 import { readCompose, resolveProjectFile, saveCompose, spawnCompose } from '../services/compose-runner.js';
+import { readWorkspaceCompose, runWorkspaceCompose, saveWorkspaceCompose } from '../services/compose-workspace.js';
 import { runContainerAction, supportsContainerAction } from '../services/project-control.js';
 import {
   addOperation,
@@ -27,8 +28,12 @@ function requireManaged(project, reply) {
 
 function requireEditable(project, reply) {
   if (!requireManaged(project, reply)) return false;
-  if (!project.mounted) {
-    reply.code(409).send({ error: 'project_not_mounted', message: '项目已纳管，但 Compose 目录尚未挂载' });
+  if (!project.mountEnabled) {
+    reply.code(403).send({ error: 'compose_access_not_enabled', message: '尚未为该项目启用 Compose 目录能力' });
+    return false;
+  }
+  if (!project.editable) {
+    reply.code(409).send({ error: 'compose_path_unavailable', message: 'Compose 项目路径缺失或权限范围过宽，无法安全挂载' });
     return false;
   }
   return true;
@@ -41,23 +46,47 @@ export default async function projectRoutes(fastify) {
 
   fastify.put('/management', async (request, reply) => {
     const projectIds = request.body?.projectIds;
+    const mountProjectIds = request.body?.mountProjectIds ?? [];
     if (!Array.isArray(projectIds) || projectIds.length > 1000 ||
-        projectIds.some((id) => typeof id !== 'string')) {
+        projectIds.some((id) => typeof id !== 'string') ||
+        !Array.isArray(mountProjectIds) || mountProjectIds.length > 1000 ||
+        mountProjectIds.some((id) => typeof id !== 'string')) {
       return reply.code(400).send({ error: 'invalid_project_ids', message: '项目选择格式无效' });
     }
     const projects = await scanProjects();
     const discoveredIds = projects.map((project) => project.id);
     const discoveredSet = new Set(discoveredIds);
-    if (projectIds.some((id) => !discoveredSet.has(id))) {
+    if (projectIds.some((id) => !discoveredSet.has(id)) || mountProjectIds.some((id) => !discoveredSet.has(id))) {
       return reply.code(400).send({ error: 'unknown_project', message: '选择中包含当前未发现的项目' });
     }
     const selectedIds = [...new Set(projectIds)];
-    const result = setProjectManagement(discoveredIds, selectedIds);
+    const selectedMountIds = [...new Set(mountProjectIds)].filter((id) => selectedIds.includes(id));
+    const result = setProjectManagement(discoveredIds, selectedIds, selectedMountIds);
     addOperation({
       action: 'projects.management',
       status: 'success',
       detail: projects.filter((project) => selectedIds.includes(project.id)).map((project) => project.projectName).join(', '),
     });
+    return result;
+  });
+
+  // 目录能力是纳管权限的子集。保留独立端点，便于设置页只调整挂载选择。
+  fastify.put('/mounts', async (request, reply) => {
+    const mountProjectIds = request.body?.projectIds;
+    if (!Array.isArray(mountProjectIds) || mountProjectIds.length > 1000 ||
+        mountProjectIds.some((id) => typeof id !== 'string')) {
+      return reply.code(400).send({ error: 'invalid_project_ids', message: '项目选择格式无效' });
+    }
+    const projects = await scanProjects();
+    const discoveredIds = projects.map((project) => project.id);
+    const discoveredSet = new Set(discoveredIds);
+    if (mountProjectIds.some((id) => !discoveredSet.has(id))) {
+      return reply.code(400).send({ error: 'unknown_project', message: '选择中包含当前未发现的项目' });
+    }
+    const managedIds = projects.filter((project) => project.managed).map((project) => project.id);
+    const selectedMountIds = [...new Set(mountProjectIds)].filter((id) => managedIds.includes(id));
+    const result = setProjectManagement(discoveredIds, managedIds, selectedMountIds);
+    addOperation({ action: 'projects.mounts', status: 'success', detail: selectedMountIds.join(', ') });
     return result;
   });
 
@@ -84,7 +113,9 @@ export default async function projectRoutes(fastify) {
     if (!project) return;
     if (!requireEditable(project, reply)) return;
     try {
-      return await readCompose(project, request.query.fileIndex || 0);
+      return project.mounted
+        ? await readCompose(project, request.query.fileIndex || 0)
+        : await readWorkspaceCompose(project, request.query.fileIndex || 0);
     } catch (error) {
       return reply.code(error.statusCode || 500).send({ error: 'compose_read_failed', message: error.message });
     }
@@ -95,7 +126,9 @@ export default async function projectRoutes(fastify) {
     if (!project) return;
     if (!requireEditable(project, reply)) return;
     try {
-      const result = await saveCompose(project, request.body?.fileIndex || 0, request.body?.content);
+      const result = project.mounted
+        ? await saveCompose(project, request.body?.fileIndex || 0, request.body?.content)
+        : await saveWorkspaceCompose(project, request.body?.fileIndex || 0, request.body?.content);
       addOperation({ projectId: project.id, projectName: project.projectName, action: 'compose.save', status: 'success' });
       return result;
     } catch (error) {
@@ -130,7 +163,8 @@ export default async function projectRoutes(fastify) {
     const fileIndex = project.composeFiles.indexOf(backup.filePath);
     if (fileIndex < 0) return reply.code(409).send({ error: 'backup_file_changed' });
     try {
-      await saveCompose(project, fileIndex, backup.content, 'restore');
+      if (project.mounted) await saveCompose(project, fileIndex, backup.content, 'restore');
+      else await saveWorkspaceCompose(project, fileIndex, backup.content, 'restore');
       addOperation({ projectId: project.id, projectName: project.projectName, action: 'compose.restore', status: 'success', detail: `backup=${backup.id}` });
       return { ok: true };
     } catch (error) {
@@ -143,11 +177,14 @@ export default async function projectRoutes(fastify) {
     if (!project) return;
     const action = request.body?.action;
     if (!requireManaged(project, reply)) return;
-    if (!project.mounted && !supportsContainerAction(action)) {
-      return reply.code(409).send({ error: 'compose_mount_required', message: '该操作需要挂载 Compose 项目目录' });
+    if (!project.mountEnabled && !supportsContainerAction(action)) {
+      return reply.code(403).send({ error: 'compose_access_not_enabled', message: '尚未为该项目启用 Compose 目录能力' });
+    }
+    if (project.mountEnabled && !project.editable && !supportsContainerAction(action)) {
+      return reply.code(409).send({ error: 'compose_path_unavailable', message: 'Compose 项目路径缺失或权限范围过宽，无法安全挂载' });
     }
     let child;
-    if (project.mounted) {
+    if (project.editable && project.mounted) {
       try {
         const safeFiles = await Promise.all(project.composeFiles.map((_, index) => resolveProjectFile(project, index)));
         child = spawnCompose({ ...project, composeFiles: safeFiles }, action);
@@ -180,7 +217,19 @@ export default async function projectRoutes(fastify) {
       send('exit', { code });
       reply.raw.end();
     };
-    if (!project.mounted) {
+    if (project.editable && !project.mounted) {
+      runWorkspaceCompose(project, action, (type, text) => {
+        output += text;
+        send(type, text);
+      }).then((code) => finish(code, 'workspace')).catch((error) => {
+        const text = `${error.message}\n`;
+        output += text;
+        send('stderr', text);
+        finish(1, 'workspace');
+      });
+      return;
+    }
+    if (!project.editable) {
       runContainerAction(project, action, (type, text) => {
         output += text;
         send(type, text);

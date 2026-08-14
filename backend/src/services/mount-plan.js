@@ -10,6 +10,14 @@ function normalizedAbsolutePath(value) {
   return path.posix.normalize(value);
 }
 
+export function safeProjectMountPath(value) {
+  const candidate = normalizedAbsolutePath(value);
+  if (!candidate || BROAD_PATHS.has(candidate)) return null;
+  const parts = candidate.split('/').filter(Boolean);
+  if ((parts[0] === 'home' || parts[0] === 'Users') && parts.length < 3) return null;
+  return candidate;
+}
+
 function containsPath(parent, child) {
   return child === parent || child.startsWith(`${parent}/`);
 }
@@ -36,7 +44,7 @@ function isSafeParentSuggestion(parent) {
 }
 
 function projectMountPath(project) {
-  return normalizedAbsolutePath(project.workingDir);
+  return safeProjectMountPath(project.workingDir);
 }
 
 function yamlString(value) {
@@ -90,6 +98,7 @@ export function buildMountPlan(projects) {
     workingDir: project.workingDir || '',
     composeFiles: project.composeFiles || [],
     managed: !!project.managed,
+    mountEnabled: !!project.managed && project.mountEnabled !== false,
     mounted: !!project.mounted,
     editable: !!project.editable,
     mountState: project.mountState,
@@ -100,7 +109,7 @@ export function buildMountPlan(projects) {
   const projectsByPath = new Map();
 
   for (const project of projects) {
-    if (!project.managed || project.mounted) continue;
+    if (!project.managed || project.mountEnabled === false || project.mounted) continue;
     const mountPath = projectMountPath(project);
     const item = {
       id: project.id,
@@ -111,7 +120,7 @@ export function buildMountPlan(projects) {
       mountState: project.mountState || (mountPath ? 'directory_unreachable' : 'metadata_missing'),
       mountPath,
     };
-    if (!mountPath || item.mountState === 'compose_files_unreachable') {
+    if (!mountPath) {
       unsupportedProjects.push(item);
       continue;
     }

@@ -2,6 +2,7 @@ import { getAiConfig, setAiConfig, callOpenAI, addAiMessage, getAiHistory, clear
 import docker from '../services/docker.js';
 import { findProjectContainer } from '../services/scanner.js';
 import { readCompose } from '../services/compose-runner.js';
+import { readWorkspaceCompose } from '../services/compose-workspace.js';
 
 export default async function aiRoutes(fastify) {
   // GET /api/v1/ai/config
@@ -94,7 +95,12 @@ export default async function aiRoutes(fastify) {
 
     let composeContent = '';
     if (match.project.editable) {
-      try { composeContent = (await readCompose(match.project, 0)).content.slice(0, 50000); } catch {}
+      try {
+        const compose = match.project.mounted
+          ? await readCompose(match.project, 0)
+          : await readWorkspaceCompose(match.project, 0);
+        composeContent = compose.content.slice(0, 50000);
+      } catch {}
     }
 
     // 取最近 200 行日志（非 follow）

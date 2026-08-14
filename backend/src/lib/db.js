@@ -35,6 +35,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS project_preferences (
     project_id TEXT PRIMARY KEY,
     managed INTEGER NOT NULL DEFAULT 0,
+    mount_enabled INTEGER NOT NULL DEFAULT 0,
     favorite INTEGER NOT NULL DEFAULT 0,
     note TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -64,6 +65,9 @@ db.exec(`
 const projectPreferenceColumns = db.prepare('PRAGMA table_info(project_preferences)').all();
 if (!projectPreferenceColumns.some((column) => column.name === 'managed')) {
   db.exec('ALTER TABLE project_preferences ADD COLUMN managed INTEGER NOT NULL DEFAULT 0');
+}
+if (!projectPreferenceColumns.some((column) => column.name === 'mount_enabled')) {
+  db.exec('ALTER TABLE project_preferences ADD COLUMN mount_enabled INTEGER NOT NULL DEFAULT 0');
 }
 
 export function getSetting(key, fallback = null) {
@@ -119,34 +123,49 @@ export function getProjectPreference(projectId) {
   ).get(projectId) || { managed: 0, favorite: 0, note: '' };
 }
 
-export function setProjectPreference(projectId, { managed, favorite, note }) {
+export function getProjectMountEnabled(projectId) {
+  return !!db.prepare('SELECT mount_enabled FROM project_preferences WHERE project_id = ?').get(projectId)?.mount_enabled;
+}
+
+export function setProjectPreference(projectId, { managed, mountEnabled, favorite, note }) {
   const current = getProjectPreference(projectId);
+  const currentMountEnabled = getProjectMountEnabled(projectId);
   const nextManaged = typeof managed === 'boolean' ? Number(managed) : current.managed;
+  const nextMountEnabled = typeof mountEnabled === 'boolean' ? Number(mountEnabled) : Number(currentMountEnabled);
   const nextFavorite = typeof favorite === 'boolean' ? Number(favorite) : current.favorite;
   const nextNote = typeof note === 'string' ? note.slice(0, 500) : current.note;
   db.prepare(`
-    INSERT INTO project_preferences(project_id, managed, favorite, note, updated_at)
-    VALUES(?, ?, ?, ?, datetime('now'))
+    INSERT INTO project_preferences(project_id, managed, mount_enabled, favorite, note, updated_at)
+    VALUES(?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(project_id) DO UPDATE SET
       managed = excluded.managed,
+      mount_enabled = excluded.mount_enabled,
       favorite = excluded.favorite,
       note = excluded.note,
       updated_at = excluded.updated_at
-  `).run(projectId, nextManaged, nextFavorite, nextNote);
+  `).run(projectId, nextManaged, nextMountEnabled, nextFavorite, nextNote);
   return { managed: !!nextManaged, favorite: !!nextFavorite, note: nextNote };
 }
 
-export function setProjectManagement(discoveredProjectIds, managedProjectIds) {
+export function setProjectManagement(discoveredProjectIds, managedProjectIds, mountProjectIds = null) {
   const managedSet = new Set(managedProjectIds);
+  const mountSet = new Set(mountProjectIds || []);
   const update = db.transaction(() => {
     // 保存的是完整允许列表；先撤销旧授权，避免暂时消失的项目日后自动恢复权限。
-    db.prepare("UPDATE project_preferences SET managed = 0, updated_at = datetime('now') WHERE managed <> 0").run();
+    db.prepare("UPDATE project_preferences SET managed = 0, mount_enabled = 0, updated_at = datetime('now') WHERE managed <> 0 OR mount_enabled <> 0").run();
     for (const projectId of discoveredProjectIds.filter((id) => managedSet.has(id))) {
-      setProjectPreference(projectId, { managed: true });
+      setProjectPreference(projectId, { managed: true, mountEnabled: mountSet.has(projectId) });
     }
   });
   update();
-  return { managedProjectIds: discoveredProjectIds.filter((id) => managedSet.has(id)) };
+  return {
+    managedProjectIds: discoveredProjectIds.filter((id) => managedSet.has(id)),
+    mountProjectIds: discoveredProjectIds.filter((id) => managedSet.has(id) && mountSet.has(id)),
+  };
+}
+
+export function setProjectMounts(discoveredProjectIds, managedProjectIds, mountProjectIds) {
+  return setProjectManagement(discoveredProjectIds, managedProjectIds, mountProjectIds);
 }
 
 export function addComposeBackup(projectId, filePath, content, reason = 'save') {
@@ -204,7 +223,7 @@ export function exportUserData() {
     exportedAt: new Date().toISOString(),
     settings,
     projectPreferences: db.prepare(
-      'SELECT project_id AS projectId, managed, favorite, note, updated_at AS updatedAt FROM project_preferences'
+      'SELECT project_id AS projectId, managed, mount_enabled AS mountEnabled, favorite, note, updated_at AS updatedAt FROM project_preferences'
     ).all(),
     operations: listOperations(500),
   };
@@ -224,6 +243,7 @@ export function importUserData(payload) {
       if (typeof preference?.projectId !== 'string') continue;
       setProjectPreference(preference.projectId, {
         managed: !!preference.managed,
+        mountEnabled: !!preference.mountEnabled,
         favorite: !!preference.favorite,
         note: typeof preference.note === 'string' ? preference.note : '',
       });

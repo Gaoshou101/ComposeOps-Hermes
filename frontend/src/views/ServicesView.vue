@@ -38,15 +38,15 @@
               <p class="text-xs text-surface-500 font-mono break-all">{{ project.workingDir || 'Docker 标签未提供工作目录' }}</p>
               <p v-if="project.note" class="text-sm text-surface-300 border-l-2 border-surface-700 pl-2 mt-2">{{ project.note }}</p>
             </div>
-            <span v-if="project.managed" class="count-badge self-start lg:self-auto">{{ project.mounted ? 'Compose 模式' : '现有容器模式' }}</span>
+            <span v-if="project.managed" class="count-badge self-start lg:self-auto">{{ project.editable ? 'Compose 模式' : '现有容器模式' }}</span>
           </div>
 
           <div class="flex flex-wrap gap-1.5">
-            <button class="btn-primary" :disabled="!project.managed || busy" :title="project.mounted ? '通过 Docker Compose 启动' : '启动项目中已有的容器'" @click="run(project, 'up')"><Play class="w-4 h-4" />启动</button>
+            <button class="btn-primary" :disabled="!project.managed || busy" :title="project.editable ? '通过 Docker Compose 启动' : '启动项目中已有的容器'" @click="run(project, 'up')"><Play class="w-4 h-4" />启动</button>
             <button class="btn-secondary" :disabled="!project.managed || busy" @click="run(project, 'restart')"><RotateCw class="w-4 h-4" />重启</button>
             <button class="btn-danger" :disabled="!project.managed || busy" @click="confirmStop(project)"><Square class="w-4 h-4" />停止</button>
             <button class="btn-ghost" :disabled="!project.managed || busy" @click="run(project, 'ps')"><ListTree class="w-4 h-4" />状态</button>
-            <button class="btn-secondary" :disabled="!project.editable || busy" title="拉取镜像需要 Compose 目录" @click="run(project, 'pull')"><Download class="w-4 h-4" />拉取</button>
+            <button class="btn-secondary" :disabled="!project.editable || busy" title="需在项目纳管中勾选 Compose" @click="run(project, 'pull')"><Download class="w-4 h-4" />拉取</button>
             <router-link class="btn-ghost" :class="{ 'pointer-events-none opacity-40': !project.editable }" :to="`/compose?projectId=${project.id}`"><FileCode2 class="w-4 h-4" />配置</router-link>
           </div>
 
@@ -54,9 +54,9 @@
             <span class="flex-1">项目尚未纳管，所有控制与容器入口均已禁用。</span>
             <router-link class="btn-ghost shrink-0" :to="`/settings?tab=mounts&projectId=${project.id}`"><FolderCog class="w-4 h-4" />项目纳管</router-link>
           </div>
-          <div v-else-if="!project.mounted" class="alert-warning flex flex-col sm:flex-row sm:items-center gap-2">
-            <span class="flex-1">当前可启动、重启、停止和查看已有容器；拉取、创建缺失服务及编辑配置需要挂载 Compose 目录。</span>
-            <router-link class="btn-ghost shrink-0" :to="`/settings?tab=mounts&projectId=${project.id}`"><FolderCog class="w-4 h-4" />配置挂载</router-link>
+          <div v-else-if="!project.editable" class="alert-warning flex flex-col sm:flex-row sm:items-center gap-2">
+            <span class="flex-1">当前可控制已有容器；请勾选 Compose 目录并应用挂载，解锁拉取、创建缺失服务和配置编辑。</span>
+            <router-link class="btn-ghost shrink-0" :to="`/settings?tab=mounts&projectId=${project.id}`"><FolderCog class="w-4 h-4" />选择 Compose 目录</router-link>
           </div>
 
           <div class="divide-y divide-surface-800 border-t border-surface-800">

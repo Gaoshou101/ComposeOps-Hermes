@@ -46,68 +46,37 @@
       <div v-if="mountPlan" class="grid sm:grid-cols-4 gap-2">
         <StatCard title="已发现" :value="String(mountPlan.summary.total)" sub="Compose 项目" />
         <StatCard title="已纳管" :value="String(mountPlan.summary.managed)" sub="由你明确授权" />
-        <StatCard title="Compose 就绪" :value="String(mountPlan.summary.operable)" sub="已纳管且已挂载" />
-        <StatCard title="待挂载" :value="String(mountPlan.summary.pending)" sub="仅限已选项目" />
+        <StatCard title="Compose 就绪" :value="String(mountPlan.summary.operable)" sub="可编辑、拉取和创建" />
+        <StatCard title="已选 Compose" :value="String(mountPlan.projects.filter((project) => project.managed && project.mountEnabled).length)" sub="按需精确挂载" />
       </div>
 
       <div v-if="mountPlan" class="space-y-2">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div><h3 class="section-title">选择纳管项目</h3><p class="text-xs text-surface-400 mt-1">纳管后可控制现有容器并使用日志、终端和 AI 诊断；拉取、创建缺失服务及 Compose 配置编辑还要求目录已挂载。</p></div>
-          <button class="btn-primary" :disabled="mountLoading || !managementDirty" @click="saveManagement"><ShieldCheck class="w-4 h-4" />应用纳管范围</button>
+          <div><h3 class="section-title">选择管理范围</h3><p class="text-xs text-surface-400 mt-1">第一项授权容器控制、日志、终端和 AI 诊断；第二项允许按需挂载该 Compose 目录，启用配置编辑、拉取和创建缺失服务。</p></div>
+          <button class="btn-primary" :disabled="mountLoading || !selectionDirty" @click="saveManagement"><ShieldCheck class="w-4 h-4" />应用选择</button>
         </div>
-        <p v-if="managementDirty" class="alert-warning">当前选择尚未应用；保存前不会改变任何项目权限。</p>
+        <p v-if="selectionDirty" class="alert-warning">当前选择尚未应用；保存前不会改变项目权限或 Compose 目录范围。</p>
         <div v-if="!mountPlan.projects.length" class="empty-state"><FolderCog class="w-8 h-8" /><span>暂未发现 Compose 项目</span></div>
-        <label v-for="project in mountPlan.projects" :key="project.id" class="card p-3 flex items-start gap-3 cursor-pointer" :class="{ 'ring-1 ring-amber-500/70': highlightedProjectId === project.id }">
-          <input v-model="selectedProjectIds" type="checkbox" :value="project.id" class="mt-1 accent-accent" />
+        <div v-for="project in mountPlan.projects" :key="project.id" class="card p-3 flex items-start gap-3" :class="{ 'ring-1 ring-amber-500/70': highlightedProjectId === project.id }">
+          <div class="flex flex-col gap-2 pt-0.5">
+            <label class="toggle-label text-xs whitespace-nowrap" title="允许控制该项目的现有容器"><input v-model="selectedProjectIds" type="checkbox" :value="project.id" class="accent-accent" />纳管</label>
+            <label class="toggle-label text-xs whitespace-nowrap" :class="{ 'opacity-40 pointer-events-none': !selectedProjectIds.includes(project.id) }" title="选择后生成同路径目录挂载"><input v-model="selectedMountProjectIds" type="checkbox" :value="project.id" class="accent-accent" :disabled="!selectedProjectIds.includes(project.id)" />Compose</label>
+          </div>
           <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-center gap-2"><span class="font-mono text-sm">{{ project.projectName }}</span><span class="count-badge">{{ projectAccessLabel(project) }}</span><span class="count-badge">{{ project.containerCount }} 个容器</span></div>
             <div class="text-xs text-surface-500 font-mono break-all mt-1">{{ project.workingDir || 'Docker 标签未提供工作目录' }}</div>
           </div>
-        </label>
-      </div>
-
-      <p v-if="mountPlan?.summary.managed && !mountPlan.summary.pending && !mountPlan.summary.unsupported" class="alert-success">当前纳管项目均已挂载，Compose 控制和配置编辑可用。</p>
-
-      <div v-if="mountPlan?.pendingProjects.length" class="space-y-2">
-        <h3 class="section-title">已纳管，待挂载</h3>
-        <div v-for="project in mountPlan.pendingProjects" :key="project.id" class="card p-3" :class="{ 'ring-1 ring-amber-500/70': highlightedProjectId === project.id }">
-          <div class="flex flex-col sm:flex-row sm:items-start gap-2">
-            <div class="min-w-0 flex-1"><div class="font-mono text-sm">{{ project.projectName }}</div><div class="text-xs text-surface-500 font-mono break-all mt-1">{{ project.workingDir }}</div></div>
-            <span class="count-badge self-start">{{ project.composeFiles.length }} 个配置文件</span>
-          </div>
-          <p v-if="project.mountState === 'compose_files_unreachable'" class="text-xs text-amber-400 mt-2">目录已经可达，但 Compose 文件不可读；请确认标签路径中的文件仍然存在。</p>
         </div>
       </div>
 
-      <div v-if="mountPlan?.composeSnippet" class="space-y-2">
-        <div class="flex items-center justify-between gap-2"><h3 class="section-title">所选项目的挂载配置</h3><button class="btn-secondary" @click="copyText(mountPlan.composeSnippet, '挂载配置已复制')"><Copy class="w-4 h-4" />复制</button></div>
-        <p class="text-xs text-surface-400">配置只包含已纳管且尚未挂载的项目。把 bind 条目合并到 ComposeOps 自身 <code class="font-mono">services.opsdash.volumes</code> 中，并保留已有 Docker Socket 和数据卷。</p>
-        <pre class="terminal-output rounded-lg max-h-80">{{ mountPlan.composeSnippet }}</pre>
-      </div>
-
-      <div v-if="mountPlan?.parentSuggestions.length" class="space-y-2">
-        <h3 class="section-title">可选的父目录合并</h3>
-        <p class="text-xs text-surface-400">这些项目位于同一个直接父目录。使用父目录能减少挂载条目，但会扩大 ComposeOps 可访问的文件范围。</p>
-        <div v-for="suggestion in mountPlan.parentSuggestions" :key="suggestion.path" class="card p-3 flex flex-col sm:flex-row sm:items-center gap-2">
-          <div class="min-w-0 flex-1"><div class="text-sm font-mono break-all">{{ suggestion.path }}:{{ suggestion.path }}</div><div class="text-xs text-amber-400 mt-1">替代 {{ suggestion.replaces.length }} 条精确目录挂载，请确认权限范围。</div></div>
-          <button class="btn-ghost" @click="copyText(`${suggestion.path}:${suggestion.path}`, '父目录挂载已复制')"><Copy class="w-4 h-4" />复制</button>
-        </div>
-      </div>
+      <p v-if="mountPlan?.projects.some((project) => project.editable)" class="alert-success">已勾选的 Compose 项目会按需创建临时工作容器，只挂载对应项目目录；操作完成后自动销毁，无需修改 ComposeOps 配置或重建面板。</p>
 
       <div v-if="mountPlan?.unsupportedProjects.length" class="space-y-2">
         <h3 class="section-title">已纳管但无法自动规划</h3>
         <div v-for="project in mountPlan.unsupportedProjects" :key="project.id" class="alert-warning">
           <span class="font-mono">{{ project.projectName }}</span>：
-          <template v-if="project.mountState === 'compose_files_unreachable'">工作目录可达，但标签中的 Compose 文件不存在或不可读。请确认文件路径，必要时在原项目目录执行 <code class="font-mono">docker compose up -d</code> 刷新标签。</template>
-          <template v-else>Docker Compose 标签缺少绝对工作目录。请使用较新的 <code class="font-mono">docker compose up -d</code> 重新创建该项目。</template>
+          Docker Compose 标签缺少安全的项目绝对路径。请在独立项目目录中使用较新的 <code class="font-mono">docker compose up -d</code> 重新创建该项目。
         </div>
-      </div>
-
-      <div v-if="mountPlan?.composeSnippet" class="border-t border-surface-800 pt-4 space-y-2">
-        <h3 class="section-title">应用配置</h3>
-        <p class="text-sm text-surface-400">挂载属于容器创建参数，保存 Compose 文件后必须重新创建 ComposeOps。普通 restart 不会生效。</p>
-        <div class="card p-3 flex flex-col sm:flex-row sm:items-center gap-2"><code class="font-mono text-sm flex-1 break-all">{{ mountPlan.recreateCommand }}</code><button class="btn-secondary" @click="copyText(mountPlan.recreateCommand, '重建命令已复制')"><Copy class="w-4 h-4" />复制命令</button></div>
-        <p class="alert-warning">此向导不会自动修改宿主机文件或动态挂载任意目录。重新创建后再次扫描，已纳管项目会自动变为 Compose 就绪状态。</p>
       </div>
     </section>
 
@@ -118,7 +87,7 @@
 <script setup>
 import { computed, markRaw, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { Bell, Bot, Copy, Download, FolderCog, Info, KeyRound, RefreshCw, Save, Send, ShieldCheck, SlidersHorizontal, Trash2, Upload, Wrench } from 'lucide-vue-next';
+import { Bell, Bot, Download, FolderCog, Info, KeyRound, RefreshCw, Save, Send, ShieldCheck, SlidersHorizontal, Trash2, Upload, Wrench } from 'lucide-vue-next';
 import { api } from '../api/client.js'; import { useAiStore } from '../stores/ai.js'; import StatCard from '../components/StatCard.vue';
 const tabs = [{ id: 'ai', label: 'AI', icon: markRaw(Bot) }, { id: 'personal', label: '偏好', icon: markRaw(SlidersHorizontal) }, { id: 'notifications', label: '通知', icon: markRaw(Bell) }, { id: 'maintenance', label: '维护', icon: markRaw(Wrench) }, { id: 'mounts', label: '项目纳管', icon: markRaw(FolderCog) }, { id: 'about', label: '关于', icon: markRaw(Info) }];
 const route = useRoute();
@@ -126,10 +95,16 @@ const initialTab = tabs.some((item) => item.id === route.query.tab) ? route.quer
 const tab = ref(initialTab); const message = ref(''); const error = ref(''); const aiStore = useAiStore(); const ai = ref({}); const aiMasked = ref(false); const preferences = ref({ refreshInterval: 5, logTail: 200 }); const password = ref({ currentPassword: '', nextPassword: '' }); const notifications = ref({}); const updates = ref({ autoEnabled: false, intervalHours: 24 }); const updateResults = ref([]); const checkingUpdates = ref(false); const usage = ref(null); const prune = ref({ images: true, buildCache: true, containers: false, volumes: false }); const capabilities = ref({});
 const mountPlan = ref(null); const mountLoading = ref(false); const highlightedProjectId = computed(() => String(route.query.projectId || ''));
 const selectedProjectIds = ref([]); const savedManagedProjectIds = ref([]);
+const selectedMountProjectIds = ref([]); const savedMountProjectIds = ref([]);
 const managementDirty = computed(() => {
   const selected = [...selectedProjectIds.value].sort(); const saved = [...savedManagedProjectIds.value].sort();
   return selected.length !== saved.length || selected.some((id, index) => id !== saved[index]);
 });
+const mountsDirty = computed(() => {
+  const selected = [...selectedMountProjectIds.value].sort(); const saved = [...savedMountProjectIds.value].sort();
+  return selected.length !== saved.length || selected.some((id, index) => id !== saved[index]);
+});
+const selectionDirty = computed(() => managementDirty.value || mountsDirty.value);
 function ok(text) { message.value = text; error.value = ''; } function fail(e) { error.value = e.message; message.value = ''; }
 onMounted(async () => { try { await aiStore.loadConfig(); const cfg = aiStore.config; ai.value = { baseUrl: cfg.baseUrl, apiKey: '', model: cfg.model, systemPrompt: cfg.systemPrompt }; aiMasked.value = !!cfg.apiKey; const [prefs, notificationConfig, updateConfig, systemCapabilities, plan] = await Promise.all([api.getPreferences(), api.getNotifications(), api.getUpdateSettings(), api.getCapabilities(), api.getMountPlan()]); preferences.value = prefs; notifications.value = notificationConfig; updates.value = updateConfig; capabilities.value = systemCapabilities; applyMountPlan(plan); await loadUsage(); } catch (e) { fail(e); } });
 async function saveAi() { try { const payload = { ...ai.value }; if (!payload.apiKey) delete payload.apiKey; await aiStore.saveConfig(payload); ai.value.apiKey = ''; aiMasked.value = true; ok('AI 配置已保存'); } catch (e) { fail(e); } }
@@ -142,29 +117,28 @@ async function saveUpdates() { try { updates.value = await api.saveUpdateSetting
 async function checkUpdates() { checkingUpdates.value = true; try { updateResults.value = (await api.checkUpdates()).results; ok('镜像检查完成'); } catch (e) { fail(e); } finally { checkingUpdates.value = false; } }
 async function loadUsage() { try { usage.value = await api.getDockerUsage(); } catch (e) { fail(e); } }
 async function runPrune() { const confirmation = prompt('清理操作不可撤销。请输入 PRUNE 确认：'); if (confirmation !== 'PRUNE') return; try { await api.pruneDocker({ confirmation, options: prune.value }); await loadUsage(); ok('Docker 清理完成'); } catch (e) { fail(e); } }
-function applyMountPlan(plan) { mountPlan.value = plan; savedManagedProjectIds.value = plan.projects.filter((project) => project.managed).map((project) => project.id); selectedProjectIds.value = [...savedManagedProjectIds.value]; }
+function applyMountPlan(plan) {
+  mountPlan.value = plan;
+  savedManagedProjectIds.value = plan.projects.filter((project) => project.managed).map((project) => project.id);
+  savedMountProjectIds.value = plan.projects.filter((project) => project.managed && project.mountEnabled).map((project) => project.id);
+  selectedProjectIds.value = [...savedManagedProjectIds.value];
+  selectedMountProjectIds.value = [...savedMountProjectIds.value];
+}
 async function loadMountPlan() { mountLoading.value = true; try { applyMountPlan(await api.getMountPlan()); ok('项目与权限状态已重新扫描'); } catch (e) { fail(e); } finally { mountLoading.value = false; } }
 async function saveManagement() {
   const removed = savedManagedProjectIds.value.filter((id) => !selectedProjectIds.value.includes(id));
   if (removed.length && !confirm(`将取消 ${removed.length} 个项目的管理权限，确认继续？`)) return;
   mountLoading.value = true;
-  try { await api.saveProjectManagement(selectedProjectIds.value); applyMountPlan(await api.getMountPlan()); ok('项目纳管范围已更新'); }
+  try {
+    selectedMountProjectIds.value = selectedMountProjectIds.value.filter((id) => selectedProjectIds.value.includes(id));
+    await api.saveProjectManagement(selectedProjectIds.value, selectedMountProjectIds.value);
+    applyMountPlan(await api.getMountPlan());
+    ok('管理与 Compose 目录选择已更新');
+  }
   catch (e) { fail(e); } finally { mountLoading.value = false; }
 }
-function projectAccessLabel(project) { if (!project.managed) return '未纳管'; if (project.editable) return 'Compose 就绪'; if (project.mountState === 'directory_unreachable') return '容器可控 · 待挂载'; return '容器可控 · 需处理'; }
-async function copyText(value, successMessage) {
-  try {
-    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
-    else {
-      const textarea = document.createElement('textarea');
-      textarea.value = value; textarea.style.position = 'fixed'; textarea.style.opacity = '0';
-      document.body.appendChild(textarea); textarea.select();
-      const copied = document.execCommand('copy'); textarea.remove();
-      if (!copied) throw new Error('copy_failed');
-    }
-    ok(successMessage);
-  } catch { fail(new Error('复制失败，请手动选择文本复制')); }
-}
+function projectAccessLabel(project) { if (!project.managed) return '未纳管'; if (!project.mountEnabled) return '仅管理容器'; if (project.editable) return project.mounted ? 'Compose 直连' : 'Compose 按需'; return 'Compose 路径需处理'; }
 function formatBytes(value = 0) { const units = ['B','KB','MB','GB','TB']; let n = value; let i = 0; while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; } return `${n.toFixed(i ? 1 : 0)} ${units[i]}`; }
 watch(() => route.query.tab, (value) => { if (tabs.some((item) => item.id === value)) tab.value = value; });
+watch(selectedProjectIds, (ids) => { selectedMountProjectIds.value = selectedMountProjectIds.value.filter((id) => ids.includes(id)); }, { deep: true });
 </script>

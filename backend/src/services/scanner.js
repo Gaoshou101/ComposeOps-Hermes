@@ -1,7 +1,9 @@
 import { access } from 'fs/promises';
 import { createHash } from 'crypto';
+import path from 'node:path';
 import docker from './docker.js';
-import { getProjectPreference } from '../lib/db.js';
+import { getProjectMountEnabled, getProjectPreference } from '../lib/db.js';
+import { safeProjectMountPath } from './mount-plan.js';
 
 const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project';
 const COMPOSE_WORKDIR_LABEL = 'com.docker.compose.project.working_dir';
@@ -137,8 +139,16 @@ export async function scanProjects() {
     else project.mountState = 'compose_files_unreachable';
     const preference = getProjectPreference(project.id);
     project.managed = !!preference.managed;
-    // editable 保持前端兼容，但现在同时代表“已显式纳管且文件可达”。
-    project.editable = project.managed && project.mounted;
+    project.mountEnabled = getProjectMountEnabled(project.id);
+    // 未长期挂载的已选目录由短生命周期 workspace 容器按需挂载并执行。
+    const workspaceRoot = safeProjectMountPath(project.workingDir);
+    project.workspaceAvailable = !!workspaceRoot && project.composeFiles.length > 0 &&
+      project.composeFiles.every((file) => {
+        const normalized = path.posix.normalize(file);
+        return path.posix.isAbsolute(normalized) && normalized.startsWith(`${workspaceRoot}/`);
+      });
+    project.editable = project.managed && project.mountEnabled && (project.mounted || project.workspaceAvailable);
+    project.composeMode = project.editable ? (project.mounted ? 'direct' : 'workspace') : 'containers';
     project.favorite = !!preference.favorite;
     project.note = preference.note || '';
   }

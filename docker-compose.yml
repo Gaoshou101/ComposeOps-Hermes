@@ -9,18 +9,20 @@
 # groups them by the `com.docker.compose.project` label. It needs NO configured
 # directory to discover projects — that's purely from container labels.
 #
-# Why you might mount project dirs at the SAME path inside the container:
+# Optional performance optimization: mount frequently used project dirs at the
+# SAME path inside the container:
 #   OpsDash groups compose projects by the `com.docker.compose.project.working_dir`
 #   label, whose value is the HOST path where `docker compose` was run. For file
 #   editing / lifecycle ops to work from inside the container, that host path must
 #   be reachable at the identical path here — hence `${DIR}:${DIR}` (same path
 #   both sides). The backend's allowlist only ever permits paths Docker itself
-#   reported, so mounting a dir is what makes its compose files editable.
+#   reported. Without a permanent mount, selected projects use a short-lived
+#   workspace container that bind-mounts only the selected project directory.
 #
 #   Mount as many dirs as you like (one `- /host/path:/host/path` line each).
-#   Projects whose dir isn't mounted still show up. Once explicitly managed,
-#   existing containers can be started/restarted/stopped through the Docker API;
-#   Compose editing, pull, and creating missing services still require the mount.
+#   Projects whose dir isn't permanently mounted still show up. Once explicitly
+#   managed and granted Compose access, editing and full Compose actions run in
+#   the isolated workspace container without recreating OpsDash.
 #   File access alone does not grant control: newly discovered projects must also
 #   be explicitly selected in Settings > Project Management before operations run.
 #
@@ -51,8 +53,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # --- Optional: mount your compose project dirs (same path both sides) ---
       # Uncomment / add one line per host dir you want to be EDITABLE from the panel.
-      # Projects in unmounted dirs are listed and can control existing containers
-      # after approval, but Compose files remain unavailable.
+      # This is optional. Unmounted dirs use project-scoped workspace containers
+      # after explicit approval in Settings > Project Management.
       # - /home/sgy/compose-projects:/home/sgy/compose-projects
       # - /opt/app:/opt/app
       # SQLite DB (AI config + API key + history) persists across rebuilds.

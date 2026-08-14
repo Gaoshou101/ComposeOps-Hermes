@@ -12,7 +12,7 @@ const database = await import('../src/lib/db.js');
 const { composeArgs, resolveProjectFile } = await import('../src/services/compose-runner.js');
 const { parseYaml, validateYaml } = await import('../src/lib/files.js');
 const { demuxStream } = await import('../src/lib/docker-streams.js');
-const { buildMountPlan, compactMountPaths } = await import('../src/services/mount-plan.js');
+const { buildMountPlan, compactMountPaths, safeProjectMountPath } = await import('../src/services/mount-plan.js');
 const { runContainerAction, supportsContainerAction } = await import('../src/services/project-control.js');
 
 test('passwords are hashed and sessions are authenticated by cookie', () => {
@@ -103,8 +103,13 @@ test('project management is explicit and can be updated as a discovered allowlis
   database.setProjectManagement(['project-a', 'project-b'], ['project-b']);
   assert.equal(database.getProjectPreference('project-a').managed, 0);
   assert.equal(database.getProjectPreference('project-b').managed, 1);
-  assert.equal(database.getProjectPreference('vanished-project').managed, 0);
+  assert.equal(database.getProjectMountEnabled('project-b'), false);
+  database.setProjectManagement(['project-a', 'project-b'], ['project-b'], ['project-b']);
+  assert.equal(database.getProjectMountEnabled('project-b'), true);
   assert.equal(database.exportUserData().projectPreferences.find((item) => item.projectId === 'project-b').managed, 1);
+  database.setProjectManagement(['project-a', 'project-b'], [], ['project-b']);
+  assert.equal(database.getProjectMountEnabled('project-b'), false);
+  assert.equal(database.getProjectPreference('vanished-project').managed, 0);
 });
 
 test('YAML validation rejects malformed documents', () => {
@@ -140,6 +145,9 @@ test('Docker multiplexed streams survive fragmented frames', async () => {
 });
 
 test('mount plan deduplicates exact paths without broadening permissions', () => {
+  assert.equal(safeProjectMountPath('/'), null);
+  assert.equal(safeProjectMountPath('/home/user'), null);
+  assert.equal(safeProjectMountPath('/home/user/services/app'), '/home/user/services/app');
   assert.deepEqual(compactMountPaths([
     '/srv/compose/app-a',
     '/srv/compose/app-a/worker',
@@ -155,12 +163,14 @@ test('mount plan deduplicates exact paths without broadening permissions', () =>
     { id: 'd', projectName: 'legacy', owner: 'Personal', workingDir: '', composeFiles: [], managed: true, mounted: false, editable: false, mountState: 'metadata_missing', containers: [] },
     { id: 'e', projectName: 'stale', owner: 'Personal', workingDir: '/srv/stale', composeFiles: ['/srv/stale/missing.yml'], managed: true, mounted: false, editable: false, mountState: 'compose_files_unreachable', containers: [] },
     { id: 'f', projectName: 'unmanaged', owner: 'Personal', workingDir: '/srv/unmanaged', composeFiles: ['/srv/unmanaged/compose.yml'], managed: false, mounted: false, editable: false, mountState: 'directory_unreachable', containers: [] },
+    { id: 'g', projectName: 'container-only', owner: 'Personal', workingDir: '/srv/container-only', composeFiles: ['/srv/container-only/compose.yml'], managed: true, mountEnabled: false, mounted: false, editable: false, mountState: 'directory_unreachable', containers: [] },
   ];
   const plan = buildMountPlan(projects);
-  assert.deepEqual(plan.summary, { total: 6, managed: 5, operable: 1, unmanaged: 1, pending: 2, unsupported: 2 });
+  assert.deepEqual(plan.summary, { total: 7, managed: 6, operable: 1, unmanaged: 1, pending: 3, unsupported: 1 });
   assert.equal(plan.projects.find((item) => item.id === 'f').managed, false);
-  assert.deepEqual(plan.mounts.map((item) => item.path), ['/srv/compose/app-a', '/srv/compose/app-b']);
+  assert.deepEqual(plan.mounts.map((item) => item.path), ['/srv/stale', '/srv/compose/app-a', '/srv/compose/app-b']);
   assert.doesNotMatch(plan.composeSnippet, /unmanaged/);
+  assert.doesNotMatch(plan.composeSnippet, /container-only/);
   assert.equal(plan.parentSuggestions[0].path, '/srv/compose');
   assert.match(plan.composeSnippet, /source: "\/srv\/compose\/app-a"/);
   assert.doesNotMatch(plan.composeSnippet, /source: "\/srv\/compose"\n/);
