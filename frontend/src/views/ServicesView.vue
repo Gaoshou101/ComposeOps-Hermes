@@ -34,7 +34,10 @@
             <button class="btn-danger" :disabled="!project.editable || busy" @click="confirmDown(project)"><Square class="w-4 h-4" />停止</button>
             <router-link class="btn-ghost" :class="{ 'pointer-events-none opacity-40': !project.editable }" :to="`/compose?projectId=${project.id}`"><FileCode2 class="w-4 h-4" />配置</router-link>
           </div>
-          <p v-if="!project.editable" class="text-xs text-amber-400">项目目录未同路径挂载，当前只读。</p>
+          <div v-if="!project.editable" class="alert-warning flex flex-col sm:flex-row sm:items-center gap-2">
+            <span class="flex-1">{{ readonlyMessage(project) }}</span>
+            <router-link class="btn-ghost shrink-0" :to="`/settings?tab=mounts&projectId=${project.id}`"><FolderCog class="w-4 h-4" />挂载向导</router-link>
+          </div>
 
           <div class="divide-y divide-surface-800 border-t border-surface-800">
             <div v-for="container in project.containers" :key="container.id" class="py-2 flex items-center gap-2">
@@ -61,7 +64,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
-import { Bot, Boxes, Download, FileCode2, ListTree, Pencil, Play, RefreshCw, RotateCw, ScrollText, Square, Star, TerminalSquare, X } from 'lucide-vue-next';
+import { Bot, Boxes, Download, FileCode2, FolderCog, ListTree, Pencil, Play, RefreshCw, RotateCw, ScrollText, Square, Star, TerminalSquare, X } from 'lucide-vue-next';
 import { useServicesStore } from '../stores/services.js';
 import { api, streamComposeControl } from '../api/client.js';
 import StatusBadge from '../components/StatusBadge.vue';
@@ -78,6 +81,11 @@ const groups = computed(() => {
 
 function refresh() { return store.refresh(); }
 function portText(c) { return c.ports.map((p) => `${p.public}:${p.private}`).join(', '); }
+function readonlyMessage(project) {
+  if (project.mountState === 'metadata_missing') return 'Docker 标签没有提供工作目录，无法生成自动挂载建议。';
+  if (project.mountState === 'compose_files_unreachable' && project.workingDirReachable) return '工作目录可达，但标签中的 Compose 文件不存在或不可读。';
+  return '已发现 Compose 项目，但项目目录尚未同路径挂载，当前只读。';
+}
 async function toggleFavorite(project) { project.favorite = !project.favorite; await api.saveProjectPreference(project.id, { favorite: project.favorite }); }
 async function editNote(project) {
   const note = window.prompt('项目备注（最多 500 字）', project.note || '');

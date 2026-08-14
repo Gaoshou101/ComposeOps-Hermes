@@ -1,5 +1,6 @@
 import docker from '../services/docker.js';
 import { findProject, scanProjects } from '../services/scanner.js';
+import { buildMountPlan } from '../services/mount-plan.js';
 import { readCompose, resolveProjectFile, saveCompose, spawnCompose } from '../services/compose-runner.js';
 import {
   addOperation,
@@ -16,6 +17,8 @@ async function projectOr404(id, reply) {
 
 export default async function projectRoutes(fastify) {
   fastify.get('/', async () => ({ projects: await scanProjects() }));
+
+  fastify.get('/mount-plan', async () => buildMountPlan(await scanProjects()));
 
   fastify.get('/:id', async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);

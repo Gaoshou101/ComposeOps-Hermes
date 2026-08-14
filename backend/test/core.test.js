@@ -12,6 +12,7 @@ const database = await import('../src/lib/db.js');
 const { composeArgs, resolveProjectFile } = await import('../src/services/compose-runner.js');
 const { parseYaml, validateYaml } = await import('../src/lib/files.js');
 const { demuxStream } = await import('../src/lib/docker-streams.js');
+const { buildMountPlan, compactMountPaths } = await import('../src/services/mount-plan.js');
 
 test('passwords are hashed and sessions are authenticated by cookie', () => {
   assert.throws(() => auth.setPassword('short'), /至少需要 10/);
@@ -94,4 +95,29 @@ test('Docker multiplexed streams survive fragmented frames', async () => {
   ]);
   assert.equal(Buffer.concat(stdout).toString(), 'hello');
   assert.equal(Buffer.concat(stderr).toString(), 'failure');
+});
+
+test('mount plan deduplicates exact paths without broadening permissions', () => {
+  assert.deepEqual(compactMountPaths([
+    '/srv/compose/app-a',
+    '/srv/compose/app-a/worker',
+    '/opt/app-b',
+    '/opt/app-b',
+    'relative/path',
+  ]), ['/opt/app-b', '/srv/compose/app-a']);
+
+  const projects = [
+    { id: 'a', projectName: 'app-a', owner: 'Personal', workingDir: '/srv/compose/app-a', composeFiles: ['/srv/compose/app-a/compose.yml'], editable: false, mountState: 'directory_unreachable' },
+    { id: 'b', projectName: 'app-b', owner: 'Personal', workingDir: '/srv/compose/app-b', composeFiles: ['/srv/compose/app-b/compose.yml'], editable: false, mountState: 'directory_unreachable' },
+    { id: 'c', projectName: 'ready', owner: 'Personal', workingDir: '/srv/compose/ready', composeFiles: ['/srv/compose/ready/compose.yml'], editable: true, mountState: 'ready' },
+    { id: 'd', projectName: 'legacy', owner: 'Personal', workingDir: '', composeFiles: [], editable: false, mountState: 'metadata_missing' },
+    { id: 'e', projectName: 'stale', owner: 'Personal', workingDir: '/srv/stale', composeFiles: ['/srv/stale/missing.yml'], editable: false, mountState: 'compose_files_unreachable' },
+  ];
+  const plan = buildMountPlan(projects);
+  assert.deepEqual(plan.summary, { total: 5, editable: 1, pending: 2, unsupported: 2 });
+  assert.deepEqual(plan.mounts.map((item) => item.path), ['/srv/compose/app-a', '/srv/compose/app-b']);
+  assert.equal(plan.parentSuggestions[0].path, '/srv/compose');
+  assert.match(plan.composeSnippet, /source: "\/srv\/compose\/app-a"/);
+  assert.doesNotMatch(plan.composeSnippet, /source: "\/srv\/compose"\n/);
+  assert.equal(plan.recreateCommand, 'docker compose up -d --force-recreate opsdash');
 });

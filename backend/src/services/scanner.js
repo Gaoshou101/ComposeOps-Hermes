@@ -121,8 +121,21 @@ export async function scanProjects() {
     }
 
     // 容器化下，workingDir 是宿主机路径；只有挂载进来的才可达 → 才能编辑/执行生命周期。
-    project.editable = project.composeFiles.length > 0 &&
-      (await Promise.all(project.composeFiles.map(isReachable))).every(Boolean);
+    // 同时返回细分状态，便于前端区分“目录未挂载”和“标签里的文件已经失效”。
+    project.workingDirReachable = await isReachable(project.workingDir);
+    const composeReachability = await Promise.all(project.composeFiles.map(async (file) => ({
+      path: file,
+      reachable: await isReachable(file),
+    })));
+    project.unreachableComposeFiles = composeReachability
+      .filter((file) => !file.reachable)
+      .map((file) => file.path);
+    project.editable = project.workingDirReachable && composeReachability.length > 0 &&
+      composeReachability.every((file) => file.reachable);
+    if (project.editable) project.mountState = 'ready';
+    else if (!project.workingDir) project.mountState = 'metadata_missing';
+    else if (!project.workingDirReachable) project.mountState = 'directory_unreachable';
+    else project.mountState = 'compose_files_unreachable';
     const preference = getProjectPreference(project.id);
     project.favorite = !!preference.favorite;
     project.note = preference.note || '';

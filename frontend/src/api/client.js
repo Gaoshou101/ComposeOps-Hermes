@@ -29,6 +29,7 @@ export const api = {
   logout: () => request('/auth/logout', { method: 'POST' }),
   changePassword: (payload) => request('/auth/password', { method: 'POST', body: JSON.stringify(payload) }),
   getProjects: () => request('/projects'),
+  getMountPlan: () => request('/projects/mount-plan'),
   getProject: (id) => request(`/projects/${id}`),
   saveProjectPreference: (id, payload) => request(`/projects/${id}/preferences`, { method: 'PATCH', body: JSON.stringify(payload) }),
   getComposeFile: (projectId, fileIndex = 0) => request(`/projects/${projectId}/compose?fileIndex=${fileIndex}`),
