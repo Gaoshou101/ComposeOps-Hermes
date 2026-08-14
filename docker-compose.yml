@@ -37,8 +37,11 @@ services:
     image: composeops/opsdash:latest
     container_name: opsdash
     restart: unless-stopped
+    init: true
     ports:
-      - "3001:3001"
+      # Personal-safe default: only expose on this host. Use Tailscale or a TLS
+      # reverse proxy for remote access instead of publishing to the LAN/Internet.
+      - "127.0.0.1:3001:3001"
     volumes:
       # Talk to the host Docker engine (dockerode + `docker compose` CLI).
       # This alone is enough to DISCOVER all compose projects (read-only list).
@@ -55,17 +58,27 @@ services:
       - PORT=3001
       - HOST=0.0.0.0
       - LOG_LEVEL=info
+      - ENABLE_SHELL=1
+      # Optional unattended setup. Prefer the first-run browser setup so the
+      # password does not remain in compose environment metadata.
+      # - ADMIN_PASSWORD=replace-with-at-least-10-characters
       # 运行时 AI 出站走代理（若你的 AI Base URL 需翻墙）。Node 22 内置 fetch
       # 自动识别 HTTP_PROXY/HTTPS_PROXY/NO_PROXY。不需要时整段注释掉。
       # - HTTP_PROXY=http://host.docker.internal:7897
       # - HTTPS_PROXY=http://host.docker.internal:7897
       # - NO_PROXY=localhost,127.0.0.1
-      # Optional advanced override: additionally allow this host root for compose
-      # file ops (e.g. a parent dir not itself a compose working_dir). Normally
-      # leave unset — the backend auto-allows whatever Docker reports.
-      # - ALLOWED_ROOT=/home/sgy/compose-projects
       # Optional: override docker binary, e.g. COMPOSE_BIN=docker-compose
       # - COMPOSE_BIN=docker
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      - myops.owner=Personal
 
 volumes:
   opsdash-data:

@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
+    "test": "node --test test/*.test.js",
     "rebuild": "cd node_modules/better-sqlite3 && npx --yes prebuild-install"
   },
   "dependencies": {
@@ -15,6 +16,7 @@
     "better-sqlite3": "^11.3.0",
     "dockerode": "^4.0.2",
     "fastify": "^4.28.1",
+    "nodemailer": "^7.0.13",
     "yaml": "^2.5.1"
   }
 }

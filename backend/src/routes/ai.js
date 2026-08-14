@@ -1,5 +1,7 @@
 import { getAiConfig, setAiConfig, callOpenAI, addAiMessage, getAiHistory, clearAiHistory } from '../services/ai.js';
 import docker from '../services/docker.js';
+import { findProjectContainer } from '../services/scanner.js';
+import { readCompose } from '../services/compose-runner.js';
 
 export default async function aiRoutes(fastify) {
   // GET /api/v1/ai/config
@@ -11,8 +13,12 @@ export default async function aiRoutes(fastify) {
   // POST /api/v1/ai/config  body: { baseUrl, apiKey, model, systemPrompt }
   fastify.post('/config', async (request, reply) => {
     const { baseUrl, apiKey, model, systemPrompt } = request.body || {};
-    setAiConfig({ baseUrl, apiKey, model, systemPrompt });
-    return { ok: true };
+    try {
+      setAiConfig({ baseUrl, apiKey, model, systemPrompt });
+      return { ok: true };
+    } catch (error) {
+      return reply.code(400).send({ error: 'invalid_ai_config', message: error.message });
+    }
   });
 
   // GET /api/v1/ai/history
@@ -36,7 +42,7 @@ export default async function aiRoutes(fastify) {
 
     const messages = [
       { role: 'system', content: cfg.systemPrompt },
-      ...getAiHistory(10),
+      ...getAiHistory(10).map(({ role, content }) => ({ role, content })),
       { role: 'user', content: message },
     ];
     addAiMessage('user', message);
@@ -48,18 +54,23 @@ export default async function aiRoutes(fastify) {
     });
     const send = (type, data) => reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
 
+    const controller = new AbortController();
+    let completed = false;
+    reply.raw.on('close', () => { if (!completed) controller.abort(); });
     try {
       const full = await callOpenAI({
         ...cfg,
         messages,
         stream: true,
         onToken: (t) => send('token', t),
+        signal: controller.signal,
       });
       addAiMessage('assistant', full);
       send('done', full);
     } catch (e) {
       send('error', e.message);
     } finally {
+      completed = true;
       reply.raw.end();
     }
   });
@@ -68,24 +79,43 @@ export default async function aiRoutes(fastify) {
   // body: { containerId, composeContent } —— 一键日志排错
   // 自动组装：系统 Prompt + 最近 100 行容器日志 + compose 文件内容
   fastify.post('/diagnose', async (request, reply) => {
-    const { containerId, composeContent = '' } = request.body || {};
-    if (!containerId) return reply.code(400).send({ error: 'missing containerId' });
+    const { projectId, containerId } = request.body || {};
+    if (!projectId || !containerId) return reply.code(400).send({ error: 'missing projectId or containerId' });
     const cfg = getAiConfig();
     if (!cfg.apiKey) return reply.code(400).send({ error: 'ai_not_configured', message: '请先配置 API Key' });
 
-    // 取最近 100 行日志（非 follow）
+    const match = await findProjectContainer(projectId, containerId);
+    if (!match.project || !match.container) {
+      return reply.code(404).send({ error: 'container_not_found', message: '容器不属于当前项目' });
+    }
+
+    let composeContent = '';
+    if (match.project.editable) {
+      try { composeContent = (await readCompose(match.project, 0)).content.slice(0, 50000); } catch {}
+    }
+
+    // 取最近 200 行日志（非 follow）
     let logs = '';
     try {
-      const container = docker.getContainer(containerId);
-      const logStream = await container.logs({ follow: false, stdout: true, stderr: true, tail: 100, timestamps: false });
+      const container = docker.getContainer(match.container.id);
+      const inspection = await container.inspect().catch(() => null);
+      const logStream = await container.logs({ follow: false, stdout: true, stderr: true, tail: 200, timestamps: false });
+      if (inspection?.Config?.Tty) {
+        logs = Buffer.isBuffer(logStream) ? logStream.toString('utf8') : '';
+      } else {
       const { demuxStream } = await import('../lib/docker-streams.js');
       const demux = demuxStream();
-      logStream.pipe(demux);
       const chunks = [];
       demux.stdout.on('data', (b) => chunks.push(b));
       demux.stderr.on('data', (b) => chunks.push(b));
-      await new Promise((resolve) => demux.stdout.on('end', resolve));
+      if (Buffer.isBuffer(logStream)) demux.end(logStream);
+      else logStream.pipe(demux);
+      await Promise.all([
+        new Promise((resolve) => demux.stdout.on('end', resolve)),
+        new Promise((resolve) => demux.stderr.on('end', resolve)),
+      ]);
       logs = Buffer.concat(chunks).toString('utf8');
+      }
     } catch (e) {
       logs = `读取日志失败: ${e.message}`;
     }
@@ -93,7 +123,7 @@ export default async function aiRoutes(fastify) {
     const userPrompt = `请帮我分析以下容器为什么启动失败或异常退出，并给出根因与修复建议。
 ${composeContent ? `\n--- docker-compose.yml ---\n${composeContent}\n` : ''}
 --- 最近日志 ---
-${logs}
+${logs.slice(-50000)}
 `;
 
     reply.raw.writeHead(200, {
@@ -103,6 +133,10 @@ ${logs}
     });
     const send = (type, data) => reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
 
+    addAiMessage('user', `诊断容器 ${match.container.name}`, { projectId, containerId: match.container.id });
+    const controller = new AbortController();
+    let completed = false;
+    reply.raw.on('close', () => { if (!completed) controller.abort(); });
     try {
       const full = await callOpenAI({
         ...cfg,
@@ -112,11 +146,14 @@ ${logs}
         ],
         stream: true,
         onToken: (t) => send('token', t),
+        signal: controller.signal,
       });
+      addAiMessage('assistant', full, { projectId, containerId: match.container.id });
       send('done', full);
     } catch (e) {
       send('error', e.message);
     } finally {
+      completed = true;
       reply.raw.end();
     }
   });

@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { chmodSync } from 'fs';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
@@ -6,7 +7,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../../data/opsdash.db');
 
 const db = new Database(DB_PATH);
+chmodSync(DB_PATH, 0o600);
 db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
 
 // 建表：平台配置（KV）与 AI 对话历史
 db.exec(`
@@ -20,6 +23,38 @@ db.exec(`
     role       TEXT NOT NULL,          -- user | assistant | system
     content    TEXT NOT NULL,
     context    TEXT,                    -- JSON: 关联的日志/compose 文件等上下文标记
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS project_preferences (
+    project_id TEXT PRIMARY KEY,
+    favorite INTEGER NOT NULL DEFAULT 0,
+    note TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS compose_backups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    content TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT 'save',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS operation_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT,
+    project_name TEXT,
+    action TEXT NOT NULL,
+    status TEXT NOT NULL,
+    detail TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
@@ -50,6 +85,129 @@ export function getAiHistory(limit = 50) {
 
 export function clearAiHistory() {
   db.prepare('DELETE FROM ai_history').run();
+}
+
+export function createSession(tokenHash, expiresAt) {
+  db.prepare("DELETE FROM sessions WHERE julianday(expires_at) <= julianday('now')").run();
+  db.prepare('INSERT INTO sessions(token_hash, expires_at) VALUES(?, ?)').run(tokenHash, expiresAt);
+}
+
+export function hasSession(tokenHash) {
+  return !!db.prepare(
+    "SELECT 1 FROM sessions WHERE token_hash = ? AND julianday(expires_at) > julianday('now')"
+  ).get(tokenHash);
+}
+
+export function deleteSession(tokenHash) {
+  db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash);
+}
+
+export function clearSessions() {
+  db.prepare('DELETE FROM sessions').run();
+}
+
+export function getProjectPreference(projectId) {
+  return db.prepare(
+    'SELECT favorite, note FROM project_preferences WHERE project_id = ?'
+  ).get(projectId) || { favorite: 0, note: '' };
+}
+
+export function setProjectPreference(projectId, { favorite, note }) {
+  const current = getProjectPreference(projectId);
+  const nextFavorite = typeof favorite === 'boolean' ? Number(favorite) : current.favorite;
+  const nextNote = typeof note === 'string' ? note.slice(0, 500) : current.note;
+  db.prepare(`
+    INSERT INTO project_preferences(project_id, favorite, note, updated_at)
+    VALUES(?, ?, ?, datetime('now'))
+    ON CONFLICT(project_id) DO UPDATE SET
+      favorite = excluded.favorite,
+      note = excluded.note,
+      updated_at = excluded.updated_at
+  `).run(projectId, nextFavorite, nextNote);
+  return { favorite: !!nextFavorite, note: nextNote };
+}
+
+export function addComposeBackup(projectId, filePath, content, reason = 'save') {
+  const result = db.prepare(
+    'INSERT INTO compose_backups(project_id, file_path, content, reason) VALUES(?, ?, ?, ?)'
+  ).run(projectId, filePath, content, reason);
+  db.prepare(`
+    DELETE FROM compose_backups
+    WHERE project_id = ? AND id NOT IN (
+      SELECT id FROM compose_backups WHERE project_id = ? ORDER BY id DESC LIMIT 20
+    )
+  `).run(projectId, projectId);
+  return Number(result.lastInsertRowid);
+}
+
+export function listComposeBackups(projectId) {
+  return db.prepare(`
+    SELECT id, project_id AS projectId, file_path AS filePath, reason, created_at AS createdAt,
+           length(content) AS size
+    FROM compose_backups WHERE project_id = ? ORDER BY id DESC LIMIT 20
+  `).all(projectId);
+}
+
+export function getComposeBackup(projectId, id) {
+  return db.prepare(`
+    SELECT id, project_id AS projectId, file_path AS filePath, content, reason,
+           created_at AS createdAt
+    FROM compose_backups WHERE project_id = ? AND id = ?
+  `).get(projectId, id);
+}
+
+export function addOperation({ projectId = null, projectName = null, action, status, detail = '' }) {
+  const result = db.prepare(`
+    INSERT INTO operation_history(project_id, project_name, action, status, detail)
+    VALUES(?, ?, ?, ?, ?)
+  `).run(projectId, projectName, action, status, String(detail || '').slice(-20000));
+  return Number(result.lastInsertRowid);
+}
+
+export function listOperations(limit = 100) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 500));
+  return db.prepare(`
+    SELECT id, project_id AS projectId, project_name AS projectName, action, status, detail,
+           created_at AS createdAt
+    FROM operation_history ORDER BY id DESC LIMIT ?
+  `).all(safeLimit);
+}
+
+export function exportUserData() {
+  const settings = Object.fromEntries(
+    db.prepare("SELECT key, value FROM settings WHERE key NOT IN ('ai.api_key', 'auth.password_hash', 'notifications.config')").all()
+      .map((row) => [row.key, row.value])
+  );
+  return {
+    exportedAt: new Date().toISOString(),
+    settings,
+    projectPreferences: db.prepare(
+      'SELECT project_id AS projectId, favorite, note, updated_at AS updatedAt FROM project_preferences'
+    ).all(),
+    operations: listOperations(500),
+  };
+}
+
+export function importUserData(payload) {
+  if (!payload || typeof payload !== 'object') throw new Error('导入文件格式无效');
+  const allowedSettings = new Set([
+    'ai.base_url', 'ai.model', 'ai.system_prompt', 'ui.refresh_interval', 'ui.log_tail',
+    'updates.auto_enabled', 'updates.interval_hours',
+  ]);
+  const transaction = db.transaction(() => {
+    for (const [key, value] of Object.entries(payload.settings || {})) {
+      if (allowedSettings.has(key) && typeof value === 'string') setSetting(key, value);
+    }
+    for (const preference of payload.projectPreferences || []) {
+      if (typeof preference?.projectId !== 'string') continue;
+      setProjectPreference(preference.projectId, {
+        favorite: !!preference.favorite,
+        note: typeof preference.note === 'string' ? preference.note : '',
+      });
+    }
+  });
+  transaction();
+  return { ok: true };
 }
 
 export default db;

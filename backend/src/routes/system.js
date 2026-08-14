@@ -7,6 +7,8 @@ import docker from '../services/docker.js';
  * 宿主机指标：CPU / 内存 / 磁盘 / 网络
  * 纯 Node 实现，避免额外依赖。
  */
+let previousHostCpu = null;
+
 function readHostMetrics() {
   const cpus = os.cpusInfo ? os.cpusInfo() : os.cpus();
   let cpuUser = 0, cpuNice = 0, cpuSys = 0, cpuIdle = 0;
@@ -17,8 +19,13 @@ function readHostMetrics() {
     cpuIdle += c.times.idle;
   }
   const total = cpuUser + cpuNice + cpuSys + cpuIdle;
-  const cpuUsed = total - cpuIdle;
-  const cpuPercent = total > 0 ? +(cpuUsed / total * 100).toFixed(1) : 0;
+  let cpuPercent = 0;
+  if (previousHostCpu) {
+    const totalDelta = total - previousHostCpu.total;
+    const idleDelta = cpuIdle - previousHostCpu.idle;
+    cpuPercent = totalDelta > 0 ? +((totalDelta - idleDelta) / totalDelta * 100).toFixed(1) : 0;
+  }
+  previousHostCpu = { total, idle: cpuIdle };
 
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
@@ -68,7 +75,7 @@ function readNetStats(prev) {
     for (const line of netDev.split('\n')) {
       const m = line.trim().match(/^(\S+):\s*(\d+)\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)/);
       if (!m) continue;
-      if (m[1] === 'lo:') continue;
+      if (m[1] === 'lo') continue;
       rx += parseInt(m[2], 10);
       tx += parseInt(m[3], 10);
     }
@@ -92,29 +99,23 @@ function readNetStats(prev) {
 }
 async function readContainerStats() {
   const containers = await docker.listContainers({ all: false });
-  const stats = [];
-  const prevCpu = readContainerStats._prevCpu || {};
-
-  for (const c of containers) {
+  const rows = await Promise.all(containers.map(async (c) => {
     try {
       const stat = await docker.getContainer(c.Id).stats({ stream: false });
-      // CPU percent
       const cpu = stat.cpu_stats?.cpu_usage?.total_usage || 0;
       const sys = stat.cpu_stats?.system_cpu_usage || 0;
+      const previousCpu = stat.precpu_stats?.cpu_usage?.total_usage || 0;
+      const previousSys = stat.precpu_stats?.system_cpu_usage || 0;
       const onlineCpus = stat.cpu_stats?.online_cpus || stat.cpu_stats?.cpu_usage?.percpu_usage?.length || 1;
-      const prev = prevCpu[c.Id] || { cpu: 0, sys: 0 };
       let cpuPercent = 0;
-      if (prev.sys && sys > prev.sys) {
-        const cpuDelta = cpu - prev.cpu;
-        const sysDelta = sys - prev.sys;
+      if (sys > previousSys) {
+        const cpuDelta = cpu - previousCpu;
+        const sysDelta = sys - previousSys;
         cpuPercent = sysDelta > 0 ? (cpuDelta / sysDelta * onlineCpus * 100) : 0;
       }
-      prevCpu[c.Id] = { cpu, sys };
-
-      // 内存
       const memUsage = stat.memory_stats?.usage || 0;
       const memLimit = stat.memory_stats?.limit || 0;
-      stats.push({
+      return {
         id: c.Id,
         name: (c.Names[0] || '').replace(/^\//, ''),
         image: c.Image,
@@ -122,21 +123,22 @@ async function readContainerStats() {
         memUsage,
         memLimit,
         memPercent: memLimit > 0 ? +(memUsage / memLimit * 100).toFixed(2) : 0,
-      });
-    } catch {}
-  }
-  readContainerStats._prevCpu = prevCpu;
-
-  // 按内存排序取前 5
+      };
+    } catch { return null; }
+  }));
+  const stats = rows.filter(Boolean);
   stats.sort((a, b) => b.memUsage - a.memUsage);
-  return stats.slice(0, 5);
+  return stats;
 }
 
 // 模块级状态：前一次网络/容器快照
 const prevNet = {};
-const prevContainer = readContainerStats._prevCpu || (readContainerStats._prevCpu = {});
 
 export default async function systemRoutes(fastify) {
+  fastify.get('/capabilities', async () => ({
+    shellEnabled: process.env.ENABLE_SHELL === '1',
+    hostMetricsScope: process.env.HOST_METRICS === '1' ? 'host' : 'container',
+  }));
   // GET /api/v1/system/metrics
   fastify.get('/metrics', async () => {
     const host = readHostMetrics();

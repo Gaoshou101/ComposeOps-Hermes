@@ -1,109 +1,111 @@
-# ComposeOps / OpsDash
+# ComposeOps
 
-轻量级单容器部署的 Web 运维管理平台 —— 纳管宿主机 Docker Compose 项目，按 `myops.owner` 标签分组，集成 AI 排错与资源监控。
+面向个人服务器的 Docker Compose 运维台。自动发现 Compose 项目，把服务控制、配置编辑、实时日志、容器终端、AI 排错、资源监控和日常维护集中在一个单用户 Web 界面中。
 
-## 技术栈
+## 功能
 
-- **后端**：Node.js + Fastify + dockerode + ws + better-sqlite3
-- **前端**：Vue 3 + Vite + Tailwind + Pinia + Monaco Editor + xterm.js
-- **数据库**：SQLite（配置 / AI 对话历史）
-- **通讯**：REST API + WebSocket
+- 按 `myops.owner` 标签分组，收藏项目并添加个人备注
+- 固定白名单的 `up/down/restart/pull/ps` 操作与实时输出
+- 多 Compose 文件编辑、YAML 格式化、`docker compose config` 校验
+- 保存前自动备份，保留最近 20 份，可比较和恢复
+- 容器实时日志：stdout/stderr、搜索、暂停、下载
+- 受项目边界约束的 Web Shell（仅 `sh` / `bash`）
+- AI 运维诊断：自动附加 Compose 配置和最近 200 行日志
+- 容器 CPU、内存、网络和 Docker 存储用量
+- Bark、Telegram、企业微信、SMTP 邮件与通用 Webhook 通知
+- 容器退出、内存和 Docker 空间告警
+- 定时拉取镜像并提示更新
+- 未使用镜像、构建缓存、停止容器和卷的预览/确认清理
+- 操作历史、界面偏好与脱敏配置导入/导出
 
-## 目录结构
-
-```
-ComposeOps/
-├── backend/          # Fastify API server + WebSocket
-│   └── src/
-│       ├── routes/   # REST endpoints
-│       ├── services/ # docker / ai / monitor
-│       ├── lib/      # sqlite / utils
-│       └── index.js
-└── frontend/         # Vue 3 + Vite
-```
-
-## 开发
+## 快速开始
 
 ```bash
-# 后端
-cd backend && npm install && npm run dev
-
-# 前端
-cd frontend && npm install && npm run dev
-```
-
-## Docker 部署（推荐）
-
-整个面板用一条命令拉起：
-
-```bash
-# 0.（若你需要翻墙）在构建前把代理告诉 shell，BuildKit 会自动透传进构建阶段
-export HTTP_PROXY=http://127.0.0.1:7897
-export HTTPS_PROXY=http://127.0.0.1:7897
-
-# 1.（可选）挂载你想在面板里编辑的 compose 项目目录，见下方说明
-#    不挂载也能用：所有 compose 项目照样被自动发现、只读列出
-
-# 2. 构建并启动
 docker compose up -d --build
-
-# 3. 打开 http://localhost:3001
 ```
 
-镜像为多阶段构建：前端 Vite 产物 + 后端 Node 运行时（内含 `docker` CLI 与 compose v2 插件）合入单容器，由后端 Fastify 以静态 SPA 形式托管（`SERVE_FRONTEND=1`）。
+打开 <http://127.0.0.1:3001>。首次进入会要求设置至少 10 个字符的管理员密码，之后使用 HttpOnly Session Cookie 登录。
 
-### 构建时网络：走你的代理，不硬编码镜像源
-
-Dockerfile 不写死任何 apt/npm 镜像源，保持镜像在任何网络下都通用。如果你在能直连的环境，直接 `docker compose build` 即可。如果你的网络需要代理（如 Clash），只需在**构建前**把代理变量 export 到 shell：
+默认只发布到宿主机回环地址，不会暴露给局域网。需要远程访问时推荐使用 Tailscale：
 
 ```bash
-export HTTP_PROXY=http://127.0.0.1:7897
-export HTTPS_PROXY=http://127.0.0.1:7897
-docker compose build   # BuildKit 自动把这两个变量透传进 apt / npm / curl
+tailscale serve --bg http://127.0.0.1:3001
 ```
 
-> ℹ️ WSL2 + Clash 用户注意：Clash 默认只监听 Windows 的 `127.0.0.1:7897`，Docker 构建容器是独立网络命名空间，**到不了宿主的 127.0.0.1**。需要让 Clash 监听到容器可达的地址。两种做法任选其一：
-> - **Clash 开 `allow-lan`**（设置 → 局域网连接 → 允许局域网），然后在 `docker-compose.yml` 的 `environment` 里加 `- HTTP_PROXY=http://host.docker.internal:7897`（运行时 AI 出站用）；
-> - 构建用 `DOCKER_BUILDKIT=1 docker build --network=host`（容器共享 WSL 网络栈，能直接 `127.0.0.1:7897`）。
+也可以使用带 HTTPS 的 Caddy/Nginx 反向代理。不要把 `3001` 端口直接暴露到公网。
+反向代理负责 TLS 时请设置 `TRUST_PROXY=1`，以便服务端正确识别 HTTPS 并为 Session Cookie 增加 `Secure`。
 
-### 服务发现：全自动，零配置
+## 纳管项目
 
-OpsDash 通过 Docker socket 列出宿主机所有容器，按 `com.docker.compose.project` 标签分组、`myops.owner` 归类。**不需要指定任何目录**——挂上 `/var/run/docker.sock` 这一项就够了，所有 compose 项目（含它们的 compose 文件路径）都会被自动发现并列出来。
-
-### 编辑与生命周期：按需挂载目录
-
-发现是自动的，但**编辑 compose 文件 / 执行 up/down/restart 需要该项目的目录在容器里可达**。因为容器化下，宿主机路径只在 bind-mount 进来后才存在。
-
-- **没挂载的项目**：照样显示在总览页，但「编辑 / up / down」按钮置灰，提示"compose 文件未挂载进容器，不可编辑"。
-- **想编辑哪些项目，就挂哪些目录**——在 `docker-compose.yml` 的 `volumes` 下加一行 `/宿主机路径:/宿主机路径`（**两侧同路径**，这样 `com.docker.compose.project.working_dir` 标签里的宿主机路径才能在容器内原样命中）。
+项目发现只需要 Docker Socket。要编辑配置或执行生命周期操作，还需要把目标项目目录以相同路径挂入 ComposeOps：
 
 ```yaml
-volumes:
-  - /var/run/docker.sock:/var/run/docker.sock
-  # 想编辑哪些 compose 项目目录，就挂哪些（两侧同路径）
-  - /home/sgy/compose-projects:/home/sgy/compose-projects
-  - /opt/app:/opt/app
-  - opsdash-data:/app/backend/data
+services:
+  opsdash:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/user/apps:/home/user/apps
+      - /opt/services:/opt/services
+      - opsdash-data:/app/backend/data
 ```
 
-安全：后端只放行 Docker 自己上报的 compose 项目路径（即标签里的 `working_dir`），编辑器碰不到 SQLite 里的 API Key 等无关文件。`ALLOWED_ROOT` 是可选的高级覆盖，通常不用设。
+没有挂载的项目仍会显示，但保持只读。后端从 Docker Compose Labels 建立项目注册表；浏览器只提交项目 ID 和固定动作，不能提交任意宿主机路径或命令参数。
 
-### 关键挂载说明
+可在业务 Compose 文件中添加归类标签：
 
-- **`/var/run/docker.sock`** —— 容器内 dockerode / `docker compose` CLI 通过它与宿主机 Docker 引擎通信（非 privileged，仅 socket）。这一项就足以让面板**发现**所有 compose 项目。
-- **`/宿主机路径:/宿主机路径`**（可选，同路径）—— 把你的 compose 项目目录挂进容器，让对应项目的「编辑 / 生命周期」可用。挂多少个都行，挂了的可编辑、没挂的只读。
-- **`opsdash-data` 命名卷** —— 挂到 `/app/backend/data`，持久化 SQLite。AI 配置（含 API Key）与对话历史都存在这里，重建镜像不丢失。**API Key 仅在 Settings 页录入、存入 SQLite，绝不出现在 env 或镜像中。**
+```yaml
+services:
+  web:
+    labels:
+      myops.owner: Personal
+```
 
-> ℹ️ 配置 AI：启动后进入 **设置** 页填写 Base URL / API Key / 模型，保存即写入 SQLite 卷。
+## 安全模型
 
-### 已知限制（容器化监控）
+- 单管理员密码使用 Node.js `scrypt` 哈希存储
+- 30 天服务端 Session，Cookie 为 HttpOnly、SameSite=Strict
+- REST 与 WebSocket 都要求认证
+- 修改请求校验浏览器 Origin
+- Compose 文件使用 `realpath` 和 Docker 上报文件清单校验
+- Compose 操作没有任意参数入口
+- Web Shell 只允许进入当前发现项目中的容器
+- API Key 保存在持久化 SQLite 中，导出时不会包含
 
-- `df`-based 宿主机磁盘统计（过滤 `/`、`/var/lib/docker`）在容器内反映的是**容器的挂载视图**而非宿主机真实磁盘；`os.cpus()` / `os.totalmem()` / `/proc/net/dev` 同理受容器命名空间影响。容器级指标（dockerode `.stats()`）不受影响。若需精确宿主机数据，可额外挂载 `/proc`、`/sys` 并使用 host network —— 默认配置仅做最小化 socket 挂载。
+Docker Socket 本身等价于宿主机高权限。即使有登录，也应只在可信个人设备、回环地址或 VPN 内使用。
 
-## 功能模块
+## 通知与维护
 
-1. 全机 Docker Compose 服务扫描与分组管理（`myops.owner` 标签）
-2. Compose 项目文件管理（Monaco 编辑器）+ 生命周期运维（up/down/restart/pull）
-3. 实时日志流 + 容器 Web Shell（WebSocket + xterm.js）
-4. 上下文感知 AI 运维助手（日志排错 / YAML 生成）
-5. 宿主机 + 容器级资源监控
+在“设置”中可以配置：
+
+- Bark 服务地址
+- Telegram Bot Token 与 Chat ID
+- 企业微信机器人 Webhook
+- SMTP 邮件服务器
+- 任意 JSON Webhook
+
+镜像自动检查会执行 pull，但不会自动重启容器。Docker 清理要求输入 `PRUNE`；未使用卷默认不勾选。
+
+## 指标范围
+
+默认容器化部署下，页面中的“环境 CPU/内存/网络”是 ComposeOps 容器命名空间数据，不冒充宿主机指标。容器级指标来自 Docker Stats；存储数据来自 Docker System DF。
+
+如需真正的宿主机指标，建议单独部署 node-exporter，而不是向 ComposeOps 额外挂载完整 `/proc` 和 `/sys`。
+
+## 开发与测试
+
+```bash
+cd backend
+npm install
+npm test
+npm run dev
+
+cd ../frontend
+npm install
+npm run dev
+```
+
+前端开发服务器运行在 `5173`，自动代理 `/api` 和 `/ws` 到 `3001`。
+
+## 数据
+
+SQLite 默认位于 `backend/data/opsdash.db`，Docker 部署使用 `opsdash-data` 卷持久化。数据库、WAL、SHM、构建产物和 `.env` 均不应提交到 Git。

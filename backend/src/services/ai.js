@@ -15,10 +15,14 @@ export function getAiConfig() {
 }
 
 export function setAiConfig({ baseUrl, apiKey, model, systemPrompt }) {
-  if (typeof baseUrl === 'string') setSetting('ai.base_url', baseUrl);
-  if (typeof apiKey === 'string') setSetting('ai.api_key', apiKey);
-  if (typeof model === 'string') setSetting('ai.model', model);
-  if (typeof systemPrompt === 'string') setSetting('ai.system_prompt', systemPrompt);
+  if (typeof baseUrl === 'string') {
+    const url = new URL(baseUrl);
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Base URL 只支持 HTTP/HTTPS');
+    setSetting('ai.base_url', baseUrl.slice(0, 500));
+  }
+  if (typeof apiKey === 'string') setSetting('ai.api_key', apiKey.slice(0, 1000));
+  if (typeof model === 'string' && model.trim()) setSetting('ai.model', model.trim().slice(0, 200));
+  if (typeof systemPrompt === 'string') setSetting('ai.system_prompt', systemPrompt.slice(0, 10000));
 }
 
 /**
@@ -32,7 +36,7 @@ export function setAiConfig({ baseUrl, apiKey, model, systemPrompt }) {
  * @param {function(string):void} [opts.onToken]  流式回调
  * @returns {Promise<string>} 完整回复文本
  */
-export async function callOpenAI({ baseUrl, apiKey, model, messages, stream = false, onToken }) {
+export async function callOpenAI({ baseUrl, apiKey, model, messages, stream = false, onToken, signal }) {
   if (!apiKey) throw new Error('AI 未配置 API Key');
   if (!baseUrl) throw new Error('AI 未配置 Base URL');
 
@@ -43,6 +47,8 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, stream = fa
   // Node 22 的全局 fetch 已内置对 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 环境变量的支持
   // （大小写不敏感），无需额外代理库。容器化下把宿主机代理透传进 env，AI 出站
   // 即走代理；不设则直连。这里保持零配置影响——不手动构造 dispatcher。
+  const timeout = AbortSignal.timeout(120000);
+  const combinedSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
   const resp = await fetch(url, {
     method: 'POST',
     headers: {
@@ -50,6 +56,7 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, stream = fa
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
+    signal: combinedSignal,
   });
 
   if (!resp.ok) {

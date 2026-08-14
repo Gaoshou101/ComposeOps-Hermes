@@ -1,134 +1,102 @@
 <template>
-  <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <div>
-        <h1 class="text-xl font-semibold">服务总览</h1>
-        <p class="text-sm text-surface-400">按 <code class="text-accent">myops.owner</code> 标签分组的 Compose 项目</p>
-      </div>
+  <div class="space-y-5">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div><h1 class="page-title">服务总览</h1><p class="page-subtitle">{{ store.projects.length }} 个 Compose 项目 · {{ containerCount }} 个容器</p></div>
       <div class="flex items-center gap-2">
-        <label class="text-sm text-surface-400 flex items-center gap-1">
-          <input type="checkbox" v-model="autoRefresh" class="accent-accent" /> 自动刷新
-        </label>
-        <button class="btn-secondary" @click="refresh" :disabled="store.loading">
-          {{ store.loading ? '刷新中…' : '刷新' }}
-        </button>
+        <label class="toggle-label"><input type="checkbox" v-model="autoRefresh" />自动刷新</label>
+        <button class="btn-secondary" @click="refresh" :disabled="store.loading"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': store.loading }" />刷新</button>
       </div>
     </div>
+    <p v-if="store.error" class="alert-error">{{ store.error }}</p>
+    <div v-if="!store.projects.length && !store.loading" class="empty-state"><Boxes class="w-8 h-8" /><span>暂未发现 Compose 项目</span></div>
 
-    <p v-if="store.error" class="text-red-400 text-sm">{{ store.error }}</p>
-
-    <div v-if="store.groups.length === 0 && !store.loading" class="card p-8 text-center text-surface-400">
-      暂未发现带 <code class="text-accent">com.docker.compose.project</code> 标签的容器。
-    </div>
-
-    <div v-for="group in store.groups" :key="group.owner" class="space-y-2">
-      <div class="flex items-center gap-2">
-        <h2 class="text-lg font-medium">{{ group.owner }}</h2>
-        <span class="text-xs text-surface-500">{{ group.projects.length }} 个项目</span>
-      </div>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div
-          v-for="p in group.projects"
-          :key="p.workingDir"
-          class="card p-4 hover:border-surface-700 transition-colors"
-        >
-          <div class="flex items-start justify-between gap-2">
-            <div class="min-w-0">
-              <div class="font-mono text-sm truncate" :title="p.workingDir">{{ p.name }}</div>
-              <div class="text-xs text-surface-500 truncate">{{ p.workingDir }}</div>
+    <section v-for="group in groups" :key="group.owner" class="space-y-2">
+      <div class="flex items-center gap-2"><h2 class="section-title">{{ group.owner }}</h2><span class="count-badge">{{ group.projects.length }}</span></div>
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+        <article v-for="project in group.projects" :key="project.id" class="card p-4 space-y-3">
+          <header class="flex items-start gap-3">
+            <button class="icon-btn mt-0.5" :title="project.favorite ? '取消收藏' : '收藏项目'" @click="toggleFavorite(project)">
+              <Star class="w-4 h-4" :class="project.favorite ? 'fill-amber-400 text-amber-400' : ''" />
+            </button>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2"><h3 class="font-mono font-medium truncate">{{ project.projectName }}</h3><StatusBadge :status="project.status" /></div>
+              <p class="text-xs text-surface-500 truncate mt-1" :title="project.workingDir">{{ project.workingDir }}</p>
             </div>
-            <StatusBadge :status="p.status" />
-          </div>
+            <button class="icon-btn" title="编辑备注" @click="editNote(project)"><Pencil class="w-4 h-4" /></button>
+          </header>
+          <p v-if="project.note" class="text-sm text-surface-300 border-l-2 border-surface-700 pl-2">{{ project.note }}</p>
 
-          <div class="mt-3 flex flex-wrap gap-1.5">
-            <button class="btn-primary" :disabled="!p.editable" @click="control(p, 'up')">up</button>
-            <button class="btn-secondary" :disabled="!p.editable" @click="control(p, 'down')">down</button>
-            <button class="btn-secondary" :disabled="!p.editable" @click="control(p, 'restart')">restart</button>
-            <button class="btn-secondary" :disabled="!p.editable" @click="control(p, 'pull')">pull</button>
-            <button class="btn-ghost" :disabled="!p.editable" @click="control(p, 'ps')">ps</button>
-            <router-link class="btn-ghost" :to="`/logs?project=${encodeURIComponent(p.name)}`">logs</router-link>
-            <router-link
-              class="btn-ghost"
-              :class="{ 'pointer-events-none opacity-40': !p.editable }"
-              :to="p.editable ? `/compose?path=${encodeURIComponent(p.composeFile || p.workingDir)}` : ''"
-            >
-              编辑
-            </router-link>
+          <div class="flex flex-wrap gap-1.5">
+            <button class="btn-primary" :disabled="!project.editable || busy" @click="run(project, 'up')"><Play class="w-4 h-4" />启动</button>
+            <button class="btn-secondary" :disabled="!project.editable || busy" @click="run(project, 'restart')"><RotateCw class="w-4 h-4" />重启</button>
+            <button class="btn-secondary" :disabled="!project.editable || busy" @click="run(project, 'pull')"><Download class="w-4 h-4" />拉取</button>
+            <button class="btn-ghost" :disabled="!project.editable || busy" @click="run(project, 'ps')"><ListTree class="w-4 h-4" />状态</button>
+            <button class="btn-danger" :disabled="!project.editable || busy" @click="confirmDown(project)"><Square class="w-4 h-4" />停止</button>
+            <router-link class="btn-ghost" :class="{ 'pointer-events-none opacity-40': !project.editable }" :to="`/compose?projectId=${project.id}`"><FileCode2 class="w-4 h-4" />配置</router-link>
           </div>
+          <p v-if="!project.editable" class="text-xs text-amber-400">项目目录未同路径挂载，当前只读。</p>
 
-          <p v-if="!p.editable" class="mt-2 text-xs text-amber-400">
-            compose 文件未挂载进容器，不可编辑/控制（在 docker-compose.yml 挂载该目录即可）
-          </p>
-
-          <div class="mt-3 flex flex-wrap gap-1.5">
-            <span
-              v-for="s in p.services"
-              :key="s.name"
-              class="text-xs px-1.5 py-0.5 rounded bg-surface-800 text-surface-300"
-              :class="s.state === 'running' ? 'text-green-400' : 'text-surface-500'"
-              :title="s.state"
-            >
-              {{ s.name }} ({{ s.state }})
-            </span>
+          <div class="divide-y divide-surface-800 border-t border-surface-800">
+            <div v-for="container in project.containers" :key="container.id" class="py-2 flex items-center gap-2">
+              <span class="status-dot" :class="container.state === 'running' ? 'bg-green-400' : 'bg-red-400'"></span>
+              <div class="min-w-0 flex-1">
+                <div class="text-sm font-mono truncate">{{ container.name }}</div>
+                <div class="text-xs text-surface-500 truncate">{{ container.image }}<span v-if="container.ports.length"> · {{ portText(container) }}</span><span v-if="container.health"> · {{ container.health }}</span></div>
+              </div>
+              <router-link class="icon-btn" title="实时日志" :to="`/logs?projectId=${project.id}&containerId=${container.id}`"><ScrollText class="w-4 h-4" /></router-link>
+              <router-link class="icon-btn" title="容器终端" :to="`/shell?projectId=${project.id}&containerId=${container.id}`"><TerminalSquare class="w-4 h-4" /></router-link>
+              <router-link class="icon-btn" title="AI 诊断" :to="`/ai?projectId=${project.id}&containerId=${container.id}&diagnose=1`"><Bot class="w-4 h-4" /></router-link>
+            </div>
           </div>
-        </div>
+        </article>
       </div>
-    </div>
+    </section>
 
-    <!-- 控制输出抽屉 -->
-    <div
-      v-if="output.open"
-      class="fixed bottom-0 right-0 w-full md:w-[600px] h-72 card border-t border-surface-700 flex flex-col shadow-2xl z-50"
-    >
-      <div class="flex items-center justify-between px-3 py-2 border-b border-surface-800">
-        <span class="text-sm font-medium">compose {{ output.action }} — {{ output.name }}</span>
-        <button class="btn-ghost" @click="output.open = false">关闭</button>
-      </div>
-      <pre class="flex-1 overflow-auto p-3 text-xs font-mono whitespace-pre-wrap">{{ output.text }}</pre>
+    <div v-if="output.open" class="drawer">
+      <div class="modal-header"><span>compose {{ output.action }} · {{ output.name }}</span><button class="icon-btn" @click="output.open = false"><X class="w-4 h-4" /></button></div>
+      <pre class="terminal-output flex-1">{{ output.text }}</pre>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onUnmounted, reactive } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { Bot, Boxes, Download, FileCode2, ListTree, Pencil, Play, RefreshCw, RotateCw, ScrollText, Square, Star, TerminalSquare, X } from 'lucide-vue-next';
 import { useServicesStore } from '../stores/services.js';
-import { streamComposeControl } from '../api/client.js';
+import { api, streamComposeControl } from '../api/client.js';
 import StatusBadge from '../components/StatusBadge.vue';
 
 const store = useServicesStore();
-const autoRefresh = ref(true);
+const autoRefresh = ref(true); const busy = ref(false);
 const output = reactive({ open: false, text: '', action: '', name: '' });
-
-function refresh() {
-  store.refresh();
-}
-
-async function control(project, action) {
-  if (!project.editable) return;
-  output.open = true;
-  output.text = `$ docker compose ${action}\n`;
-  output.action = action;
-  output.name = project.name;
-  try {
-    await streamComposeControl(
-      { workingDir: project.workingDir, file: project.composeFile, action },
-      (frame) => {
-        if (frame.type === 'stdout' || frame.type === 'stderr') {
-          output.text += frame.data;
-        } else if (frame.type === 'exit') {
-          output.text += `\n[exit ${frame.data}]\n`;
-        }
-      }
-    );
-    refresh();
-  } catch (e) {
-    output.text += `\n[error] ${e.message}\n`;
-  }
-}
-
-watch(autoRefresh, (v) => (v ? store.startAutoRefresh() : store.stopAutoRefresh()));
-onMounted(() => {
-  if (autoRefresh.value) store.startAutoRefresh();
+const containerCount = computed(() => store.projects.reduce((n, p) => n + p.containers.length, 0));
+const groups = computed(() => {
+  const map = new Map();
+  for (const p of store.projects) { if (!map.has(p.owner)) map.set(p.owner, []); map.get(p.owner).push(p); }
+  return [...map].map(([owner, projects]) => ({ owner, projects }));
 });
-onUnmounted(() => store.stopAutoRefresh());
+
+function refresh() { return store.refresh(); }
+function portText(c) { return c.ports.map((p) => `${p.public}:${p.private}`).join(', '); }
+async function toggleFavorite(project) { project.favorite = !project.favorite; await api.saveProjectPreference(project.id, { favorite: project.favorite }); }
+async function editNote(project) {
+  const note = window.prompt('项目备注（最多 500 字）', project.note || '');
+  if (note === null) return;
+  project.note = note.slice(0, 500); await api.saveProjectPreference(project.id, { note: project.note });
+}
+function confirmDown(project) { if (window.confirm(`确认停止 ${project.projectName}？`)) run(project, 'down'); }
+async function run(project, action) {
+  busy.value = true; output.open = true; output.text = ''; output.action = action; output.name = project.projectName;
+  try {
+    await streamComposeControl(project.id, action, (frame) => {
+      if (frame.type === 'stdout' || frame.type === 'stderr') output.text += frame.data;
+      if (frame.type === 'error') output.text += `\n[错误] ${frame.data}`;
+      if (frame.type === 'exit') output.text += `\n[退出码 ${frame.data.code}]`;
+    });
+    await refresh();
+  } catch (e) { output.text += `\n[请求失败] ${e.message}`; }
+  finally { busy.value = false; }
+}
+watch(autoRefresh, async (value) => { if (!value) return store.stopAutoRefresh(); const prefs = await api.getPreferences(); store.startAutoRefresh(prefs.refreshInterval * 1000); });
+onMounted(async () => { const prefs = await api.getPreferences(); store.startAutoRefresh(prefs.refreshInterval * 1000); }); onUnmounted(store.stopAutoRefresh);
 </script>

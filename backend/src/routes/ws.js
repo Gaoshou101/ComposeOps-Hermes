@@ -1,4 +1,5 @@
 import { WebSocket } from 'ws';
+import { findProjectContainer } from '../services/scanner.js';
 
 /**
  * WebSocket 路由：实时日志流与容器 Web Shell。
@@ -13,13 +14,18 @@ import { WebSocket } from 'ws';
 export default async function wsRoutes(fastify) {
   // ---- 实时日志流 ----
   fastify.get('/logs', { websocket: true }, async (socket, request) => {
-    const { containerId, tail = 200 } = request.query;
-    if (!containerId) {
-      socket.send(JSON.stringify({ type: 'error', data: 'missing containerId' }));
+    const { projectId, containerId, tail = 200 } = request.query;
+    if (!projectId || !containerId) {
+      socket.send(JSON.stringify({ type: 'error', data: 'missing projectId or containerId' }));
+      return socket.close();
+    }
+    const match = await findProjectContainer(projectId, containerId);
+    if (!match.container) {
+      socket.send(JSON.stringify({ type: 'error', data: 'container not found in project' }));
       return socket.close();
     }
     const docker = fastify.docker;
-    const container = docker.getContainer(containerId);
+    const container = docker.getContainer(match.container.id);
 
     let logStream;
     try {
@@ -27,7 +33,7 @@ export default async function wsRoutes(fastify) {
         follow: true,
         stdout: true,
         stderr: true,
-        tail: String(tail),
+        tail: String(Math.max(0, Math.min(Number(tail) || 200, 5000))),
         timestamps: true,
       });
     } catch (e) {
@@ -36,12 +42,16 @@ export default async function wsRoutes(fastify) {
     }
 
     // Docker log stream 是 multiplexed（stdout/stderr 8 字节头），用 demuxStream 拆分。
-    const { demuxStream } = await import('../lib/docker-streams.js');
-    const demux = demuxStream();
-    logStream.pipe(demux);
-
-    demux.stdout.on('data', (b) => safeSend(socket, { type: 'stdout', data: b.toString('utf8') }));
-    demux.stderr.on('data', (b) => safeSend(socket, { type: 'stderr', data: b.toString('utf8') }));
+    const inspection = await container.inspect().catch(() => null);
+    if (inspection?.Config?.Tty) {
+      logStream.on('data', (b) => safeSend(socket, { type: 'stdout', data: b.toString('utf8') }));
+    } else {
+      const { demuxStream } = await import('../lib/docker-streams.js');
+      const demux = demuxStream();
+      logStream.pipe(demux);
+      demux.stdout.on('data', (b) => safeSend(socket, { type: 'stdout', data: b.toString('utf8') }));
+      demux.stderr.on('data', (b) => safeSend(socket, { type: 'stderr', data: b.toString('utf8') }));
+    }
 
     logStream.on('error', (e) => safeSend(socket, { type: 'error', data: e.message }));
     logStream.on('end', () => {
@@ -57,13 +67,26 @@ export default async function wsRoutes(fastify) {
 
   // ---- 容器 Web Shell ----
   fastify.get('/exec', { websocket: true }, async (socket, request) => {
-    const { containerId, cmd = 'sh' } = request.query;
-    if (!containerId) {
-      socket.send(JSON.stringify({ type: 'error', data: 'missing containerId' }));
+    if (process.env.ENABLE_SHELL !== '1') {
+      socket.send(JSON.stringify({ type: 'error', data: 'Web Shell 未启用' }));
+      return socket.close();
+    }
+    const { projectId, containerId, cmd = 'sh' } = request.query;
+    if (!projectId || !containerId) {
+      socket.send(JSON.stringify({ type: 'error', data: 'missing projectId or containerId' }));
+      return socket.close();
+    }
+    if (!['sh', 'bash'].includes(cmd)) {
+      socket.send(JSON.stringify({ type: 'error', data: '只允许 sh 或 bash' }));
+      return socket.close();
+    }
+    const match = await findProjectContainer(projectId, containerId);
+    if (!match.container) {
+      socket.send(JSON.stringify({ type: 'error', data: 'container not found in project' }));
       return socket.close();
     }
     const docker = fastify.docker;
-    const container = docker.getContainer(containerId);
+    const container = docker.getContainer(match.container.id);
 
     let exec;
     try {

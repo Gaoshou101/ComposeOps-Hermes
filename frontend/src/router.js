@@ -8,6 +8,7 @@ const routes = [
   { path: '/shell', name: 'shell', component: () => import('./views/ShellView.vue') },
   { path: '/ai', name: 'ai', component: () => import('./views/AiView.vue') },
   { path: '/monitor', name: 'monitor', component: () => import('./views/MonitorView.vue') },
+  { path: '/operations', name: 'operations', component: () => import('./views/OperationsView.vue') },
   { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
 ];
 

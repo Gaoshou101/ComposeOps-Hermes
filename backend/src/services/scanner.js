@@ -1,5 +1,7 @@
 import { access } from 'fs/promises';
+import { createHash } from 'crypto';
 import docker from './docker.js';
+import { getProjectPreference } from '../lib/db.js';
 
 const COMPOSE_PROJECT_LABEL = 'com.docker.compose.project';
 const COMPOSE_WORKDIR_LABEL = 'com.docker.compose.project.working_dir';
@@ -35,6 +37,32 @@ async function isReachable(p) {
  * @returns {Promise<{owners: string[], groupedByOwner: Object}>}
  */
 export async function scanAndGroupServices() {
+  const projectList = await scanProjects();
+  const groupedByOwner = {};
+  const ownerSet = new Set();
+  for (const project of projectList) {
+    if (!groupedByOwner[project.owner]) groupedByOwner[project.owner] = [];
+    groupedByOwner[project.owner].push(project);
+    ownerSet.add(project.owner);
+  }
+  const owners = [...ownerSet].sort((a, b) => {
+    if (a === UNCATEGORIZED) return 1;
+    if (b === UNCATEGORIZED) return -1;
+    return a.localeCompare(b);
+  });
+  return { owners, groupedByOwner };
+}
+
+function projectId(workingDir, projectName) {
+  return createHash('sha256').update(`${workingDir}\0${projectName}`).digest('hex').slice(0, 20);
+}
+
+function parseComposeFiles(raw, workingDir) {
+  const files = String(raw || '').split(',').map((item) => item.trim()).filter(Boolean);
+  return files.length ? files : (workingDir ? [`${workingDir}/docker-compose.yml`] : []);
+}
+
+export async function scanProjects() {
   const containers = await docker.listContainers({ all: true });
 
   // 按 compose project 分组（以 workingDir 为 key）
@@ -47,17 +75,18 @@ export async function scanAndGroupServices() {
 
     const workingDir = labels[COMPOSE_WORKDIR_LABEL] || '';
     const composeFileRaw = labels[COMPOSE_CONFIG_LABEL] || '';
-    // config_files 可能是 "/path/docker-compose.yml" 或多个 ":" 分隔
-    const composeFile = composeFileRaw.split(':')[0] || (workingDir ? `${workingDir}/docker-compose.yml` : '');
+    const composeFiles = parseComposeFiles(composeFileRaw, workingDir);
     const owner = labels[OWNER_LABEL] || UNCATEGORIZED;
-    const key = workingDir || `${owner}/${projectName}`;
+    const key = workingDir ? `${workingDir}\0${projectName}` : `${owner}/${projectName}`;
 
     if (!projects.has(key)) {
       projects.set(key, {
+        id: projectId(workingDir, projectName),
         projectName,
         owner,
         workingDir,
-        composeFile,
+        composeFiles,
+        composeFile: composeFiles[0] || '',
         containers: [],
       });
     }
@@ -69,13 +98,18 @@ export async function scanAndGroupServices() {
       state: c.State,
       statusText: c.Status,
       image: c.Image,
+      created: c.Created,
+      health: /\((healthy|unhealthy|starting)\)/.exec(c.Status || '')?.[1] || null,
+      ports: (c.Ports || []).filter((port) => port.PublicPort).map((port) => ({
+        private: port.PrivatePort,
+        public: port.PublicPort,
+        ip: port.IP,
+        type: port.Type,
+      })),
     });
   }
 
   // 计算每个 project 的状态：running | stopped | partial + 可达性检查
-  const groupedByOwner = {};
-  const ownerSet = new Set();
-
   for (const project of projects.values()) {
     const runningCount = project.containers.filter(c => c.state === 'running').length;
     if (runningCount === project.containers.length) {
@@ -87,38 +121,33 @@ export async function scanAndGroupServices() {
     }
 
     // 容器化下，workingDir 是宿主机路径；只有挂载进来的才可达 → 才能编辑/执行生命周期。
-    project.editable = await isReachable(project.composeFile);
-
-    const owner = project.owner;
-    if (!groupedByOwner[owner]) groupedByOwner[owner] = [];
-    groupedByOwner[owner].push(project);
-    ownerSet.add(owner);
+    project.editable = project.composeFiles.length > 0 &&
+      (await Promise.all(project.composeFiles.map(isReachable))).every(Boolean);
+    const preference = getProjectPreference(project.id);
+    project.favorite = !!preference.favorite;
+    project.note = preference.note || '';
   }
+  return [...projects.values()].sort((a, b) =>
+    Number(b.favorite) - Number(a.favorite) || a.owner.localeCompare(b.owner) ||
+    a.projectName.localeCompare(b.projectName)
+  );
+}
 
-  // 排序 owner，Uncategorized 放最后
-  const owners = [...ownerSet].sort((a, b) => {
-    if (a === UNCATEGORIZED) return 1;
-    if (b === UNCATEGORIZED) return -1;
-    return a.localeCompare(b);
-  });
+export async function findProject(id) {
+  return (await scanProjects()).find((project) => project.id === id) || null;
+}
 
-  return { owners, groupedByOwner };
+export async function findProjectContainer(projectIdValue, containerId) {
+  const project = await findProject(projectIdValue);
+  if (!project) return { project: null, container: null };
+  const container = project.containers.find((item) =>
+    item.id === containerId || item.id.startsWith(containerId) || item.name === containerId
+  ) || null;
+  return { project, container };
 }
 
 /**
  * 扫描当前所有 compose 项目的 workingDir（宿主机路径集合）。
  * 供 compose 路由做 allowlist：只放行 Docker 自己上报的路径，不依赖配置。
  */
-export async function discoverComposeRoots() {
-  const containers = await docker.listContainers({ all: true });
-  const roots = new Set();
-  for (const c of containers) {
-    const labels = c.Labels || {};
-    if (!labels[COMPOSE_PROJECT_LABEL]) continue;
-    const workingDir = labels[COMPOSE_WORKDIR_LABEL] || '';
-    if (workingDir) roots.add(workingDir);
-  }
-  return [...roots];
-}
-
 export { OWNER_LABEL, UNCATEGORIZED };
