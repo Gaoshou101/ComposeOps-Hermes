@@ -8,7 +8,7 @@ import { addComposeBackup } from '../lib/db.js';
 const COMPOSE_BIN = process.env.COMPOSE_BIN || 'docker';
 const ACTIONS = {
   up: ['up', '-d'],
-  down: ['down'],
+  stop: ['stop'],
   restart: ['restart'],
   pull: ['pull'],
   ps: ['ps'],

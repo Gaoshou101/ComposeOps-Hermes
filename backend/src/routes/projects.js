@@ -2,6 +2,7 @@ import docker from '../services/docker.js';
 import { findProject, scanProjects } from '../services/scanner.js';
 import { buildMountPlan } from '../services/mount-plan.js';
 import { readCompose, resolveProjectFile, saveCompose, spawnCompose } from '../services/compose-runner.js';
+import { runContainerAction, supportsContainerAction } from '../services/project-control.js';
 import {
   addOperation,
   getComposeBackup,
@@ -141,13 +142,18 @@ export default async function projectRoutes(fastify) {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     const action = request.body?.action;
-    if (!requireEditable(project, reply)) return;
+    if (!requireManaged(project, reply)) return;
+    if (!project.mounted && !supportsContainerAction(action)) {
+      return reply.code(409).send({ error: 'compose_mount_required', message: '该操作需要挂载 Compose 项目目录' });
+    }
     let child;
-    try {
-      const safeFiles = await Promise.all(project.composeFiles.map((_, index) => resolveProjectFile(project, index)));
-      child = spawnCompose({ ...project, composeFiles: safeFiles }, action);
-    } catch (error) {
-      return reply.code(error.statusCode || 400).send({ error: 'unsupported_action', message: error.message });
+    if (project.mounted) {
+      try {
+        const safeFiles = await Promise.all(project.composeFiles.map((_, index) => resolveProjectFile(project, index)));
+        child = spawnCompose({ ...project, composeFiles: safeFiles }, action);
+      } catch (error) {
+        return reply.code(error.statusCode || 400).send({ error: 'unsupported_action', message: error.message });
+      }
     }
 
     reply.raw.writeHead(200, {
@@ -161,21 +167,35 @@ export default async function projectRoutes(fastify) {
     };
     let output = '';
     let finished = false;
-    child.stdout.on('data', (chunk) => { const text = chunk.toString('utf8'); output += text; send('stdout', text); });
-    child.stderr.on('data', (chunk) => { const text = chunk.toString('utf8'); output += text; send('stderr', text); });
-    child.on('error', (error) => send('error', error.message));
-    child.on('close', async (code) => {
+    const finish = (code, mode) => {
+      if (finished) return;
       finished = true;
       addOperation({
         projectId: project.id,
         projectName: project.projectName,
-        action: `compose.${action}`,
+        action: `${mode}.${action}`,
         status: code === 0 ? 'success' : 'failed',
         detail: output,
       });
       send('exit', { code });
       reply.raw.end();
-    });
+    };
+    if (!project.mounted) {
+      runContainerAction(project, action, (type, text) => {
+        output += text;
+        send(type, text);
+      }).then((code) => finish(code, 'containers')).catch((error) => {
+        const text = `${error.message}\n`;
+        output += text;
+        send('stderr', text);
+        finish(1, 'containers');
+      });
+      return;
+    }
+    child.stdout.on('data', (chunk) => { const text = chunk.toString('utf8'); output += text; send('stdout', text); });
+    child.stderr.on('data', (chunk) => { const text = chunk.toString('utf8'); output += text; send('stderr', text); });
+    child.on('error', (error) => send('error', error.message));
+    child.on('close', (code) => finish(code, 'compose'));
     reply.raw.on('close', () => {
       if (!finished && child.exitCode === null && !child.killed) child.kill('SIGTERM');
     });

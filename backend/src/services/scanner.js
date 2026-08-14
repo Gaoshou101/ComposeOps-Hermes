@@ -143,7 +143,8 @@ export async function scanProjects() {
     project.note = preference.note || '';
   }
   return [...projects.values()].sort((a, b) =>
-    Number(b.favorite) - Number(a.favorite) || a.owner.localeCompare(b.owner) ||
+    Number(b.managed) - Number(a.managed) || Number(b.favorite) - Number(a.favorite) ||
+    a.owner.localeCompare(b.owner) ||
     a.projectName.localeCompare(b.projectName)
   );
 }

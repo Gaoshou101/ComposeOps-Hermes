@@ -13,6 +13,7 @@ const { composeArgs, resolveProjectFile } = await import('../src/services/compos
 const { parseYaml, validateYaml } = await import('../src/lib/files.js');
 const { demuxStream } = await import('../src/lib/docker-streams.js');
 const { buildMountPlan, compactMountPaths } = await import('../src/services/mount-plan.js');
+const { runContainerAction, supportsContainerAction } = await import('../src/services/project-control.js');
 
 test('passwords are hashed and sessions are authenticated by cookie', () => {
   assert.throws(() => auth.setPassword('short'), /至少需要 10/);
@@ -38,7 +39,36 @@ test('compose actions map to fixed argument lists', () => {
   assert.deepEqual(composeArgs(project, 'restart'), [
     'compose', '-f', '/srv/app/compose.yml', '-f', '/srv/app/compose.prod.yml', 'restart',
   ]);
+  assert.deepEqual(composeArgs(project, 'stop'), [
+    'compose', '-f', '/srv/app/compose.yml', '-f', '/srv/app/compose.prod.yml', 'stop',
+  ]);
   assert.throws(() => composeArgs(project, 'exec'), /不支持/);
+});
+
+test('managed projects can control existing containers without Compose files', async () => {
+  const calls = [];
+  const fakeDocker = {
+    getContainer(id) {
+      return {
+        async start() { calls.push(`start:${id}`); },
+        async restart() { calls.push(`restart:${id}`); },
+        async stop() { calls.push(`stop:${id}`); },
+        async inspect() { return { State: { Status: id === 'one' ? 'running' : 'exited' } }; },
+      };
+    },
+  };
+  const project = { containers: [
+    { id: 'one', name: 'web', state: 'running', image: 'nginx' },
+    { id: 'two', name: 'worker', state: 'exited', image: 'worker' },
+  ] };
+  const output = [];
+  assert.equal(supportsContainerAction('pull'), false);
+  assert.equal(await runContainerAction(project, 'up', (type, value) => output.push([type, value]), fakeDocker), 0);
+  assert.deepEqual(calls, ['start:two']);
+  assert.match(output.map((item) => item[1]).join(''), /web: 当前状态 running，无需启动/);
+  await runContainerAction(project, 'restart', () => {}, fakeDocker);
+  assert.deepEqual(calls.slice(1), ['restart:one', 'start:two']);
+  await assert.rejects(runContainerAction(project, 'pull', () => {}, fakeDocker), /需要挂载/);
 });
 
 test('project file validation rejects symlinks escaping the project root', async () => {

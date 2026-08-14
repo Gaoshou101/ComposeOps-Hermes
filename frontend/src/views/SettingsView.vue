@@ -46,13 +46,13 @@
       <div v-if="mountPlan" class="grid sm:grid-cols-4 gap-2">
         <StatCard title="已发现" :value="String(mountPlan.summary.total)" sub="Compose 项目" />
         <StatCard title="已纳管" :value="String(mountPlan.summary.managed)" sub="由你明确授权" />
-        <StatCard title="可控制" :value="String(mountPlan.summary.operable)" sub="已纳管且已挂载" />
+        <StatCard title="Compose 就绪" :value="String(mountPlan.summary.operable)" sub="已纳管且已挂载" />
         <StatCard title="待挂载" :value="String(mountPlan.summary.pending)" sub="仅限已选项目" />
       </div>
 
       <div v-if="mountPlan" class="space-y-2">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div><h3 class="section-title">选择纳管项目</h3><p class="text-xs text-surface-400 mt-1">纳管后允许日志、终端和 AI 诊断；Compose 配置与生命周期操作还要求目录已挂载。</p></div>
+          <div><h3 class="section-title">选择纳管项目</h3><p class="text-xs text-surface-400 mt-1">纳管后可控制现有容器并使用日志、终端和 AI 诊断；拉取、创建缺失服务及 Compose 配置编辑还要求目录已挂载。</p></div>
           <button class="btn-primary" :disabled="mountLoading || !managementDirty" @click="saveManagement"><ShieldCheck class="w-4 h-4" />应用纳管范围</button>
         </div>
         <p v-if="managementDirty" class="alert-warning">当前选择尚未应用；保存前不会改变任何项目权限。</p>
@@ -107,7 +107,7 @@
         <h3 class="section-title">应用配置</h3>
         <p class="text-sm text-surface-400">挂载属于容器创建参数，保存 Compose 文件后必须重新创建 ComposeOps。普通 restart 不会生效。</p>
         <div class="card p-3 flex flex-col sm:flex-row sm:items-center gap-2"><code class="font-mono text-sm flex-1 break-all">{{ mountPlan.recreateCommand }}</code><button class="btn-secondary" @click="copyText(mountPlan.recreateCommand, '重建命令已复制')"><Copy class="w-4 h-4" />复制命令</button></div>
-        <p class="alert-warning">此向导不会自动修改宿主机文件或动态挂载任意目录。重新创建后再次扫描，已纳管项目会自动变为可控制状态。</p>
+        <p class="alert-warning">此向导不会自动修改宿主机文件或动态挂载任意目录。重新创建后再次扫描，已纳管项目会自动变为 Compose 就绪状态。</p>
       </div>
     </section>
 
@@ -151,7 +151,7 @@ async function saveManagement() {
   try { await api.saveProjectManagement(selectedProjectIds.value); applyMountPlan(await api.getMountPlan()); ok('项目纳管范围已更新'); }
   catch (e) { fail(e); } finally { mountLoading.value = false; }
 }
-function projectAccessLabel(project) { if (!project.managed) return '未纳管'; if (project.editable) return '可控制'; if (project.mountState === 'directory_unreachable') return '已纳管 · 待挂载'; return '已纳管 · 需处理'; }
+function projectAccessLabel(project) { if (!project.managed) return '未纳管'; if (project.editable) return 'Compose 就绪'; if (project.mountState === 'directory_unreachable') return '容器可控 · 待挂载'; return '容器可控 · 需处理'; }
 async function copyText(value, successMessage) {
   try {
     if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(value);
