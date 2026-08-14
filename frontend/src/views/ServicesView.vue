@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-5">
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-      <div><h1 class="page-title">服务总览</h1><p class="page-subtitle">{{ store.projects.length }} 个 Compose 项目 · {{ containerCount }} 个容器</p></div>
+      <div><h1 class="page-title">服务总览</h1><p class="page-subtitle">自动发现 {{ store.projects.length }} 个项目 · 已纳管 {{ managedCount }} 个 · {{ containerCount }} 个容器</p></div>
       <div class="flex items-center gap-2">
         <label class="toggle-label"><input type="checkbox" v-model="autoRefresh" />自动刷新</label>
         <button class="btn-secondary" @click="refresh" :disabled="store.loading"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': store.loading }" />刷新</button>
@@ -19,7 +19,7 @@
               <Star class="w-4 h-4" :class="project.favorite ? 'fill-amber-400 text-amber-400' : ''" />
             </button>
             <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2"><h3 class="font-mono font-medium truncate">{{ project.projectName }}</h3><StatusBadge :status="project.status" /></div>
+              <div class="flex items-center gap-2 min-w-0"><h3 class="font-mono font-medium truncate flex-1">{{ project.projectName }}</h3><StatusBadge :status="project.status" /><span class="count-badge shrink-0">{{ project.managed ? '已纳管' : '未纳管' }}</span></div>
               <p class="text-xs text-surface-500 truncate mt-1" :title="project.workingDir">{{ project.workingDir }}</p>
             </div>
             <button class="icon-btn" title="编辑备注" @click="editNote(project)"><Pencil class="w-4 h-4" /></button>
@@ -36,7 +36,7 @@
           </div>
           <div v-if="!project.editable" class="alert-warning flex flex-col sm:flex-row sm:items-center gap-2">
             <span class="flex-1">{{ readonlyMessage(project) }}</span>
-            <router-link class="btn-ghost shrink-0" :to="`/settings?tab=mounts&projectId=${project.id}`"><FolderCog class="w-4 h-4" />挂载向导</router-link>
+            <router-link class="btn-ghost shrink-0" :to="`/settings?tab=mounts&projectId=${project.id}`"><FolderCog class="w-4 h-4" />{{ project.managed ? '配置挂载' : '项目纳管' }}</router-link>
           </div>
 
           <div class="divide-y divide-surface-800 border-t border-surface-800">
@@ -46,9 +46,9 @@
                 <div class="text-sm font-mono truncate">{{ container.name }}</div>
                 <div class="text-xs text-surface-500 truncate">{{ container.image }}<span v-if="container.ports.length"> · {{ portText(container) }}</span><span v-if="container.health"> · {{ container.health }}</span></div>
               </div>
-              <router-link class="icon-btn" title="实时日志" :to="`/logs?projectId=${project.id}&containerId=${container.id}`"><ScrollText class="w-4 h-4" /></router-link>
-              <router-link class="icon-btn" title="容器终端" :to="`/shell?projectId=${project.id}&containerId=${container.id}`"><TerminalSquare class="w-4 h-4" /></router-link>
-              <router-link class="icon-btn" title="AI 诊断" :to="`/ai?projectId=${project.id}&containerId=${container.id}&diagnose=1`"><Bot class="w-4 h-4" /></router-link>
+              <router-link class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="实时日志" :to="`/logs?projectId=${project.id}&containerId=${container.id}`"><ScrollText class="w-4 h-4" /></router-link>
+              <router-link class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="容器终端" :to="`/shell?projectId=${project.id}&containerId=${container.id}`"><TerminalSquare class="w-4 h-4" /></router-link>
+              <router-link class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="AI 诊断" :to="`/ai?projectId=${project.id}&containerId=${container.id}&diagnose=1`"><Bot class="w-4 h-4" /></router-link>
             </div>
           </div>
         </article>
@@ -73,6 +73,7 @@ const store = useServicesStore();
 const autoRefresh = ref(true); const busy = ref(false);
 const output = reactive({ open: false, text: '', action: '', name: '' });
 const containerCount = computed(() => store.projects.reduce((n, p) => n + p.containers.length, 0));
+const managedCount = computed(() => store.projects.filter((project) => project.managed).length);
 const groups = computed(() => {
   const map = new Map();
   for (const p of store.projects) { if (!map.has(p.owner)) map.set(p.owner, []); map.get(p.owner).push(p); }
@@ -82,9 +83,10 @@ const groups = computed(() => {
 function refresh() { return store.refresh(); }
 function portText(c) { return c.ports.map((p) => `${p.public}:${p.private}`).join(', '); }
 function readonlyMessage(project) {
+  if (!project.managed) return '已自动发现，但尚未加入管理；当前禁止控制、配置、日志、终端和 AI 诊断。';
   if (project.mountState === 'metadata_missing') return 'Docker 标签没有提供工作目录，无法生成自动挂载建议。';
   if (project.mountState === 'compose_files_unreachable' && project.workingDirReachable) return '工作目录可达，但标签中的 Compose 文件不存在或不可读。';
-  return '已发现 Compose 项目，但项目目录尚未同路径挂载，当前只读。';
+  return '项目已纳管；日志、终端和 AI 诊断可用，Compose 控制与配置需先完成同路径挂载。';
 }
 async function toggleFavorite(project) { project.favorite = !project.favorite; await api.saveProjectPreference(project.id, { favorite: project.favorite }); }
 async function editNote(project) {

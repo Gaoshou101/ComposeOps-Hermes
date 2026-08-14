@@ -32,7 +32,10 @@ async function imageId(image) {
 
 export async function checkImageUpdates(onProgress = () => {}) {
   const projects = await scanProjects();
-  const images = [...new Set(projects.flatMap((project) => project.containers.map((item) => item.image)).filter(Boolean))];
+  const images = [...new Set(projects
+    .filter((project) => project.managed)
+    .flatMap((project) => project.containers.map((item) => item.image))
+    .filter(Boolean))];
   const results = [];
   for (const image of images) {
     const before = await imageId(image);

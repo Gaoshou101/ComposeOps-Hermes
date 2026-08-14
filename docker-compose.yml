@@ -20,6 +20,8 @@
 #   Mount as many dirs as you like (one `- /host/path:/host/path` line each).
 #   Projects whose dir isn't mounted still show up — their Edit / up / down
 #   buttons are just disabled ("compose file not mounted").
+#   File access alone does not grant control: newly discovered projects must also
+#   be explicitly selected in Settings > Project Management before operations run.
 #
 # Proxy (build + AI calls):
 #   Build-time apt/npm need network. If you're behind a proxy (e.g. Clash on

@@ -83,12 +83,24 @@ function buildParentSuggestions(mountPaths, projectsByPath) {
  * 这里只生成建议，不会修改宿主机文件，也不会创建高权限辅助容器。
  */
 export function buildMountPlan(projects) {
+  const discoveredProjects = projects.map((project) => ({
+    id: project.id,
+    projectName: project.projectName,
+    owner: project.owner,
+    workingDir: project.workingDir || '',
+    composeFiles: project.composeFiles || [],
+    managed: !!project.managed,
+    mounted: !!project.mounted,
+    editable: !!project.editable,
+    mountState: project.mountState,
+    containerCount: project.containers?.length || 0,
+  }));
   const pendingProjects = [];
   const unsupportedProjects = [];
   const projectsByPath = new Map();
 
   for (const project of projects) {
-    if (project.editable) continue;
+    if (!project.managed || project.mounted) continue;
     const mountPath = projectMountPath(project);
     const item = {
       id: project.id,
@@ -121,10 +133,13 @@ export function buildMountPlan(projects) {
     generatedAt: new Date().toISOString(),
     summary: {
       total: projects.length,
-      editable: projects.filter((project) => project.editable).length,
+      managed: projects.filter((project) => project.managed).length,
+      operable: projects.filter((project) => project.editable).length,
+      unmanaged: projects.filter((project) => !project.managed).length,
       pending: pendingProjects.length,
       unsupported: unsupportedProjects.length,
     },
+    projects: discoveredProjects,
     pendingProjects,
     unsupportedProjects,
     mounts,

@@ -34,6 +34,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS project_preferences (
     project_id TEXT PRIMARY KEY,
+    managed INTEGER NOT NULL DEFAULT 0,
     favorite INTEGER NOT NULL DEFAULT 0,
     note TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -58,6 +59,12 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
+
+// 兼容已有数据库：新增项目纳管白名单，历史项目默认不自动获得操作权限。
+const projectPreferenceColumns = db.prepare('PRAGMA table_info(project_preferences)').all();
+if (!projectPreferenceColumns.some((column) => column.name === 'managed')) {
+  db.exec('ALTER TABLE project_preferences ADD COLUMN managed INTEGER NOT NULL DEFAULT 0');
+}
 
 export function getSetting(key, fallback = null) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
@@ -108,23 +115,38 @@ export function clearSessions() {
 
 export function getProjectPreference(projectId) {
   return db.prepare(
-    'SELECT favorite, note FROM project_preferences WHERE project_id = ?'
-  ).get(projectId) || { favorite: 0, note: '' };
+    'SELECT managed, favorite, note FROM project_preferences WHERE project_id = ?'
+  ).get(projectId) || { managed: 0, favorite: 0, note: '' };
 }
 
-export function setProjectPreference(projectId, { favorite, note }) {
+export function setProjectPreference(projectId, { managed, favorite, note }) {
   const current = getProjectPreference(projectId);
+  const nextManaged = typeof managed === 'boolean' ? Number(managed) : current.managed;
   const nextFavorite = typeof favorite === 'boolean' ? Number(favorite) : current.favorite;
   const nextNote = typeof note === 'string' ? note.slice(0, 500) : current.note;
   db.prepare(`
-    INSERT INTO project_preferences(project_id, favorite, note, updated_at)
-    VALUES(?, ?, ?, datetime('now'))
+    INSERT INTO project_preferences(project_id, managed, favorite, note, updated_at)
+    VALUES(?, ?, ?, ?, datetime('now'))
     ON CONFLICT(project_id) DO UPDATE SET
+      managed = excluded.managed,
       favorite = excluded.favorite,
       note = excluded.note,
       updated_at = excluded.updated_at
-  `).run(projectId, nextFavorite, nextNote);
-  return { favorite: !!nextFavorite, note: nextNote };
+  `).run(projectId, nextManaged, nextFavorite, nextNote);
+  return { managed: !!nextManaged, favorite: !!nextFavorite, note: nextNote };
+}
+
+export function setProjectManagement(discoveredProjectIds, managedProjectIds) {
+  const managedSet = new Set(managedProjectIds);
+  const update = db.transaction(() => {
+    // 保存的是完整允许列表；先撤销旧授权，避免暂时消失的项目日后自动恢复权限。
+    db.prepare("UPDATE project_preferences SET managed = 0, updated_at = datetime('now') WHERE managed <> 0").run();
+    for (const projectId of discoveredProjectIds.filter((id) => managedSet.has(id))) {
+      setProjectPreference(projectId, { managed: true });
+    }
+  });
+  update();
+  return { managedProjectIds: discoveredProjectIds.filter((id) => managedSet.has(id)) };
 }
 
 export function addComposeBackup(projectId, filePath, content, reason = 'save') {
@@ -182,7 +204,7 @@ export function exportUserData() {
     exportedAt: new Date().toISOString(),
     settings,
     projectPreferences: db.prepare(
-      'SELECT project_id AS projectId, favorite, note, updated_at AS updatedAt FROM project_preferences'
+      'SELECT project_id AS projectId, managed, favorite, note, updated_at AS updatedAt FROM project_preferences'
     ).all(),
     operations: listOperations(500),
   };
@@ -201,6 +223,7 @@ export function importUserData(payload) {
     for (const preference of payload.projectPreferences || []) {
       if (typeof preference?.projectId !== 'string') continue;
       setProjectPreference(preference.projectId, {
+        managed: !!preference.managed,
         favorite: !!preference.favorite,
         note: typeof preference.note === 'string' ? preference.note : '',
       });

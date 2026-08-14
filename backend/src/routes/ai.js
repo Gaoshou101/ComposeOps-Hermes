@@ -88,6 +88,9 @@ export default async function aiRoutes(fastify) {
     if (!match.project || !match.container) {
       return reply.code(404).send({ error: 'container_not_found', message: '容器不属于当前项目' });
     }
+    if (!match.project.managed) {
+      return reply.code(403).send({ error: 'project_not_managed', message: '项目尚未加入管理' });
+    }
 
     let composeContent = '';
     if (match.project.editable) {

@@ -20,6 +20,10 @@ export default async function wsRoutes(fastify) {
       return socket.close();
     }
     const match = await findProjectContainer(projectId, containerId);
+    if (match.project && !match.project.managed) {
+      socket.send(JSON.stringify({ type: 'error', data: '项目尚未加入管理' }));
+      return socket.close();
+    }
     if (!match.container) {
       socket.send(JSON.stringify({ type: 'error', data: 'container not found in project' }));
       return socket.close();
@@ -81,6 +85,10 @@ export default async function wsRoutes(fastify) {
       return socket.close();
     }
     const match = await findProjectContainer(projectId, containerId);
+    if (match.project && !match.project.managed) {
+      socket.send(JSON.stringify({ type: 'error', data: '项目尚未加入管理' }));
+      return socket.close();
+    }
     if (!match.container) {
       socket.send(JSON.stringify({ type: 'error', data: 'container not found in project' }));
       return socket.close();

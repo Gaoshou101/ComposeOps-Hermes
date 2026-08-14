@@ -30,9 +30,8 @@ async function isReachable(p) {
  * 项目唯一标识：com.docker.compose.project.working_dir
  * Owner 来源：myops.owner 标签，缺失归类为 Uncategorized。
  *
- * 可达性：每个项目检查其 composeFile / workingDir 在当前进程文件系统中
- * 是否可达（容器化下需把对应宿主机目录 bind-mount 进来）。不可达的项目仍展示，
- * 但 editable=false，前端据此禁用编辑/生命周期按钮。
+ * 权限：所有项目先自动发现，但只有用户显式纳管且 composeFile / workingDir
+ * 在当前进程文件系统中可达时 editable=true。未纳管项目不能操作。
  *
  * @returns {Promise<{owners: string[], groupedByOwner: Object}>}
  */
@@ -130,13 +129,16 @@ export async function scanProjects() {
     project.unreachableComposeFiles = composeReachability
       .filter((file) => !file.reachable)
       .map((file) => file.path);
-    project.editable = project.workingDirReachable && composeReachability.length > 0 &&
+    project.mounted = project.workingDirReachable && composeReachability.length > 0 &&
       composeReachability.every((file) => file.reachable);
-    if (project.editable) project.mountState = 'ready';
+    if (project.mounted) project.mountState = 'ready';
     else if (!project.workingDir) project.mountState = 'metadata_missing';
     else if (!project.workingDirReachable) project.mountState = 'directory_unreachable';
     else project.mountState = 'compose_files_unreachable';
     const preference = getProjectPreference(project.id);
+    project.managed = !!preference.managed;
+    // editable 保持前端兼容，但现在同时代表“已显式纳管且文件可达”。
+    project.editable = project.managed && project.mounted;
     project.favorite = !!preference.favorite;
     project.note = preference.note || '';
   }

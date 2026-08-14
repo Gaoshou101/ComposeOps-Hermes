@@ -28,7 +28,7 @@ const route = useRoute(); const projects = ref([]); const projectId = ref(route.
 const tail = ref(200); const lines = ref([]); const pending = ref([]); const search = ref(''); const connected = ref(false); const paused = ref(false); const autoScroll = ref(true); const error = ref(''); const boxEl = ref(null); let ws; let sequence = 0;
 const containers = computed(() => projects.value.find((p) => p.id === projectId.value)?.containers || []);
 const filtered = computed(() => search.value ? lines.value.filter((line) => line.data.toLowerCase().includes(search.value.toLowerCase())) : lines.value);
-onMounted(async () => { projects.value = (await api.getProjects()).projects; const prefs = await api.getPreferences(); tail.value = prefs.logTail; if (containerId.value) connect(); });
+onMounted(async () => { projects.value = (await api.getProjects()).projects.filter((project) => project.managed); const prefs = await api.getPreferences(); tail.value = prefs.logTail; if (containerId.value && projects.value.some((project) => project.id === projectId.value)) connect(); });
 function connect() {
   disconnect(); error.value = '';
   ws = new WebSocket(wsUrl(`/ws/logs?projectId=${encodeURIComponent(projectId.value)}&containerId=${encodeURIComponent(containerId.value)}&tail=${tail.value}`));

@@ -30,7 +30,7 @@ import { Bot, History, Send, Square, Stethoscope, Trash2 } from 'lucide-vue-next
 import { useAiStore } from '../stores/ai.js'; import { api, streamSse } from '../api/client.js';
 const route = useRoute(); const store = useAiStore(); const projects = ref([]); const projectId = ref(route.query.projectId || ''); const containerId = ref(route.query.containerId || ''); const messages = ref([]); const input = ref(''); const streaming = ref(false); const buffer = ref(''); const boxEl = ref(null); let controller; let nextId = 0;
 const containers = computed(() => projects.value.find((p) => p.id === projectId.value)?.containers || []);
-onMounted(async () => { await Promise.all([store.loadConfig(), loadHistory(), api.getProjects().then((r) => projects.value = r.projects)]); if (route.query.diagnose === '1' && containerId.value) diagnose(); });
+onMounted(async () => { await Promise.all([store.loadConfig(), loadHistory(), api.getProjects().then((r) => projects.value = r.projects.filter((project) => project.managed))]); if (route.query.diagnose === '1' && containerId.value && projects.value.some((project) => project.id === projectId.value)) diagnose(); });
 async function loadHistory() { await store.loadHistory(); messages.value = store.history.map((m) => ({ id: m.id || ++nextId, role: m.role, content: m.content })); scroll(); }
 async function clearHistory() { if (!confirm('确认清空 AI 对话历史？')) return; await store.clearHistory(); messages.value = []; }
 async function send() { const text = input.value.trim(); if (!text || streaming.value) return; input.value = ''; messages.value.push({ id: ++nextId, role: 'user', content: text }); await chat('/ai/chat', { message: text }); }

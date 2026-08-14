@@ -6,6 +6,7 @@ import {
   addOperation,
   getComposeBackup,
   listComposeBackups,
+  setProjectManagement,
   setProjectPreference,
 } from '../lib/db.js';
 
@@ -15,10 +16,49 @@ async function projectOr404(id, reply) {
   return project;
 }
 
+function requireManaged(project, reply) {
+  if (!project.managed) {
+    reply.code(403).send({ error: 'project_not_managed', message: '项目尚未加入管理，请先在项目纳管中勾选' });
+    return false;
+  }
+  return true;
+}
+
+function requireEditable(project, reply) {
+  if (!requireManaged(project, reply)) return false;
+  if (!project.mounted) {
+    reply.code(409).send({ error: 'project_not_mounted', message: '项目已纳管，但 Compose 目录尚未挂载' });
+    return false;
+  }
+  return true;
+}
+
 export default async function projectRoutes(fastify) {
   fastify.get('/', async () => ({ projects: await scanProjects() }));
 
   fastify.get('/mount-plan', async () => buildMountPlan(await scanProjects()));
+
+  fastify.put('/management', async (request, reply) => {
+    const projectIds = request.body?.projectIds;
+    if (!Array.isArray(projectIds) || projectIds.length > 1000 ||
+        projectIds.some((id) => typeof id !== 'string')) {
+      return reply.code(400).send({ error: 'invalid_project_ids', message: '项目选择格式无效' });
+    }
+    const projects = await scanProjects();
+    const discoveredIds = projects.map((project) => project.id);
+    const discoveredSet = new Set(discoveredIds);
+    if (projectIds.some((id) => !discoveredSet.has(id))) {
+      return reply.code(400).send({ error: 'unknown_project', message: '选择中包含当前未发现的项目' });
+    }
+    const selectedIds = [...new Set(projectIds)];
+    const result = setProjectManagement(discoveredIds, selectedIds);
+    addOperation({
+      action: 'projects.management',
+      status: 'success',
+      detail: projects.filter((project) => selectedIds.includes(project.id)).map((project) => project.projectName).join(', '),
+    });
+    return result;
+  });
 
   fastify.get('/:id', async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
@@ -41,7 +81,7 @@ export default async function projectRoutes(fastify) {
   fastify.get('/:id/compose', async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
-    if (!project.editable) return reply.code(409).send({ error: 'project_not_mounted', message: '项目目录未挂载' });
+    if (!requireEditable(project, reply)) return;
     try {
       return await readCompose(project, request.query.fileIndex || 0);
     } catch (error) {
@@ -52,7 +92,7 @@ export default async function projectRoutes(fastify) {
   fastify.put('/:id/compose', async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
-    if (!project.editable) return reply.code(409).send({ error: 'project_not_mounted', message: '项目目录未挂载' });
+    if (!requireEditable(project, reply)) return;
     try {
       const result = await saveCompose(project, request.body?.fileIndex || 0, request.body?.content);
       addOperation({ projectId: project.id, projectName: project.projectName, action: 'compose.save', status: 'success' });
@@ -67,12 +107,14 @@ export default async function projectRoutes(fastify) {
   fastify.get('/:id/backups', async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
+    if (!requireManaged(project, reply)) return;
     return { backups: listComposeBackups(project.id) };
   });
 
   fastify.get('/:id/backups/:backupId', async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
+    if (!requireManaged(project, reply)) return;
     const backup = getComposeBackup(project.id, Number(request.params.backupId));
     if (!backup) return reply.code(404).send({ error: 'backup_not_found' });
     return backup;
@@ -81,6 +123,7 @@ export default async function projectRoutes(fastify) {
   fastify.post('/:id/backups/:backupId/restore', async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
+    if (!requireEditable(project, reply)) return;
     const backup = getComposeBackup(project.id, Number(request.params.backupId));
     if (!backup) return reply.code(404).send({ error: 'backup_not_found' });
     const fileIndex = project.composeFiles.indexOf(backup.filePath);
@@ -98,7 +141,7 @@ export default async function projectRoutes(fastify) {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     const action = request.body?.action;
-    if (!project.editable) return reply.code(409).send({ error: 'project_not_mounted', message: '项目目录未挂载' });
+    if (!requireEditable(project, reply)) return;
     let child;
     try {
       const safeFiles = await Promise.all(project.composeFiles.map((_, index) => resolveProjectFile(project, index)));

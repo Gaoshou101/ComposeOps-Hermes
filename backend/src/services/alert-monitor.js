@@ -22,8 +22,13 @@ async function poll() {
   try {
     const config = getNotificationConfig(false);
     const projects = await scanProjects();
+    const managedProjects = projects.filter((item) => item.managed);
+    const managedContainerIds = new Set(managedProjects.flatMap((project) => project.containers.map((item) => item.id)));
+    for (const containerId of previousStates.keys()) {
+      if (!managedContainerIds.has(containerId)) previousStates.delete(containerId);
+    }
     if (config.enabled) {
-      for (const project of projects) {
+      for (const project of managedProjects) {
         for (const item of project.containers) {
           const previous = previousStates.get(item.id);
           if (previous === 'running' && item.state !== 'running' && canAlert(`exit:${item.id}`, 1)) {

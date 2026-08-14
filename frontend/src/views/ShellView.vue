@@ -21,11 +21,11 @@ import { api, wsUrl } from '../api/client.js';
 const route = useRoute(); const projects = ref([]); const projectId = ref(route.query.projectId || ''); const containerId = ref(route.query.containerId || ''); const cmd = ref('sh'); const connected = ref(false); const error = ref(''); const capabilities = ref({ shellEnabled: false }); const termEl = ref(null); let term; let fit; let ws; let resizeObserver;
 const containers = computed(() => projects.value.find((p) => p.id === projectId.value)?.containers || []);
 onMounted(async () => {
-  [projects.value, capabilities.value] = await Promise.all([api.getProjects().then((r) => r.projects), api.getCapabilities()]);
+  [projects.value, capabilities.value] = await Promise.all([api.getProjects().then((r) => r.projects.filter((project) => project.managed)), api.getCapabilities()]);
   term = new Terminal({ fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, monospace', fontSize: 13, cursorBlink: true, theme: { background: '#0b0d10', foreground: '#e5e7eb' } }); fit = new FitAddon(); term.loadAddon(fit); term.open(termEl.value); nextTick(() => fit.fit());
   term.onData((data) => { if (ws?.readyState === WebSocket.OPEN) ws.send(data); }); term.onResize(({ cols, rows }) => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'resize', cols, rows })); });
   resizeObserver = new ResizeObserver(() => fit.fit()); resizeObserver.observe(termEl.value);
-  if (containerId.value && capabilities.value.shellEnabled) connect();
+  if (containerId.value && capabilities.value.shellEnabled && projects.value.some((project) => project.id === projectId.value)) connect();
 });
 function connect() {
   disconnect(); error.value = ''; term.clear();

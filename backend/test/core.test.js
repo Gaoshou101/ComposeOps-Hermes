@@ -65,6 +65,18 @@ test('exports and imports exclude credentials', () => {
   assert.notEqual(database.getSetting('auth.password_hash'), 'bad');
 });
 
+test('project management is explicit and can be updated as a discovered allowlist', () => {
+  assert.equal(database.getProjectPreference('new-project').managed, 0);
+  database.setProjectPreference('project-a', { managed: true, favorite: true, note: 'primary' });
+  database.setProjectPreference('vanished-project', { managed: true });
+  assert.deepEqual(database.getProjectPreference('project-a'), { managed: 1, favorite: 1, note: 'primary' });
+  database.setProjectManagement(['project-a', 'project-b'], ['project-b']);
+  assert.equal(database.getProjectPreference('project-a').managed, 0);
+  assert.equal(database.getProjectPreference('project-b').managed, 1);
+  assert.equal(database.getProjectPreference('vanished-project').managed, 0);
+  assert.equal(database.exportUserData().projectPreferences.find((item) => item.projectId === 'project-b').managed, 1);
+});
+
 test('YAML validation rejects malformed documents', () => {
   assert.deepEqual(parseYaml('services:\n  web:\n    image: nginx\n'), { services: { web: { image: 'nginx' } } });
   assert.equal(validateYaml('services: {}\n'), true);
@@ -107,15 +119,18 @@ test('mount plan deduplicates exact paths without broadening permissions', () =>
   ]), ['/opt/app-b', '/srv/compose/app-a']);
 
   const projects = [
-    { id: 'a', projectName: 'app-a', owner: 'Personal', workingDir: '/srv/compose/app-a', composeFiles: ['/srv/compose/app-a/compose.yml'], editable: false, mountState: 'directory_unreachable' },
-    { id: 'b', projectName: 'app-b', owner: 'Personal', workingDir: '/srv/compose/app-b', composeFiles: ['/srv/compose/app-b/compose.yml'], editable: false, mountState: 'directory_unreachable' },
-    { id: 'c', projectName: 'ready', owner: 'Personal', workingDir: '/srv/compose/ready', composeFiles: ['/srv/compose/ready/compose.yml'], editable: true, mountState: 'ready' },
-    { id: 'd', projectName: 'legacy', owner: 'Personal', workingDir: '', composeFiles: [], editable: false, mountState: 'metadata_missing' },
-    { id: 'e', projectName: 'stale', owner: 'Personal', workingDir: '/srv/stale', composeFiles: ['/srv/stale/missing.yml'], editable: false, mountState: 'compose_files_unreachable' },
+    { id: 'a', projectName: 'app-a', owner: 'Personal', workingDir: '/srv/compose/app-a', composeFiles: ['/srv/compose/app-a/compose.yml'], managed: true, mounted: false, editable: false, mountState: 'directory_unreachable', containers: [{}] },
+    { id: 'b', projectName: 'app-b', owner: 'Personal', workingDir: '/srv/compose/app-b', composeFiles: ['/srv/compose/app-b/compose.yml'], managed: true, mounted: false, editable: false, mountState: 'directory_unreachable', containers: [{}] },
+    { id: 'c', projectName: 'ready', owner: 'Personal', workingDir: '/srv/compose/ready', composeFiles: ['/srv/compose/ready/compose.yml'], managed: true, mounted: true, editable: true, mountState: 'ready', containers: [{}] },
+    { id: 'd', projectName: 'legacy', owner: 'Personal', workingDir: '', composeFiles: [], managed: true, mounted: false, editable: false, mountState: 'metadata_missing', containers: [] },
+    { id: 'e', projectName: 'stale', owner: 'Personal', workingDir: '/srv/stale', composeFiles: ['/srv/stale/missing.yml'], managed: true, mounted: false, editable: false, mountState: 'compose_files_unreachable', containers: [] },
+    { id: 'f', projectName: 'unmanaged', owner: 'Personal', workingDir: '/srv/unmanaged', composeFiles: ['/srv/unmanaged/compose.yml'], managed: false, mounted: false, editable: false, mountState: 'directory_unreachable', containers: [] },
   ];
   const plan = buildMountPlan(projects);
-  assert.deepEqual(plan.summary, { total: 5, editable: 1, pending: 2, unsupported: 2 });
+  assert.deepEqual(plan.summary, { total: 6, managed: 5, operable: 1, unmanaged: 1, pending: 2, unsupported: 2 });
+  assert.equal(plan.projects.find((item) => item.id === 'f').managed, false);
   assert.deepEqual(plan.mounts.map((item) => item.path), ['/srv/compose/app-a', '/srv/compose/app-b']);
+  assert.doesNotMatch(plan.composeSnippet, /unmanaged/);
   assert.equal(plan.parentSuggestions[0].path, '/srv/compose');
   assert.match(plan.composeSnippet, /source: "\/srv\/compose\/app-a"/);
   assert.doesNotMatch(plan.composeSnippet, /source: "\/srv\/compose"\n/);
