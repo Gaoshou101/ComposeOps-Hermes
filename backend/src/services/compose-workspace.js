@@ -9,6 +9,14 @@ import { addComposeBackup } from '../lib/db.js';
 import { safeProjectMountPath } from './mount-plan.js';
 
 let runnerImagePromise;
+const workspaceRunners = new Map();
+const workspaceIdleMs = boundedNumber(process.env.COMPOSEOPS_WORKSPACE_IDLE_MS, 90_000, 5_000, 15 * 60_000);
+const workspaceCacheMax = boundedNumber(process.env.COMPOSEOPS_WORKSPACE_CACHE_MAX, 8, 1, 64);
+
+function boundedNumber(value, fallback, min, max) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(min, Math.min(parsed, max)) : fallback;
+}
 
 function projectPaths(project) {
   const root = safeProjectMountPath(project.workingDir);
@@ -38,7 +46,8 @@ async function createRunner(project) {
   const { root } = projectPaths(project);
   const container = await docker.createContainer({
     Image: await runnerImage(),
-    Cmd: ['sleep', '300'],
+    // AutoRemove 是异常退出的兜底；正常情况下由空闲计时器提前清理。
+    Cmd: ['sleep', '3600'],
     WorkingDir: root,
     Labels: { 'composeops.helper': 'compose-workspace', 'composeops.project': project.id },
     HostConfig: {
@@ -54,20 +63,140 @@ async function createRunner(project) {
   return container;
 }
 
+function runnerKey(project) {
+  return `${project.id}\0${projectPaths(project).root}`;
+}
+
+function retireRunner(entry) {
+  if (entry.retired) return;
+  entry.retired = true;
+  clearTimeout(entry.idleTimer);
+  if (workspaceRunners.get(entry.key) === entry) workspaceRunners.delete(entry.key);
+}
+
+async function destroyRunner(entry) {
+  if (entry.destroyPromise) return entry.destroyPromise;
+  entry.destroyPromise = (async () => {
+    const container = await entry.containerPromise.catch(() => null);
+    if (!container) return;
+    await container.remove({ force: true }).catch(() => {});
+  })();
+  return entry.destroyPromise;
+}
+
+function scheduleRunnerCleanup(entry) {
+  clearTimeout(entry.idleTimer);
+  if (entry.active > 0) return;
+  if (entry.retired) {
+    void destroyRunner(entry);
+    return;
+  }
+  entry.idleTimer = setTimeout(() => {
+    retireRunner(entry);
+    if (entry.active === 0) void destroyRunner(entry);
+  }, workspaceIdleMs);
+  entry.idleTimer.unref?.();
+}
+
+function releaseRunner(entry) {
+  entry.active = Math.max(0, entry.active - 1);
+  entry.lastUsedAt = Date.now();
+  scheduleRunnerCleanup(entry);
+}
+
+function trimRunnerCache() {
+  if (workspaceRunners.size < workspaceCacheMax) return;
+  const idle = [...workspaceRunners.values()]
+    .filter((entry) => entry.active === 0)
+    .sort((a, b) => a.lastUsedAt - b.lastUsedAt);
+  while (workspaceRunners.size >= workspaceCacheMax && idle.length) {
+    const entry = idle.shift();
+    retireRunner(entry);
+    void destroyRunner(entry);
+  }
+}
+
+function createRunnerEntry(project, key) {
+  trimRunnerCache();
+  const entry = {
+    key,
+    projectId: project.id,
+    root: projectPaths(project).root,
+    active: 0,
+    lastUsedAt: Date.now(),
+    idleTimer: null,
+    retired: false,
+    destroyPromise: null,
+    containerPromise: createRunner(project),
+  };
+  // 创建失败时立即移出缓存，下一次请求可以重新创建。
+  entry.containerPromise.catch(() => retireRunner(entry));
+  workspaceRunners.set(key, entry);
+  return entry;
+}
+
+async function acquireRunner(project) {
+  const key = runnerKey(project);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let entry = workspaceRunners.get(key);
+    const reused = !!entry;
+    if (!entry || entry.retired) entry = createRunnerEntry(project, key);
+    clearTimeout(entry.idleTimer);
+    entry.active += 1;
+    try {
+      const container = await entry.containerPromise;
+      if (reused) {
+        const inspection = await container.inspect();
+        if (!inspection.State?.Running) throw new Error('Compose 工作容器已经失效');
+      }
+      return { entry, container };
+    } catch (error) {
+      retireRunner(entry);
+      releaseRunner(entry);
+      if (attempt === 1) throw error;
+    }
+  }
+  throw new Error('无法创建 Compose 工作容器');
+}
+
 async function withRunner(project, callback) {
-  let container;
+  let lease;
   try {
-    container = await createRunner(project);
-    return await callback(container);
+    lease = await acquireRunner(project);
+    return await callback(lease.container);
   } catch (error) {
     if (!error.statusCode) error.statusCode = 409;
     throw error;
   } finally {
-    if (container) {
-      await container.stop({ t: 1 }).catch(() => {});
-      await container.remove({ force: true }).catch(() => {});
-    }
+    if (lease) releaseRunner(lease.entry);
   }
+}
+
+export function pruneWorkspaceRunners(allowedProjectIds = []) {
+  const allowed = new Set(allowedProjectIds);
+  for (const entry of workspaceRunners.values()) {
+    if (allowed.has(entry.projectId)) continue;
+    retireRunner(entry);
+    if (entry.active === 0) void destroyRunner(entry);
+  }
+}
+
+export async function closeAllWorkspaceRunners() {
+  const entries = [...workspaceRunners.values()];
+  for (const entry of entries) retireRunner(entry);
+  await Promise.all(entries.map((entry) => destroyRunner(entry)));
+}
+
+export function workspaceRunnerStats() {
+  return {
+    idleMs: workspaceIdleMs,
+    maxEntries: workspaceCacheMax,
+    entries: [...workspaceRunners.values()].map((entry) => ({
+      projectId: entry.projectId,
+      active: entry.active,
+      retired: entry.retired,
+    })),
+  };
 }
 
 async function execInRunner(container, cmd, { input, onOutput = () => {} } = {}) {

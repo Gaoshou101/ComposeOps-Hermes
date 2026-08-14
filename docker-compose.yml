@@ -65,6 +65,9 @@ services:
       - HOST=0.0.0.0
       - LOG_LEVEL=info
       - ENABLE_SHELL=1
+      # 按需 Compose 工作容器复用时间与最多缓存项目数。
+      # - COMPOSEOPS_WORKSPACE_IDLE_MS=90000
+      # - COMPOSEOPS_WORKSPACE_CACHE_MAX=8
       # Optional unattended setup. Prefer the first-run browser setup so the
       # password does not remain in compose environment metadata.
       # - ADMIN_PASSWORD=replace-with-at-least-10-characters

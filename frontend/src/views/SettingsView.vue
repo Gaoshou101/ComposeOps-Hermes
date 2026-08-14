@@ -69,7 +69,7 @@
         </div>
       </div>
 
-      <p v-if="mountPlan?.projects.some((project) => project.editable)" class="alert-success">已勾选的 Compose 项目会按需创建临时工作容器，只挂载对应项目目录；操作完成后自动销毁，无需修改 ComposeOps 配置或重建面板。</p>
+      <p v-if="mountPlan?.projects.some((project) => project.editable)" class="alert-success">已勾选的 Compose 项目会按需创建临时工作容器，只挂载对应目录；短时间内切换会复用，空闲约 90 秒后自动销毁，无需重建面板。</p>
 
       <div v-if="mountPlan?.unsupportedProjects.length" class="space-y-2">
         <h3 class="section-title">已纳管但无法自动规划</h3>

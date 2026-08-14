@@ -12,6 +12,7 @@ import personalRoutes from './routes/personal.js';
 import docker from './services/docker.js';
 import { isAuthenticated, isConfigured, setPassword, validateOrigin } from './lib/auth.js';
 import { startAlertMonitor, stopAlertMonitor } from './services/alert-monitor.js';
+import { closeAllWorkspaceRunners } from './services/compose-workspace.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -117,6 +118,20 @@ const start = async () => {
   }
 };
 
-fastify.addHook('onClose', async () => stopAlertMonitor());
+fastify.addHook('onClose', async () => {
+  stopAlertMonitor();
+  await closeAllWorkspaceRunners();
+});
+
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  fastify.log.info({ signal }, 'shutting down');
+  await fastify.close().catch((error) => fastify.log.error(error));
+  process.exit(0);
+}
+process.once('SIGTERM', () => void shutdown('SIGTERM'));
+process.once('SIGINT', () => void shutdown('SIGINT'));
 
 start();

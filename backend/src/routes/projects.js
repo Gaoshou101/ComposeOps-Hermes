@@ -2,7 +2,7 @@ import docker from '../services/docker.js';
 import { findProject, scanProjects } from '../services/scanner.js';
 import { buildMountPlan } from '../services/mount-plan.js';
 import { readCompose, resolveProjectFile, saveCompose, spawnCompose } from '../services/compose-runner.js';
-import { readWorkspaceCompose, runWorkspaceCompose, saveWorkspaceCompose } from '../services/compose-workspace.js';
+import { pruneWorkspaceRunners, readWorkspaceCompose, runWorkspaceCompose, saveWorkspaceCompose } from '../services/compose-workspace.js';
 import { runContainerAction, supportsContainerAction } from '../services/project-control.js';
 import {
   addOperation,
@@ -62,6 +62,7 @@ export default async function projectRoutes(fastify) {
     const selectedIds = [...new Set(projectIds)];
     const selectedMountIds = [...new Set(mountProjectIds)].filter((id) => selectedIds.includes(id));
     const result = setProjectManagement(discoveredIds, selectedIds, selectedMountIds);
+    pruneWorkspaceRunners(selectedMountIds);
     addOperation({
       action: 'projects.management',
       status: 'success',
@@ -86,6 +87,7 @@ export default async function projectRoutes(fastify) {
     const managedIds = projects.filter((project) => project.managed).map((project) => project.id);
     const selectedMountIds = [...new Set(mountProjectIds)].filter((id) => managedIds.includes(id));
     const result = setProjectManagement(discoveredIds, managedIds, selectedMountIds);
+    pruneWorkspaceRunners(selectedMountIds);
     addOperation({ action: 'projects.mounts', status: 'success', detail: selectedMountIds.join(', ') });
     return result;
   });
