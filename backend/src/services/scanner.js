@@ -99,6 +99,7 @@ export async function scanProjects() {
       state: c.State,
       statusText: c.Status,
       image: c.Image,
+      imageId: c.ImageID || '',
       created: c.Created,
       health: /\((healthy|unhealthy|starting)\)/.exec(c.Status || '')?.[1] || null,
       ports: (c.Ports || []).filter((port) => port.PublicPort).map((port) => ({

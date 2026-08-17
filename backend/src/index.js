@@ -9,10 +9,12 @@ import systemRoutes from './routes/system.js';
 import wsRoutes from './routes/ws.js';
 import authRoutes from './routes/auth.js';
 import personalRoutes from './routes/personal.js';
+import jobRoutes from './routes/jobs.js';
 import docker from './services/docker.js';
 import { isAuthenticated, isConfigured, setPassword, validateOrigin } from './lib/auth.js';
 import { startAlertMonitor, stopAlertMonitor } from './services/alert-monitor.js';
 import { closeAllWorkspaceRunners } from './services/compose-workspace.js';
+import { initializeBackgroundJobs } from './services/background-jobs.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -75,6 +77,7 @@ await fastify.register(
     await api.register(aiRoutes, { prefix: '/ai' });
     await api.register(systemRoutes, { prefix: '/system' });
     await api.register(personalRoutes, { prefix: '/personal' });
+    await api.register(jobRoutes, { prefix: '/jobs' });
   },
   { prefix: '/api/v1' }
 );
@@ -109,6 +112,8 @@ if (process.env.SERVE_FRONTEND === '1') {
 
 const start = async () => {
   try {
+    const interruptedJobs = initializeBackgroundJobs();
+    if (interruptedJobs.length) fastify.log.warn({ jobs: interruptedJobs }, 'marked unfinished background jobs as interrupted');
     await fastify.listen({ port: PORT, host: HOST });
     startAlertMonitor();
     fastify.log.info(`OpsDash backend listening on http://${HOST}:${PORT}`);

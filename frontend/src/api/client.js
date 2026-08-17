@@ -33,6 +33,10 @@ export const api = {
   saveProjectManagement: (projectIds, mountProjectIds = []) => request('/projects/management', { method: 'PUT', body: JSON.stringify({ projectIds, mountProjectIds }) }),
   saveProjectMounts: (projectIds) => request('/projects/mounts', { method: 'PUT', body: JSON.stringify({ projectIds }) }),
   getProject: (id) => request(`/projects/${id}`),
+  getProjectActivity: (id) => request(`/projects/${id}/activity`),
+  listJobs: (limit = 20) => request(`/jobs?limit=${limit}`),
+  getJob: (id) => request(`/jobs/${id}`),
+  createProjectBatchJob: (projectIds, action) => request('/jobs', { method: 'POST', body: JSON.stringify({ projectIds, action }) }),
   saveProjectPreference: (id, payload) => request(`/projects/${id}/preferences`, { method: 'PATCH', body: JSON.stringify(payload) }),
   getComposeFile: (projectId, fileIndex = 0) => request(`/projects/${projectId}/compose?fileIndex=${fileIndex}`),
   saveComposeFile: (projectId, fileIndex, content) =>

@@ -1,17 +1,19 @@
 <template>
-  <div class="h-full flex flex-col gap-3">
-    <div class="flex flex-col lg:flex-row lg:items-center gap-2">
+  <div class="page-shell page-shell-workspace">
+    <div class="page-header">
       <div class="mr-auto"><h1 class="page-title">Compose 配置</h1><p class="page-subtitle">保存前执行 YAML 与 docker compose config 校验</p></div>
-      <select v-model="projectId" class="input min-w-52" @change="selectProject"><option value="">选择项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
-      <select v-if="project?.composeFiles.length > 1" v-model.number="fileIndex" class="input" @change="load"><option v-for="(file, i) in project.composeFiles" :key="file" :value="i">{{ shortName(file) }}</option></select>
-      <button class="btn-secondary" :disabled="!content" @click="formatYaml"><AlignLeft class="w-4 h-4" />格式化</button>
-      <button class="btn-secondary" :disabled="!projectId" @click="loadBackups"><History class="w-4 h-4" />备份</button>
-      <button class="btn-primary" :disabled="saving || !dirty" @click="save"><Save class="w-4 h-4" />{{ saving ? '校验中...' : '保存' }}</button>
+      <div class="page-actions">
+        <select v-model="projectId" class="input min-w-52" @change="selectProject"><option value="">选择项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
+        <select v-if="project?.composeFiles.length > 1" v-model.number="fileIndex" class="input" @change="load"><option v-for="(file, i) in project.composeFiles" :key="file" :value="i">{{ shortName(file) }}</option></select>
+        <button class="btn-secondary" :disabled="!content" @click="formatYaml"><AlignLeft class="w-4 h-4" />格式化</button>
+        <button class="btn-secondary" :disabled="!projectId" @click="loadBackups"><History class="w-4 h-4" />备份</button>
+        <button class="btn-primary" :disabled="saving || !dirty" @click="save"><Save class="w-4 h-4" />{{ saving ? '校验中...' : '保存' }}</button>
+      </div>
     </div>
     <div v-if="filePath" class="text-xs text-surface-500 font-mono truncate">{{ filePath }}<span v-if="dirty" class="text-amber-400 ml-2">● 未保存</span></div>
     <p v-if="error" class="alert-error">{{ error }}</p><p v-if="message" class="alert-success">{{ message }}</p>
     <div v-if="!projectId" class="empty-state flex-1"><FileCode2 class="w-8 h-8" /><span>请先选择一个已挂载的项目</span></div>
-    <div v-else ref="editorEl" class="card flex-1 min-h-[420px] overflow-hidden"></div>
+    <div v-else ref="editorEl" class="card flex-1 min-h-[420px] overflow-hidden ring-1 ring-black/10"></div>
 
     <div v-if="showBackups" class="modal-backdrop" @click.self="showBackups = false">
       <div class="modal max-w-3xl">

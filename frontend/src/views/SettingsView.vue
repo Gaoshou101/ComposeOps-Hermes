@@ -1,6 +1,6 @@
 <template>
-  <div class="space-y-4 max-w-5xl">
-    <div><h1 class="page-title">设置</h1><p class="page-subtitle">个人偏好、通知、更新与维护</p></div>
+  <div class="page-shell">
+    <div class="page-header"><div><h1 class="page-title">设置</h1><p class="page-subtitle">个人偏好、通知、更新与维护</p></div></div>
     <div class="tabs">
       <button v-for="item in tabs" :key="item.id" :class="{ active: tab === item.id }" @click="tab = item.id"><component :is="item.icon" class="w-4 h-4" />{{ item.label }}</button>
     </div>
@@ -31,8 +31,9 @@
 
     <section v-if="tab === 'maintenance'" class="settings-section">
       <div class="flex items-center justify-between"><h2 class="section-title">镜像更新</h2><button class="btn-secondary" :disabled="checkingUpdates" @click="checkUpdates"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': checkingUpdates }" />立即检查</button></div>
-      <div class="form-grid"><label class="toggle-label"><input v-model="updates.autoEnabled" type="checkbox" />定时拉取并检查更新</label><label>检查间隔（小时）<input v-model.number="updates.intervalHours" type="number" min="1" max="720" class="input" /></label></div><button class="btn-primary" @click="saveUpdates"><Save class="w-4 h-4" />保存更新策略</button>
-      <div v-if="updateResults.length" class="space-y-1"><div v-for="item in updateResults" :key="item.image" class="flex justify-between text-sm py-1 border-b border-surface-800"><span class="font-mono">{{ item.image }}</span><span :class="item.status === 'updated' ? 'text-amber-400' : item.status === 'failed' ? 'text-red-400' : 'text-green-400'">{{ item.status }}</span></div></div>
+      <div class="form-grid"><label class="toggle-label"><input v-model="updates.autoEnabled" type="checkbox" />定时拉取并检查更新</label><label>检查间隔（小时）<input v-model.number="updates.intervalHours" type="number" min="1" max="720" class="input" /></label></div><div class="flex flex-wrap items-center gap-3"><button class="btn-primary" @click="saveUpdates"><Save class="w-4 h-4" />保存更新策略</button><span v-if="updates.lastCheck" class="text-xs text-surface-500">上次检查：{{ new Date(updates.lastCheck).toLocaleString() }}</span></div>
+      <div v-if="updateSummary.total" class="grid gap-3 sm:grid-cols-3"><StatCard title="已检查镜像" :value="String(updateSummary.total)" sub="最近一次检查"/><StatCard title="发现更新" :value="String(updateSummary.updated)" sub="需重建相关容器"/><StatCard title="检查失败" :value="String(updateSummary.failed)" sub="请检查仓库或网络"/></div>
+      <div v-if="updateResults.length" class="space-y-1"><div v-for="item in updateResults" :key="item.image" class="flex justify-between gap-3 text-sm py-1 border-b border-surface-800"><span class="min-w-0 truncate font-mono" :title="item.image">{{ item.image }}</span><span class="shrink-0" :class="item.status === 'updated' ? 'text-amber-400' : item.status === 'failed' ? 'text-red-400' : 'text-green-400'">{{ imageStatusLabel(item.status) }}</span></div></div>
       <div class="border-t border-surface-800 pt-4 space-y-3"><div class="flex items-center justify-between"><h2 class="section-title">Docker 空间</h2><button class="icon-btn" title="刷新用量" @click="loadUsage"><RefreshCw class="w-4 h-4" /></button></div><div v-if="usage" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-2"><StatCard title="镜像" :value="formatBytes(usage.images.total)" :sub="`可回收 ${formatBytes(usage.images.reclaimable)}`"/><StatCard title="构建缓存" :value="formatBytes(usage.buildCache.total)" :sub="`可回收 ${formatBytes(usage.buildCache.reclaimable)}`"/><StatCard title="停止容器" :value="String(usage.containers.count)" :sub="`可回收 ${formatBytes(usage.containers.reclaimable)}`"/><StatCard title="未使用卷" :value="String(usage.volumes.count)" :sub="`可回收 ${formatBytes(usage.volumes.reclaimable)}`"/></div>
         <div class="flex flex-wrap gap-3"><label class="toggle-label"><input v-model="prune.images" type="checkbox" />未使用镜像</label><label class="toggle-label"><input v-model="prune.buildCache" type="checkbox" />构建缓存</label><label class="toggle-label"><input v-model="prune.containers" type="checkbox" />停止容器</label><label class="toggle-label text-amber-400"><input v-model="prune.volumes" type="checkbox" />未使用卷</label></div><button class="btn-danger" @click="runPrune"><Trash2 class="w-4 h-4" />执行清理</button></div>
     </section>
@@ -94,6 +95,7 @@ const route = useRoute();
 const initialTab = tabs.some((item) => item.id === route.query.tab) ? route.query.tab : 'ai';
 const tab = ref(initialTab); const message = ref(''); const error = ref(''); const aiStore = useAiStore(); const ai = ref({}); const aiMasked = ref(false); const preferences = ref({ refreshInterval: 5, logTail: 200 }); const password = ref({ currentPassword: '', nextPassword: '' }); const notifications = ref({}); const updates = ref({ autoEnabled: false, intervalHours: 24 }); const updateResults = ref([]); const checkingUpdates = ref(false); const usage = ref(null); const prune = ref({ images: true, buildCache: true, containers: false, volumes: false }); const capabilities = ref({});
 const mountPlan = ref(null); const mountLoading = ref(false); const highlightedProjectId = computed(() => String(route.query.projectId || ''));
+const updateSummary = computed(() => ({ total: updateResults.value.length, updated: updateResults.value.filter((item) => item.status === 'updated').length, failed: updateResults.value.filter((item) => item.status === 'failed').length }));
 const selectedProjectIds = ref([]); const savedManagedProjectIds = ref([]);
 const selectedMountProjectIds = ref([]); const savedMountProjectIds = ref([]);
 const managementDirty = computed(() => {
@@ -106,7 +108,7 @@ const mountsDirty = computed(() => {
 });
 const selectionDirty = computed(() => managementDirty.value || mountsDirty.value);
 function ok(text) { message.value = text; error.value = ''; } function fail(e) { error.value = e.message; message.value = ''; }
-onMounted(async () => { try { await aiStore.loadConfig(); const cfg = aiStore.config; ai.value = { baseUrl: cfg.baseUrl, apiKey: '', model: cfg.model, systemPrompt: cfg.systemPrompt }; aiMasked.value = !!cfg.apiKey; const [prefs, notificationConfig, updateConfig, systemCapabilities, plan] = await Promise.all([api.getPreferences(), api.getNotifications(), api.getUpdateSettings(), api.getCapabilities(), api.getMountPlan()]); preferences.value = prefs; notifications.value = notificationConfig; updates.value = updateConfig; capabilities.value = systemCapabilities; applyMountPlan(plan); await loadUsage(); } catch (e) { fail(e); } });
+onMounted(async () => { try { await aiStore.loadConfig(); const cfg = aiStore.config; ai.value = { baseUrl: cfg.baseUrl, apiKey: '', model: cfg.model, systemPrompt: cfg.systemPrompt }; aiMasked.value = !!cfg.apiKey; const [prefs, notificationConfig, updateConfig, systemCapabilities, plan] = await Promise.all([api.getPreferences(), api.getNotifications(), api.getUpdateSettings(), api.getCapabilities(), api.getMountPlan()]); preferences.value = prefs; notifications.value = notificationConfig; updates.value = updateConfig; updateResults.value = updateConfig.lastResults || []; capabilities.value = systemCapabilities; applyMountPlan(plan); await loadUsage(); } catch (e) { fail(e); } });
 async function saveAi() { try { const payload = { ...ai.value }; if (!payload.apiKey) delete payload.apiKey; await aiStore.saveConfig(payload); ai.value.apiKey = ''; aiMasked.value = true; ok('AI 配置已保存'); } catch (e) { fail(e); } }
 async function savePreferences() { try { preferences.value = await api.savePreferences(preferences.value); ok('个人偏好已保存'); } catch (e) { fail(e); } }
 async function changePassword() { try { if (password.value.nextPassword.length < 10) throw new Error('新密码至少需要 10 个字符'); await api.changePassword(password.value); password.value = { currentPassword: '', nextPassword: '' }; ok('管理员密码已修改，其他会话已退出'); } catch (e) { fail(e); } }
@@ -114,7 +116,7 @@ async function importData(event) { try { const file = event.target.files?.[0]; i
 async function saveNotifications() { try { notifications.value = await api.saveNotifications(notifications.value); ok('通知配置已保存'); } catch (e) { fail(e); } }
 async function testNotifications() { try { await api.testNotifications(notifications.value); ok('测试通知已发送'); } catch (e) { fail(e); } }
 async function saveUpdates() { try { updates.value = await api.saveUpdateSettings(updates.value); ok('更新策略已保存'); } catch (e) { fail(e); } }
-async function checkUpdates() { checkingUpdates.value = true; try { updateResults.value = (await api.checkUpdates()).results; ok('镜像检查完成'); } catch (e) { fail(e); } finally { checkingUpdates.value = false; } }
+async function checkUpdates() { checkingUpdates.value = true; try { updateResults.value = (await api.checkUpdates()).results; updates.value.lastCheck = Date.now(); updates.value.lastResults = updateResults.value; ok('镜像检查完成'); } catch (e) { fail(e); } finally { checkingUpdates.value = false; } }
 async function loadUsage() { try { usage.value = await api.getDockerUsage(); } catch (e) { fail(e); } }
 async function runPrune() { const confirmation = prompt('清理操作不可撤销。请输入 PRUNE 确认：'); if (confirmation !== 'PRUNE') return; try { await api.pruneDocker({ confirmation, options: prune.value }); await loadUsage(); ok('Docker 清理完成'); } catch (e) { fail(e); } }
 function applyMountPlan(plan) {
@@ -138,6 +140,7 @@ async function saveManagement() {
   catch (e) { fail(e); } finally { mountLoading.value = false; }
 }
 function projectAccessLabel(project) { if (!project.managed) return '未纳管'; if (!project.mountEnabled) return '仅管理容器'; if (project.editable) return project.mounted ? 'Compose 直连' : 'Compose 按需'; return 'Compose 路径需处理'; }
+function imageStatusLabel(status) { return ({ updated: '已拉取，待应用', current: '已是最新', failed: '检查失败' })[status] || status; }
 function formatBytes(value = 0) { const units = ['B','KB','MB','GB','TB']; let n = value; let i = 0; while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; } return `${n.toFixed(i ? 1 : 0)} ${units[i]}`; }
 watch(() => route.query.tab, (value) => { if (tabs.some((item) => item.id === value)) tab.value = value; });
 watch(selectedProjectIds, (ids) => { selectedMountProjectIds.value = selectedMountProjectIds.value.filter((id) => ids.includes(id)); }, { deep: true });

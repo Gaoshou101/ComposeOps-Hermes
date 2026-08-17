@@ -1,20 +1,22 @@
 <template>
-  <div class="h-full flex flex-col gap-3">
-    <div class="flex flex-wrap items-center gap-2">
+  <div class="page-shell page-shell-workspace">
+    <div class="page-header">
       <div class="mr-auto"><h1 class="page-title">实时日志</h1><p class="page-subtitle">搜索、暂停和导出容器输出</p></div>
-      <select v-model="projectId" class="input" @change="containerId = ''"><option value="">选择项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
-      <select v-model="containerId" class="input"><option value="">选择容器</option><option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option></select>
-      <input v-model="search" class="input w-40" placeholder="搜索日志" />
-      <input v-model.number="tail" type="number" min="10" max="5000" class="input w-20" title="初始日志行数" />
-      <button v-if="!connected" class="btn-primary" :disabled="!containerId" @click="connect"><Play class="w-4 h-4" />连接</button>
-      <button v-else class="btn-danger" @click="disconnect"><Square class="w-4 h-4" />断开</button>
-      <button class="icon-btn" :title="paused ? '继续接收' : '暂停显示'" @click="togglePause"><Play v-if="paused" class="w-4 h-4" /><Pause v-else class="w-4 h-4" /></button>
-      <button class="icon-btn" title="下载日志" :disabled="!lines.length" @click="download"><Download class="w-4 h-4" /></button>
-      <button class="icon-btn" title="清屏" @click="lines = []"><Trash2 class="w-4 h-4" /></button>
+      <div class="page-actions">
+        <select v-model="projectId" class="input" @change="containerId = ''"><option value="">选择项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
+        <select v-model="containerId" class="input"><option value="">选择容器</option><option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option></select>
+        <input v-model="search" class="input w-40" placeholder="搜索日志" />
+        <input v-model.number="tail" type="number" min="10" max="5000" class="input w-20" title="初始日志行数" />
+        <button v-if="!connected" class="btn-primary" :disabled="!containerId" @click="connect"><Play class="w-4 h-4" />连接</button>
+        <button v-else class="btn-danger" @click="disconnect"><Square class="w-4 h-4" />断开</button>
+        <button class="icon-btn" :title="paused ? '继续接收' : '暂停显示'" @click="togglePause"><Play v-if="paused" class="w-4 h-4" /><Pause v-else class="w-4 h-4" /></button>
+        <button class="icon-btn" title="下载日志" :disabled="!lines.length" @click="download"><Download class="w-4 h-4" /></button>
+        <button class="icon-btn" title="清屏" @click="lines = []"><Trash2 class="w-4 h-4" /></button>
+      </div>
     </div>
     <p v-if="error" class="alert-error">{{ error }}</p>
     <div class="flex items-center gap-3 text-xs text-surface-500"><span :class="connected ? 'text-green-400' : ''">{{ connected ? '已连接' : '未连接' }}</span><span>{{ filtered.length }} 条</span><span v-if="paused" class="text-amber-400">已暂停 · {{ pending.length }} 条等待显示</span><label class="toggle-label ml-auto"><input v-model="autoScroll" type="checkbox" />自动滚动</label></div>
-    <div ref="boxEl" class="terminal-output card flex-1">
+    <div ref="boxEl" class="terminal-output card flex-1 min-h-[360px]">
       <div v-for="line in filtered" :key="line.id" class="log-line" :class="line.type === 'stderr' || line.type === 'error' ? 'text-red-400' : 'text-surface-200'">{{ line.data }}</div>
     </div>
   </div>

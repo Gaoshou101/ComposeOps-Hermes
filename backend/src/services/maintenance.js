@@ -1,6 +1,7 @@
 import docker from './docker.js';
 import { scanProjects } from './scanner.js';
 import { sendNotification } from './notifications.js';
+import { setSetting } from '../lib/db.js';
 
 function sum(items, key) {
   return (items || []).reduce((total, item) => total + (Number(item?.[key]) || 0), 0);
@@ -55,6 +56,7 @@ export async function checkImageUpdates(onProgress = () => {}) {
   if (updated.length) {
     await sendNotification('ComposeOps：发现镜像更新', updated.map((item) => item.image).join('\n')).catch(() => {});
   }
+  setSetting('updates.last_results', JSON.stringify(results));
   return results;
 }
 

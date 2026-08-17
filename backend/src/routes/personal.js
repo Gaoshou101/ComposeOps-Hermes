@@ -58,11 +58,16 @@ export default async function personalRoutes(fastify) {
     return { ok: true, result };
   });
 
-  fastify.get('/updates', async () => ({
-    autoEnabled: getSetting('updates.auto_enabled', '0') === '1',
-    intervalHours: Number(getSetting('updates.interval_hours', '24')),
-    lastCheck: Number(getSetting('updates.last_check', '0')) || null,
-  }));
+  fastify.get('/updates', async () => {
+    let lastResults = [];
+    try { lastResults = JSON.parse(getSetting('updates.last_results', '[]')); } catch {}
+    return {
+      autoEnabled: getSetting('updates.auto_enabled', '0') === '1',
+      intervalHours: Number(getSetting('updates.interval_hours', '24')),
+      lastCheck: Number(getSetting('updates.last_check', '0')) || null,
+      lastResults: Array.isArray(lastResults) ? lastResults : [],
+    };
+  });
   fastify.put('/updates', async (request) => {
     const autoEnabled = !!request.body?.autoEnabled;
     const intervalHours = Math.max(1, Math.min(Number(request.body?.intervalHours) || 24, 720));

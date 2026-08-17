@@ -1,13 +1,14 @@
 import docker from '../services/docker.js';
 import { findProject, scanProjects } from '../services/scanner.js';
 import { buildMountPlan } from '../services/mount-plan.js';
-import { readCompose, resolveProjectFile, saveCompose, spawnCompose } from '../services/compose-runner.js';
-import { pruneWorkspaceRunners, readWorkspaceCompose, runWorkspaceCompose, saveWorkspaceCompose } from '../services/compose-workspace.js';
-import { runContainerAction, supportsContainerAction } from '../services/project-control.js';
+import { readCompose, saveCompose } from '../services/compose-runner.js';
+import { pruneWorkspaceRunners, readWorkspaceCompose, saveWorkspaceCompose } from '../services/compose-workspace.js';
+import { prepareProjectAction } from '../services/project-action-runner.js';
 import {
   addOperation,
   getComposeBackup,
   listComposeBackups,
+  listProjectOperations,
   setProjectManagement,
   setProjectPreference,
 } from '../lib/db.js';
@@ -97,6 +98,17 @@ export default async function projectRoutes(fastify) {
     if (project) return project;
   });
 
+  fastify.get('/:id/activity', async (request, reply) => {
+    const project = await projectOr404(request.params.id, reply);
+    if (!project) return;
+    if (!requireManaged(project, reply)) return;
+    return {
+      project: { id: project.id, projectName: project.projectName, editable: project.editable },
+      operations: listProjectOperations(project.id, request.query.limit),
+      backups: listComposeBackups(project.id),
+    };
+  });
+
   fastify.patch('/:id/preferences', async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
@@ -178,22 +190,9 @@ export default async function projectRoutes(fastify) {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     const action = request.body?.action;
-    if (!requireManaged(project, reply)) return;
-    if (!project.mountEnabled && !supportsContainerAction(action)) {
-      return reply.code(403).send({ error: 'compose_access_not_enabled', message: '尚未为该项目启用 Compose 目录能力' });
-    }
-    if (project.mountEnabled && !project.editable && !supportsContainerAction(action)) {
-      return reply.code(409).send({ error: 'compose_path_unavailable', message: 'Compose 项目路径缺失或权限范围过宽，无法安全挂载' });
-    }
-    let child;
-    if (project.editable && project.mounted) {
-      try {
-        const safeFiles = await Promise.all(project.composeFiles.map((_, index) => resolveProjectFile(project, index)));
-        child = spawnCompose({ ...project, composeFiles: safeFiles }, action);
-      } catch (error) {
-        return reply.code(error.statusCode || 400).send({ error: 'unsupported_action', message: error.message });
-      }
-    }
+    let prepared;
+    try { prepared = await prepareProjectAction(project, action); }
+    catch (error) { return reply.code(error.statusCode || 400).send({ error: 'unsupported_action', message: error.message }); }
 
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -206,49 +205,25 @@ export default async function projectRoutes(fastify) {
     };
     let output = '';
     let finished = false;
-    const finish = (code, mode) => {
+    const finish = (code) => {
       if (finished) return;
       finished = true;
       addOperation({
         projectId: project.id,
         projectName: project.projectName,
-        action: `${mode}.${action}`,
+        action: `${prepared.mode}.${action}`,
         status: code === 0 ? 'success' : 'failed',
         detail: output,
       });
       send('exit', { code });
       reply.raw.end();
     };
-    if (project.editable && !project.mounted) {
-      runWorkspaceCompose(project, action, (type, text) => {
-        output += text;
-        send(type, text);
-      }).then((code) => finish(code, 'workspace')).catch((error) => {
-        const text = `${error.message}\n`;
-        output += text;
-        send('stderr', text);
-        finish(1, 'workspace');
-      });
-      return;
-    }
-    if (!project.editable) {
-      runContainerAction(project, action, (type, text) => {
-        output += text;
-        send(type, text);
-      }).then((code) => finish(code, 'containers')).catch((error) => {
-        const text = `${error.message}\n`;
-        output += text;
-        send('stderr', text);
-        finish(1, 'containers');
-      });
-      return;
-    }
-    child.stdout.on('data', (chunk) => { const text = chunk.toString('utf8'); output += text; send('stdout', text); });
-    child.stderr.on('data', (chunk) => { const text = chunk.toString('utf8'); output += text; send('stderr', text); });
-    child.on('error', (error) => send('error', error.message));
-    child.on('close', (code) => finish(code, 'compose'));
+    let child;
+    prepared.run((type, text) => { output += text; send(type, text); }, (process) => { child = process; })
+      .then(finish)
+      .catch((error) => { const text = `${error.message}\n`; output += text; send('stderr', text); finish(1); });
     reply.raw.on('close', () => {
-      if (!finished && child.exitCode === null && !child.killed) child.kill('SIGTERM');
+      if (!finished && child && child.exitCode === null && !child.killed) child.kill('SIGTERM');
     });
   });
 }

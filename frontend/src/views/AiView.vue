@@ -1,12 +1,14 @@
 <template>
-  <div class="h-full flex flex-col gap-3">
-    <div class="flex flex-wrap items-center gap-2">
+  <div class="page-shell page-shell-workspace">
+    <div class="page-header">
       <div class="mr-auto"><h1 class="page-title">AI 运维助手</h1><p class="page-subtitle">结合 Compose 配置和最近日志进行诊断</p></div>
-      <select v-model="projectId" class="input" @change="containerId = ''"><option value="">选择项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
-      <select v-model="containerId" class="input"><option value="">选择容器</option><option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option></select>
-      <button class="btn-secondary" :disabled="streaming || !containerId" @click="diagnose"><Stethoscope class="w-4 h-4" />诊断</button>
-      <button class="icon-btn" title="重新载入历史" @click="loadHistory"><History class="w-4 h-4" /></button>
-      <button class="icon-btn" title="清空历史" @click="clearHistory"><Trash2 class="w-4 h-4" /></button>
+      <div class="page-actions">
+        <select v-model="projectId" class="input" @change="containerId = ''"><option value="">选择项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
+        <select v-model="containerId" class="input"><option value="">选择容器</option><option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option></select>
+        <button class="btn-secondary" :disabled="streaming || !containerId" @click="diagnose"><Stethoscope class="w-4 h-4" />诊断</button>
+        <button class="icon-btn" title="重新载入历史" @click="loadHistory"><History class="w-4 h-4" /></button>
+        <button class="icon-btn" title="清空历史" @click="clearHistory"><Trash2 class="w-4 h-4" /></button>
+      </div>
     </div>
     <p v-if="!store.config.apiKey" class="alert-warning">尚未配置 AI API Key，请先前往设置。</p>
     <div ref="boxEl" class="card flex-1 min-h-[320px] overflow-auto p-4 space-y-3">

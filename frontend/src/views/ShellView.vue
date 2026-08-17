@@ -1,12 +1,14 @@
 <template>
-  <div class="h-full flex flex-col gap-3">
-    <div class="flex flex-wrap items-center gap-2">
+  <div class="page-shell page-shell-workspace">
+    <div class="page-header">
       <div class="mr-auto"><h1 class="page-title">容器终端</h1><p class="page-subtitle">受限于当前 Compose 项目的交互式 Shell</p></div>
-      <select v-model="projectId" class="input" @change="containerId = ''"><option value="">选择项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
-      <select v-model="containerId" class="input"><option value="">选择容器</option><option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option></select>
-      <select v-model="cmd" class="input"><option value="sh">sh</option><option value="bash">bash</option></select>
-      <button v-if="!connected" class="btn-primary" :disabled="!containerId || !capabilities.shellEnabled" @click="connect"><Plug class="w-4 h-4" />连接</button>
-      <button v-else class="btn-danger" @click="disconnect"><Unplug class="w-4 h-4" />断开</button>
+      <div class="page-actions">
+        <select v-model="projectId" class="input" @change="containerId = ''"><option value="">选择项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
+        <select v-model="containerId" class="input"><option value="">选择容器</option><option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option></select>
+        <select v-model="cmd" class="input"><option value="sh">sh</option><option value="bash">bash</option></select>
+        <button v-if="!connected" class="btn-primary" :disabled="!containerId || !capabilities.shellEnabled" @click="connect"><Plug class="w-4 h-4" />连接</button>
+        <button v-else class="btn-danger" @click="disconnect"><Unplug class="w-4 h-4" />断开</button>
+      </div>
     </div>
     <p v-if="!capabilities.shellEnabled" class="alert-warning">Web Shell 当前未启用，请在部署环境设置 ENABLE_SHELL=1。</p><p v-if="error" class="alert-error">{{ error }}</p>
     <div class="card flex-1 min-h-[420px] terminal-host"><div ref="termEl" class="w-full h-full"></div></div>

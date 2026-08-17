@@ -14,6 +14,7 @@ const { parseYaml, validateYaml } = await import('../src/lib/files.js');
 const { demuxStream } = await import('../src/lib/docker-streams.js');
 const { buildMountPlan, compactMountPaths, safeProjectMountPath } = await import('../src/services/mount-plan.js');
 const { runContainerAction, supportsContainerAction } = await import('../src/services/project-control.js');
+const { assertProjectActionAllowed } = await import('../src/services/project-action-runner.js');
 
 test('passwords are hashed and sessions are authenticated by cookie', () => {
   assert.throws(() => auth.setPassword('short'), /至少需要 10/);
@@ -43,6 +44,10 @@ test('compose actions map to fixed argument lists', () => {
     'compose', '-f', '/srv/app/compose.yml', '-f', '/srv/app/compose.prod.yml', 'stop',
   ]);
   assert.throws(() => composeArgs(project, 'exec'), /不支持/);
+  assert.throws(
+    () => assertProjectActionAllowed({ managed: true, mountEnabled: true, editable: true }, 'exec'),
+    (error) => error.statusCode === 400 && /不支持/.test(error.message)
+  );
 });
 
 test('managed projects can control existing containers without Compose files', async () => {
@@ -93,6 +98,35 @@ test('exports and imports exclude credentials', () => {
   database.importUserData({ settings: { 'ai.model': 'model-b', 'auth.password_hash': 'bad' } });
   assert.equal(database.getSetting('ai.model'), 'model-b');
   assert.notEqual(database.getSetting('auth.password_hash'), 'bad');
+});
+
+test('project activity only returns operations for the selected project', () => {
+  database.addOperation({ projectId: 'activity-a', projectName: 'alpha', action: 'compose.save', status: 'success' });
+  database.addOperation({ projectId: 'activity-b', projectName: 'beta', action: 'compose.stop', status: 'failed' });
+  database.addOperation({ projectId: 'activity-a', projectName: 'alpha', action: 'compose.restart', status: 'success' });
+  const operations = database.listProjectOperations('activity-a', 10);
+  assert.deepEqual(operations.map((item) => item.action), ['compose.restart', 'compose.save']);
+  assert.ok(operations.every((item) => item.projectId === 'activity-a'));
+});
+
+test('background jobs persist structured project progress', () => {
+  const created = database.createBackgroundJob({ id: 'job-test', type: 'project.batch', action: 'restart', projects: [
+    { id: 'project-one', projectName: 'one' },
+    { id: 'project-two', projectName: 'two' },
+  ] });
+  assert.equal(created.status, 'queued');
+  assert.equal(created.items.length, 2);
+  database.updateBackgroundJob('job-test', 'running', 0);
+  database.updateBackgroundJobItem(created.items[0].id, { status: 'success', output: 'done', exitCode: 0 });
+  database.updateBackgroundJob('job-test', 'running', 1);
+  const running = database.getBackgroundJob('job-test');
+  assert.equal(running.completed, 1);
+  assert.equal(running.items[0].status, 'success');
+  assert.equal(running.items[0].output, 'done');
+  assert.equal(database.listBackgroundJobs().some((job) => job.id === 'job-test'), true);
+  database.interruptRunningBackgroundJobs();
+  assert.equal(database.getBackgroundJob('job-test').status, 'interrupted');
+  assert.equal(database.getBackgroundJob('job-test').items[1].status, 'interrupted');
 });
 
 test('project management is explicit and can be updated as a discovered allowlist', () => {

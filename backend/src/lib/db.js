@@ -59,6 +59,32 @@ db.exec(`
     detail TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS background_jobs (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    action TEXT NOT NULL,
+    status TEXT NOT NULL,
+    total INTEGER NOT NULL DEFAULT 0,
+    completed INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    started_at TEXT,
+    finished_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS background_job_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id TEXT NOT NULL REFERENCES background_jobs(id) ON DELETE CASCADE,
+    project_id TEXT NOT NULL,
+    project_name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    output TEXT NOT NULL DEFAULT '',
+    exit_code INTEGER,
+    started_at TEXT,
+    finished_at TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_background_job_items_job ON background_job_items(job_id, id);
 `);
 
 // 兼容已有数据库：新增项目纳管白名单，历史项目默认不自动获得操作权限。
@@ -212,6 +238,76 @@ export function listOperations(limit = 100) {
            created_at AS createdAt
     FROM operation_history ORDER BY id DESC LIMIT ?
   `).all(safeLimit);
+}
+
+export function listProjectOperations(projectId, limit = 50) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 200));
+  return db.prepare(`
+    SELECT id, project_id AS projectId, project_name AS projectName, action, status, detail,
+           created_at AS createdAt
+    FROM operation_history WHERE project_id = ? ORDER BY id DESC LIMIT ?
+  `).all(projectId, safeLimit);
+}
+
+export function createBackgroundJob({ id, type, action, projects }) {
+  const insert = db.transaction(() => {
+    db.prepare('INSERT INTO background_jobs(id, type, action, status, total) VALUES(?, ?, ?, ?, ?)')
+      .run(id, type, action, 'queued', projects.length);
+    const statement = db.prepare('INSERT INTO background_job_items(job_id, project_id, project_name, status) VALUES(?, ?, ?, ?)');
+    for (const project of projects) statement.run(id, project.id, project.projectName, 'pending');
+  });
+  insert();
+  return getBackgroundJob(id);
+}
+
+export function updateBackgroundJob(id, status, completed = null) {
+  const timestamps = status === 'running'
+    ? "started_at = COALESCE(started_at, datetime('now'))"
+    : ['success', 'failed', 'interrupted'].includes(status) ? "finished_at = datetime('now')" : 'finished_at = finished_at';
+  db.prepare(`UPDATE background_jobs SET status = ?, completed = COALESCE(?, completed), ${timestamps} WHERE id = ?`)
+    .run(status, completed, id);
+}
+
+export function updateBackgroundJobItem(id, { status, output = '', exitCode = null }) {
+  const timestamps = status === 'running'
+    ? "started_at = COALESCE(started_at, datetime('now'))"
+    : ['success', 'failed', 'interrupted'].includes(status) ? "finished_at = datetime('now')" : 'finished_at = finished_at';
+  db.prepare(`UPDATE background_job_items SET status = ?, output = ?, exit_code = ?, ${timestamps} WHERE id = ?`)
+    .run(status, String(output || '').slice(-20000), exitCode, id);
+}
+
+export function getBackgroundJob(id) {
+  const job = db.prepare(`
+    SELECT id, type, action, status, total, completed, created_at AS createdAt,
+           started_at AS startedAt, finished_at AS finishedAt
+    FROM background_jobs WHERE id = ?
+  `).get(id);
+  if (!job) return null;
+  job.items = db.prepare(`
+    SELECT id, project_id AS projectId, project_name AS projectName, status, output,
+           exit_code AS exitCode, started_at AS startedAt, finished_at AS finishedAt
+    FROM background_job_items WHERE job_id = ? ORDER BY id
+  `).all(id);
+  return job;
+}
+
+export function listBackgroundJobs(limit = 20) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
+  return db.prepare(`
+    SELECT id, type, action, status, total, completed, created_at AS createdAt,
+           started_at AS startedAt, finished_at AS finishedAt
+    FROM background_jobs ORDER BY created_at DESC, rowid DESC LIMIT ?
+  `).all(safeLimit);
+}
+
+export function interruptRunningBackgroundJobs() {
+  const jobs = db.prepare("SELECT id FROM background_jobs WHERE status IN ('queued', 'running')").all();
+  const interrupt = db.transaction(() => {
+    db.prepare("UPDATE background_job_items SET status = 'interrupted', finished_at = datetime('now') WHERE status IN ('pending', 'running')").run();
+    db.prepare("UPDATE background_jobs SET status = 'interrupted', finished_at = datetime('now') WHERE status IN ('queued', 'running')").run();
+  });
+  interrupt();
+  return jobs.map((job) => job.id);
 }
 
 export function exportUserData() {
