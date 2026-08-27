@@ -1,5 +1,7 @@
 import { WebSocket } from 'ws';
 import { findProjectContainer } from '../services/scanner.js';
+import { getBackgroundJob } from '../lib/db.js';
+import { subscribeJobEvents } from '../services/job-events.js';
 
 /**
  * WebSocket 路由：实时日志流与容器 Web Shell。
@@ -12,6 +14,27 @@ import { findProjectContainer } from '../services/scanner.js';
  * 这些路由挂在 /ws 前缀（不经过 /api/v1），方便 nginx 反代区分。
  */
 export default async function wsRoutes(fastify) {
+  // ---- 批量任务进度推送 ----
+  fastify.get('/jobs', { websocket: true }, async (socket, request) => {
+    const { jobId } = request.query;
+    if (jobId) {
+      const job = getBackgroundJob(String(jobId));
+      if (!job) {
+        safeSend(socket, { type: 'error', data: 'job not found' });
+        return socket.close();
+      }
+      // 先发当前全量快照，避免依赖连接时序丢状态；DB 为唯一事实来源。
+      safeSend(socket, { type: 'snapshot', job });
+    }
+    const unsubscribe = subscribeJobEvents(({ jobId: id, event, ...rest }) => {
+      if (id !== jobId) return; // 只推订阅的任务
+      const job = getBackgroundJob(id);
+      if (!job) return;
+      safeSend(socket, { type: 'update', event, ...rest, job });
+    });
+    socket.on('close', unsubscribe);
+  });
+
   // ---- 实时日志流 ----
   fastify.get('/logs', { websocket: true }, async (socket, request) => {
     const { projectId, containerId, tail = 200 } = request.query;

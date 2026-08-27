@@ -31,9 +31,9 @@
 
     <section v-if="tab === 'maintenance'" class="settings-section">
       <div class="flex items-center justify-between"><h2 class="section-title">镜像更新</h2><button class="btn-secondary" :disabled="checkingUpdates" @click="checkUpdates"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': checkingUpdates }" />立即检查</button></div>
-      <div class="form-grid"><label class="toggle-label"><input v-model="updates.autoEnabled" type="checkbox" />定时拉取并检查更新</label><label>检查间隔（小时）<input v-model.number="updates.intervalHours" type="number" min="1" max="720" class="input" /></label></div><div class="flex flex-wrap items-center gap-3"><button class="btn-primary" @click="saveUpdates"><Save class="w-4 h-4" />保存更新策略</button><span v-if="updates.lastCheck" class="text-xs text-surface-500">上次检查：{{ new Date(updates.lastCheck).toLocaleString() }}</span></div>
+      <div class="form-grid"><label class="toggle-label"><input v-model="updates.autoEnabled" type="checkbox" />定时拉取并检查更新</label><label>检查间隔（小时）<input v-model.number="updates.intervalHours" type="number" min="1" max="720" class="input" /></label></div><div class="flex flex-wrap items-center gap-3"><button class="btn-primary" @click="saveUpdates"><Save class="w-4 h-4" />保存更新策略</button><span v-if="updates.lastCheck" class="text-muted">上次检查：{{ new Date(updates.lastCheck).toLocaleString() }}</span></div>
       <div v-if="updateSummary.total" class="grid gap-3 sm:grid-cols-3"><StatCard title="已检查镜像" :value="String(updateSummary.total)" sub="最近一次检查"/><StatCard title="发现更新" :value="String(updateSummary.updated)" sub="需重建相关容器"/><StatCard title="检查失败" :value="String(updateSummary.failed)" sub="请检查仓库或网络"/></div>
-      <div v-if="updateResults.length" class="space-y-1"><div v-for="item in updateResults" :key="item.image" class="flex justify-between gap-3 text-sm py-1 border-b border-surface-800"><span class="min-w-0 truncate font-mono" :title="item.image">{{ item.image }}</span><span class="shrink-0" :class="item.status === 'updated' ? 'text-amber-400' : item.status === 'failed' ? 'text-red-400' : 'text-green-400'">{{ imageStatusLabel(item.status) }}</span></div></div>
+      <div v-if="updateResults.length" class="space-y-1"><div v-for="item in updateResults" :key="item.image" class="flex justify-between gap-3 text-sm py-1 border-b border-surface-800"><span class="min-w-0 truncate font-mono" :title="item.image">{{ item.image }}</span><span class="shrink-0" :class="item.status === 'updated' ? 'text-amber-400' : item.status === 'failed' ? 'text-rose-400' : 'text-emerald-400'">{{ imageStatusLabel(item.status) }}</span></div></div>
       <div class="border-t border-surface-800 pt-4 space-y-3"><div class="flex items-center justify-between"><h2 class="section-title">Docker 空间</h2><button class="icon-btn" title="刷新用量" @click="loadUsage"><RefreshCw class="w-4 h-4" /></button></div><div v-if="usage" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-2"><StatCard title="镜像" :value="formatBytes(usage.images.total)" :sub="`可回收 ${formatBytes(usage.images.reclaimable)}`"/><StatCard title="构建缓存" :value="formatBytes(usage.buildCache.total)" :sub="`可回收 ${formatBytes(usage.buildCache.reclaimable)}`"/><StatCard title="停止容器" :value="String(usage.containers.count)" :sub="`可回收 ${formatBytes(usage.containers.reclaimable)}`"/><StatCard title="未使用卷" :value="String(usage.volumes.count)" :sub="`可回收 ${formatBytes(usage.volumes.reclaimable)}`"/></div>
         <div class="flex flex-wrap gap-3"><label class="toggle-label"><input v-model="prune.images" type="checkbox" />未使用镜像</label><label class="toggle-label"><input v-model="prune.buildCache" type="checkbox" />构建缓存</label><label class="toggle-label"><input v-model="prune.containers" type="checkbox" />停止容器</label><label class="toggle-label text-amber-400"><input v-model="prune.volumes" type="checkbox" />未使用卷</label></div><button class="btn-danger" @click="runPrune"><Trash2 class="w-4 h-4" />执行清理</button></div>
     </section>
@@ -57,7 +57,7 @@
           <button class="btn-primary" :disabled="mountLoading || !selectionDirty" @click="saveManagement"><ShieldCheck class="w-4 h-4" />应用选择</button>
         </div>
         <p v-if="selectionDirty" class="alert-warning">当前选择尚未应用；保存前不会改变项目权限或 Compose 目录范围。</p>
-        <div v-if="!mountPlan.projects.length" class="empty-state"><FolderCog class="w-8 h-8" /><span>暂未发现 Compose 项目</span></div>
+        <EmptyState v-if="!mountPlan.projects.length" icon="FolderCog" title="暂未发现 Compose 项目" description="重新扫描以发现新的 Docker Compose 项目" action-label="重新扫描" action-icon="RefreshCw" :action-disabled="mountLoading" @action="loadMountPlan" />
         <div v-for="project in mountPlan.projects" :key="project.id" class="card p-3 flex items-start gap-3" :class="{ 'ring-1 ring-amber-500/70': highlightedProjectId === project.id }">
           <div class="flex flex-col gap-2 pt-0.5">
             <label class="toggle-label text-xs whitespace-nowrap" title="允许控制该项目的现有容器"><input v-model="selectedProjectIds" type="checkbox" :value="project.id" class="accent-accent" />纳管</label>
@@ -65,7 +65,7 @@
           </div>
           <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-center gap-2"><span class="font-mono text-sm">{{ project.projectName }}</span><span class="count-badge">{{ projectAccessLabel(project) }}</span><span class="count-badge">{{ project.containerCount }} 个容器</span></div>
-            <div class="text-xs text-surface-500 font-mono break-all mt-1">{{ project.workingDir || 'Docker 标签未提供工作目录' }}</div>
+            <div class="text-muted font-mono break-all mt-1">{{ project.workingDir || 'Docker 标签未提供工作目录' }}</div>
           </div>
         </div>
       </div>
@@ -90,6 +90,7 @@ import { computed, markRaw, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { Bell, Bot, Download, FolderCog, Info, KeyRound, RefreshCw, Save, Send, ShieldCheck, SlidersHorizontal, Trash2, Upload, Wrench } from 'lucide-vue-next';
 import { api } from '../api/client.js'; import { useAiStore } from '../stores/ai.js'; import StatCard from '../components/StatCard.vue';
+import EmptyState from '../components/common/EmptyState.vue';
 const tabs = [{ id: 'ai', label: 'AI', icon: markRaw(Bot) }, { id: 'personal', label: '偏好', icon: markRaw(SlidersHorizontal) }, { id: 'notifications', label: '通知', icon: markRaw(Bell) }, { id: 'maintenance', label: '维护', icon: markRaw(Wrench) }, { id: 'mounts', label: '项目纳管', icon: markRaw(FolderCog) }, { id: 'about', label: '关于', icon: markRaw(Info) }];
 const route = useRoute();
 const initialTab = tabs.some((item) => item.id === route.query.tab) ? route.query.tab : 'ai';

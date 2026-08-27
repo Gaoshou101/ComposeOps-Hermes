@@ -19,14 +19,14 @@
           <span class="metric-icon text-emerald-300"><CircleCheckBig class="h-5 w-5" /></span><span><strong>{{ successCount }}</strong><small>执行成功</small></span><span class="metric-meta">成功率 {{ successRate }}%</span>
         </button>
         <button class="metric-tile" :class="{ active: statusFilter === 'failed' }" @click="statusFilter = statusFilter === 'failed' ? 'all' : 'failed'">
-          <span class="metric-icon text-red-300"><CircleX class="h-5 w-5" /></span><span><strong>{{ failedCount }}</strong><small>执行失败</small></span><span class="metric-meta">优先检查错误详情</span>
+          <span class="metric-icon text-rose-300"><CircleX class="h-5 w-5" /></span><span><strong>{{ failedCount }}</strong><small>执行失败</small></span><span class="metric-meta">优先检查错误详情</span>
         </button>
         <div class="metric-tile"><span class="metric-icon text-violet-300"><Activity class="h-5 w-5" /></span><span><strong>{{ actionTypes }}</strong><small>操作类型</small></span><span class="metric-meta">Compose、配置与维护</span></div>
       </div>
       <div class="toolbar-panel">
         <label class="search-field"><Search class="h-4 w-4" /><input v-model="query" placeholder="搜索项目、操作或详情" /></label>
         <select v-model="statusFilter" class="input sm:w-36"><option value="all">全部结果</option><option value="success">成功</option><option value="failed">失败</option></select>
-        <span class="ml-auto whitespace-nowrap text-xs text-surface-500">{{ filteredOperations.length }} 条记录</span>
+        <span class="ml-auto whitespace-nowrap text-muted">{{ filteredOperations.length }} 条记录</span>
       </div>
       <div class="table-wrap flex-1 min-h-64">
         <table class="data-table">
@@ -38,7 +38,7 @@
               <td><StatusBadge :status="item.status" /></td>
               <td><button v-if="item.detail" class="icon-btn" title="查看输出" @click="selectedOperation = item"><Eye class="h-4 w-4" /></button></td>
             </tr>
-            <tr v-if="!filteredOperations.length"><td colspan="5"><div class="empty-state border-0">{{ operations.length ? '没有匹配的操作记录' : '暂无操作记录' }}</div></td></tr>
+            <tr v-if="!filteredOperations.length"><td colspan="5"><EmptyState compact :icon="operations.length ? 'Search' : 'History'" :title="operations.length ? '没有匹配的操作记录' : '暂无操作记录'" :description="operations.length ? '调整筛选条件后重试' : '执行 Compose 操作后会自动记录审计日志'" /></td></tr>
           </tbody>
         </table>
       </div>
@@ -54,13 +54,13 @@
           <span class="metric-icon text-emerald-300"><CircleCheckBig class="h-5 w-5" /></span><span><strong>{{ successfulJobCount }}</strong><small>已完成</small></span><span class="metric-meta">所有项目执行成功</span>
         </button>
         <button class="metric-tile" :class="{ active: jobStatusFilter === 'abnormal' }" @click="jobStatusFilter = jobStatusFilter === 'abnormal' ? 'all' : 'abnormal'">
-          <span class="metric-icon text-red-300"><TriangleAlert class="h-5 w-5" /></span><span><strong>{{ abnormalJobCount }}</strong><small>异常任务</small></span><span class="metric-meta">失败或意外中断</span>
+          <span class="metric-icon text-rose-300"><TriangleAlert class="h-5 w-5" /></span><span><strong>{{ abnormalJobCount }}</strong><small>异常任务</small></span><span class="metric-meta">失败或意外中断</span>
         </button>
       </div>
       <div class="toolbar-panel">
         <label class="search-field"><Search class="h-4 w-4" /><input v-model="jobQuery" placeholder="搜索任务 ID 或动作" /></label>
         <select v-model="jobStatusFilter" class="input sm:w-40"><option value="all">全部状态</option><option value="active">正在执行</option><option value="success">已完成</option><option value="abnormal">异常任务</option></select>
-        <span class="ml-auto whitespace-nowrap text-xs text-surface-500">{{ filteredJobs.length }} 个任务</span>
+        <span class="ml-auto whitespace-nowrap text-muted">{{ filteredJobs.length }} 个任务</span>
       </div>
       <div class="table-wrap flex-1 min-h-64">
         <table class="data-table">
@@ -74,7 +74,7 @@
               <td><StatusBadge :status="job.status" /></td>
               <td><button class="icon-btn" title="查看任务详情" @click="openJob(job.id)"><Eye class="h-4 w-4" /></button></td>
             </tr>
-            <tr v-if="!filteredJobs.length"><td colspan="6"><div class="empty-state border-0">{{ jobs.length ? '没有匹配的后台任务' : '暂无后台任务' }}</div></td></tr>
+            <tr v-if="!filteredJobs.length"><td colspan="6"><EmptyState compact :icon="jobs.length ? 'Search' : 'ListChecks'" :title="jobs.length ? '没有匹配的后台任务' : '暂无后台任务'" :description="jobs.length ? '调整筛选条件后重试' : '批量操作会以后台任务形式出现在这里'" /></td></tr>
           </tbody>
         </table>
       </div>
@@ -88,14 +88,14 @@
       <div class="modal flex max-h-[88vh] max-w-5xl flex-col">
         <div class="modal-header shrink-0"><span>{{ actionLabel(selectedJob.action) }} · {{ selectedJob.total }} 个项目</span><div class="flex items-center gap-2"><StatusBadge :status="selectedJob.status" /><button class="icon-btn" title="关闭" @click="closeJob"><X class="h-4 w-4" /></button></div></div>
         <div class="shrink-0 border-b border-surface-800 p-4">
-          <div class="mb-2 flex items-center justify-between text-xs text-surface-500"><span>{{ formatTime(selectedJob.createdAt) }} 创建</span><span>{{ selectedJob.completed }} / {{ selectedJob.total }} 已完成</span></div>
+          <div class="mb-2 flex items-center justify-between text-muted"><span>{{ formatTime(selectedJob.createdAt) }} 创建</span><span>{{ selectedJob.completed }} / {{ selectedJob.total }} 已完成</span></div>
           <div class="progress"><span :style="{ width: `${jobProgress(selectedJob)}%` }"></span></div>
         </div>
         <div class="grid min-h-0 flex-1 md:grid-cols-[17rem_minmax(0,1fr)]">
           <div class="overflow-y-auto border-b border-surface-800 p-2 md:border-b-0 md:border-r">
             <button v-for="item in selectedJob.items" :key="item.id" class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-surface-800" :class="{ 'bg-surface-800': selectedJobItem?.id === item.id }" @click="selectedJobItem = item">
-              <LoaderCircle v-if="item.status === 'running'" class="h-4 w-4 shrink-0 animate-spin text-accent" /><CircleCheckBig v-else-if="item.status === 'success'" class="h-4 w-4 shrink-0 text-green-400" /><CircleX v-else-if="item.status === 'failed'" class="h-4 w-4 shrink-0 text-red-400" /><TriangleAlert v-else-if="item.status === 'interrupted'" class="h-4 w-4 shrink-0 text-amber-400" /><span v-else class="h-2 w-2 shrink-0 rounded-full bg-surface-600"></span>
-              <span class="min-w-0 flex-1"><strong class="block truncate text-sm font-medium text-surface-200">{{ item.projectName }}</strong><small class="mt-0.5 block text-xs text-surface-500">{{ item.exitCode === null ? statusLabel(item.status) : `退出码 ${item.exitCode}` }}</small></span>
+              <LoaderCircle v-if="item.status === 'running'" class="h-4 w-4 shrink-0 animate-spin text-accent" /><CircleCheckBig v-else-if="item.status === 'success'" class="h-4 w-4 shrink-0 text-emerald-400" /><CircleX v-else-if="item.status === 'failed'" class="h-4 w-4 shrink-0 text-rose-400" /><TriangleAlert v-else-if="item.status === 'interrupted'" class="h-4 w-4 shrink-0 text-amber-400" /><span v-else class="h-2 w-2 shrink-0 rounded-full bg-surface-600"></span>
+              <span class="min-w-0 flex-1"><strong class="block truncate text-sm font-medium text-surface-200">{{ item.projectName }}</strong><small class="mt-0.5 block text-muted">{{ item.exitCode === null ? statusLabel(item.status) : `退出码 ${item.exitCode}` }}</small></span>
             </button>
           </div>
           <pre class="terminal-output min-h-52">{{ selectedJobItem?.output || '该项目尚无输出。' }}</pre>
@@ -110,7 +110,8 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Activity, CircleCheckBig, CircleX, Eye, History, ListChecks, LoaderCircle, RefreshCw, Search, TriangleAlert, X } from 'lucide-vue-next';
 import { api } from '../api/client.js';
-import StatusBadge from '../components/StatusBadge.vue';
+import StatusBadge from '../components/common/StatusBadge.vue';
+import EmptyState from '../components/common/EmptyState.vue';
 
 const route = useRoute();
 const router = useRouter();

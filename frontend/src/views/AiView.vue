@@ -1,7 +1,7 @@
 <template>
   <div class="page-shell page-shell-workspace">
     <div class="page-header">
-      <div class="mr-auto"><h1 class="page-title">AI 运维助手</h1><p class="page-subtitle">结合 Compose 配置和最近日志进行诊断</p></div>
+      <div><h1 class="page-title">AI 运维助手</h1><p class="page-subtitle">结合 Compose 配置和最近日志进行诊断</p></div>
       <div class="page-actions">
         <select v-model="projectId" class="input" @change="containerId = ''"><option value="">选择项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
         <select v-model="containerId" class="input"><option value="">选择容器</option><option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option></select>
@@ -12,7 +12,7 @@
     </div>
     <p v-if="!store.config.apiKey" class="alert-warning">尚未配置 AI API Key，请先前往设置。</p>
     <div ref="boxEl" class="card flex-1 min-h-[320px] overflow-auto p-4 space-y-3">
-      <div v-if="!messages.length" class="empty-state border-0"><Bot class="w-8 h-8" /><span>选择容器进行诊断，或直接询问 Docker Compose 问题</span></div>
+      <EmptyState v-if="!messages.length" icon="Bot" compact title="开始一次诊断" description="选择容器进行诊断,或直接询问 Docker Compose 问题" />
       <div v-for="message in messages" :key="message.id" class="flex" :class="message.role === 'user' ? 'justify-end' : 'justify-start'">
         <div class="message" :class="message.role === 'user' ? 'message-user' : 'message-assistant'">{{ message.content }}</div>
       </div>
@@ -29,6 +29,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { Bot, History, Send, Square, Stethoscope, Trash2 } from 'lucide-vue-next';
+import EmptyState from '../components/common/EmptyState.vue';
 import { useAiStore } from '../stores/ai.js'; import { api, streamSse } from '../api/client.js';
 const route = useRoute(); const store = useAiStore(); const projects = ref([]); const projectId = ref(route.query.projectId || ''); const containerId = ref(route.query.containerId || ''); const messages = ref([]); const input = ref(''); const streaming = ref(false); const buffer = ref(''); const boxEl = ref(null); let controller; let nextId = 0;
 const containers = computed(() => projects.value.find((p) => p.id === projectId.value)?.containers || []);

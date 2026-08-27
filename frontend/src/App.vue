@@ -11,11 +11,12 @@
     <div class="flex min-h-0 flex-1 overflow-hidden pb-16 md:pb-0">
       <AppSidebar />
       <main class="app-main flex-1 min-w-0 overflow-auto">
-        <div class="h-full min-h-full w-full px-4 py-5 sm:px-6 sm:py-6 lg:px-8 xl:px-10 2xl:px-12">
+        <div class="mx-auto h-full min-h-full w-full max-w-7xl px-4 py-5 sm:px-6 sm:py-6 lg:px-8 xl:px-10 2xl:px-14">
           <router-view />
         </div>
       </main>
     </div>
+    <ToastContainer />
   </div>
 </template>
 
@@ -23,6 +24,7 @@
 import { onMounted, onBeforeUnmount } from 'vue';
 import AppHeader from './components/AppHeader.vue';
 import AppSidebar from './components/AppSidebar.vue';
+import ToastContainer from './components/common/ToastContainer.vue';
 import LoginView from './views/LoginView.vue';
 import { useAuthStore } from './stores/auth.js';
 

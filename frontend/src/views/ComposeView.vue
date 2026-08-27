@@ -1,7 +1,7 @@
 <template>
   <div class="page-shell page-shell-workspace">
     <div class="page-header">
-      <div class="mr-auto"><h1 class="page-title">Compose 配置</h1><p class="page-subtitle">保存前执行 YAML 与 docker compose config 校验</p></div>
+      <div><h1 class="page-title">Compose 配置</h1><p class="page-subtitle">保存前执行 YAML 与 docker compose config 校验</p></div>
       <div class="page-actions">
         <select v-model="projectId" class="input min-w-52" @change="selectProject"><option value="">选择项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
         <select v-if="project?.composeFiles.length > 1" v-model.number="fileIndex" class="input" @change="load"><option v-for="(file, i) in project.composeFiles" :key="file" :value="i">{{ shortName(file) }}</option></select>
@@ -10,18 +10,21 @@
         <button class="btn-primary" :disabled="saving || !dirty" @click="save"><Save class="w-4 h-4" />{{ saving ? '校验中...' : '保存' }}</button>
       </div>
     </div>
-    <div v-if="filePath" class="text-xs text-surface-500 font-mono truncate">{{ filePath }}<span v-if="dirty" class="text-amber-400 ml-2">● 未保存</span></div>
+    <div v-if="filePath" class="text-muted font-mono truncate">{{ filePath }}<span v-if="dirty" class="text-amber-400 ml-2">● 未保存</span></div>
     <p v-if="error" class="alert-error">{{ error }}</p><p v-if="message" class="alert-success">{{ message }}</p>
-    <div v-if="!projectId" class="empty-state flex-1"><FileCode2 class="w-8 h-8" /><span>请先选择一个已挂载的项目</span></div>
-    <div v-else ref="editorEl" class="card flex-1 min-h-[420px] overflow-hidden ring-1 ring-black/10"></div>
+    <EmptyState v-if="!projectId" icon="FileCode2" title="请先选择一个已挂载的项目" description="选择项目后即可查看与编辑 Compose 配置" class="flex-1" />
+    <div v-else class="card relative flex-1 min-h-[420px] overflow-hidden ring-1 ring-black/10">
+      <Skeleton v-if="!editorReady" class="skeleton-workspace" rows="10" label="编辑器加载中" />
+      <div ref="editorEl" class="absolute inset-0" :class="{ invisible: !editorReady }"></div>
+    </div>
 
     <div v-if="showBackups" class="modal-backdrop" @click.self="showBackups = false">
       <div class="modal max-w-3xl">
         <div class="modal-header"><span>配置备份（最近 20 份）</span><button class="icon-btn" @click="showBackups = false"><X class="w-4 h-4" /></button></div>
         <div class="p-3 space-y-2 overflow-auto max-h-[60vh]">
-          <div v-if="!backups.length" class="empty-state">保存一次配置后会自动产生备份</div>
+          <EmptyState icon="History" compact title="暂无配置备份" description="保存一次配置后会自动产生备份" />
           <div v-for="backup in backups" :key="backup.id" class="card p-3 flex items-center gap-3">
-            <div class="flex-1"><div class="text-sm">{{ formatTime(backup.createdAt) }}</div><div class="text-xs text-surface-500">{{ backup.reason }} · {{ backup.size }} 字符</div></div>
+            <div class="flex-1"><div class="text-sm">{{ formatTime(backup.createdAt) }}</div><div class="text-muted">{{ backup.reason }} · {{ backup.size }} 字符</div></div>
             <button class="btn-ghost" @click="previewBackup(backup)"><Eye class="w-4 h-4" />比较</button>
             <button class="btn-secondary" @click="restore(backup)"><Undo2 class="w-4 h-4" />恢复</button>
           </div>
@@ -38,6 +41,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { AlignLeft, Eye, FileCode2, History, Save, Undo2, X } from 'lucide-vue-next';
+import Skeleton from '../components/common/Skeleton.vue';
+import EmptyState from '../components/common/EmptyState.vue';
 import * as YAML from 'yaml';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 import 'monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution';
@@ -46,7 +51,7 @@ import { api } from '../api/client.js';
 
 self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
 const route = useRoute(); const router = useRouter();
-const editorEl = ref(null); const projects = ref([]); const projectId = ref(route.query.projectId || '');
+const editorEl = ref(null); const editorReady = ref(false); const projects = ref([]); const projectId = ref(route.query.projectId || '');
 const fileIndex = ref(0); const filePath = ref(''); const content = ref(''); const original = ref('');
 const saving = ref(false); const error = ref(''); const message = ref(''); const backups = ref([]);
 const showBackups = ref(false); const comparison = ref(null); let editor;
@@ -65,6 +70,7 @@ function createEditor() {
   if (!editorEl.value || editor) return;
   editor = monaco.editor.create(editorEl.value, { value: '', language: 'yaml', theme: 'vs-dark', automaticLayout: true, fontSize: 13, minimap: { enabled: false }, tabSize: 2, scrollBeyondLastLine: false });
   editor.onDidChangeModelContent(() => { content.value = editor.getValue(); message.value = ''; });
+  editorReady.value = true;
 }
 async function selectProject() { fileIndex.value = 0; await router.replace({ query: projectId.value ? { projectId: projectId.value } : {} }); await nextTick(); createEditor(); if (projectId.value) load(); }
 async function load() {

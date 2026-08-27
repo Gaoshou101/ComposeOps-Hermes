@@ -7,7 +7,7 @@
           <span class="text-sm sm:text-base font-semibold tracking-tight">ComposeOps</span>
           <span class="hidden sm:inline text-[10px] uppercase tracking-[0.16em] text-surface-500">Control Center</span>
         </div>
-        <p class="text-xs text-surface-500 truncate">{{ currentPage }}</p>
+        <p class="text-muted truncate">{{ currentPage }}</p>
       </div>
     </div>
     <div class="flex items-center gap-2 sm:gap-3 text-sm">
@@ -15,14 +15,14 @@
         <Search class="h-4 w-4" />
         <span class="hidden md:inline">快速跳转</span>
       </button>
-      <span v-if="backendOnline" class="status-pill text-green-300">
-        <span class="w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]"></span><span class="hidden sm:inline">服务正常</span>
+      <span v-if="backendOnline" class="status-pill text-emerald-300">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-glow-emerald"></span><span class="hidden sm:inline">服务正常</span>
       </span>
-      <span v-else class="status-pill text-red-300">
-        <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span><span class="hidden sm:inline">服务离线</span>
+      <span v-else class="status-pill text-rose-300">
+        <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span><span class="hidden sm:inline">服务离线</span>
       </span>
       <EventCenter />
-      <span class="hidden lg:inline text-xs text-surface-500">{{ currentTime }}</span>
+      <span class="hidden lg:inline text-muted">{{ currentTime }}</span>
       <span class="h-5 w-px bg-surface-800"></span>
       <button class="icon-btn" title="退出登录" aria-label="退出登录" @click="$emit('logout')"><LogOut class="w-4 h-4" /></button>
     </div>
@@ -56,12 +56,12 @@
           <span class="command-icon"><component :is="item.icon" class="h-4 w-4" /></span>
           <span class="min-w-0 flex-1 text-left">
             <span class="block text-sm text-surface-100">{{ item.label }}</span>
-            <span class="block truncate text-xs text-surface-500">{{ item.description }}</span>
+            <span class="block truncate text-muted">{{ item.description }}</span>
           </span>
           <span v-if="isCurrent(item)" class="text-[11px] text-accent">当前</span>
           <ArrowRight v-else class="h-4 w-4 text-surface-600" />
         </button>
-        <div v-if="!filteredCommands.length" class="empty-state min-h-36 border-0">没有匹配的页面</div>
+        <EmptyState icon="Search" compact title="没有匹配的页面" description="尝试其他关键词" />
       </div>
     </div>
   </div>
@@ -72,6 +72,7 @@ import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowRight, Bot, Boxes, ChartNoAxesCombined, FileCode2, History, LogOut, ScrollText, Search, Settings, TerminalSquare, X } from 'lucide-vue-next';
 import EventCenter from './EventCenter.vue';
+import EmptyState from './common/EmptyState.vue';
 
 const route = useRoute();
 const router = useRouter();

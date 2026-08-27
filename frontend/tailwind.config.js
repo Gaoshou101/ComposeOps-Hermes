@@ -1,7 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{vue,js,ts,jsx,tsx}'],
-  darkMode: 'class',
+  // 深色专业控制台为唯一主题，无需 darkMode 变体开关（页面无 light 主题，也未使用 dark: 前缀）
   theme: {
     extend: {
       colors: {
@@ -25,7 +25,14 @@ export default {
         },
       },
       fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+      },
+      boxShadow: {
+        // 状态语义光晕：运行时/成功 -> emerald，危险/失败 -> rose，信息/激活 -> accent
+        'glow-emerald': '0 0 8px rgba(52, 211, 153, 0.4)',
+        'glow-rose': '0 0 8px rgba(251, 113, 133, 0.4)',
+        'glow-accent': '0 0 8px rgba(37, 99, 235, 0.4)',
       },
     },
   },

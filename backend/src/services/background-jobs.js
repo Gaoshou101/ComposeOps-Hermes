@@ -7,8 +7,12 @@ import {
   updateBackgroundJob,
   updateBackgroundJobItem,
 } from '../lib/db.js';
-import { findProject, scanProjects } from './scanner.js';
-import { assertProjectActionAllowed, prepareProjectAction } from './project-action-runner.js';
+import { findProject as scannerFindProject, scanProjects } from './scanner.js';
+import {
+  assertProjectActionAllowed,
+  prepareProjectAction as runnerPrepareProjectAction,
+} from './project-action-runner.js';
+import { emitJobUpdate } from './job-events.js';
 
 const ACTIONS = new Set(['up', 'restart', 'stop', 'pull', 'ps']);
 
@@ -28,20 +32,37 @@ export async function createProjectBatchJob(projectIds, action) {
   for (const project of selected) assertProjectActionAllowed(project, action);
   const id = randomUUID();
   const job = createBackgroundJob({ id, type: 'project.batch', action, projects: selected });
+  emitJobUpdate(id, { event: 'created' });
   queueMicrotask(() => void runProjectBatchJob(id));
   return job;
 }
 
-async function runProjectBatchJob(jobId) {
+/**
+ * 串行执行一个批量任务的各项目。依赖项通过 deps 注入，便于测试脱离 Docker 驱动循环；
+ * 生产调用不传 deps，走默认实现。DB 始终是唯一事实来源，广播仅转发轻量变更信号。
+ */
+export async function runProjectBatchJob(jobId, deps = {}) {
+  const {
+    findProject = (id) => scannerFindProject(id),
+    prepareProjectAction = (project, action) => runnerPrepareProjectAction(project, action),
+    updateJobItem = (id, patch) => updateBackgroundJobItem(id, patch),
+    updateJob = (id, status, completed) => updateBackgroundJob(id, status, completed),
+    recordOperation = (op) => addOperation(op),
+    emit = (id, event, payload) => emitJobUpdate(id, { event, ...payload }),
+    flushInterval = 250,
+  } = deps;
+
   const job = getBackgroundJob(jobId);
   if (!job) return;
-  updateBackgroundJob(jobId, 'running', 0);
+  updateJob(jobId, 'running', 0);
+  emit(jobId, 'start', { total: job.items.length });
   let completed = 0;
   let failed = 0;
   for (const item of job.items) {
     let output = '';
     let lastFlush = 0;
-    updateBackgroundJobItem(item.id, { status: 'running' });
+    updateJobItem(item.id, { status: 'running' });
+    emit(jobId, 'item', { itemId: item.id, status: 'running', completed });
     try {
       const project = await findProject(item.projectId);
       if (!project) throw new Error('项目已不可见');
@@ -49,23 +70,27 @@ async function runProjectBatchJob(jobId) {
       const code = await prepared.run((type, text) => {
         output += text;
         const now = Date.now();
-        if (now - lastFlush > 250) {
-          updateBackgroundJobItem(item.id, { status: 'running', output });
+        if (now - lastFlush > flushInterval) {
+          updateJobItem(item.id, { status: 'running', output });
+          emit(jobId, 'item', { itemId: item.id, status: 'running', completed });
           lastFlush = now;
         }
       });
       const status = code === 0 ? 'success' : 'failed';
       if (status === 'failed') failed += 1;
-      updateBackgroundJobItem(item.id, { status, output, exitCode: code });
-      addOperation({ projectId: project.id, projectName: project.projectName, action: `${prepared.mode}.${job.action}`, status, detail: output });
+      updateJobItem(item.id, { status, output, exitCode: code });
+      recordOperation({ projectId: project.id, projectName: project.projectName, action: `${prepared.mode}.${job.action}`, status, detail: output });
     } catch (error) {
       failed += 1;
       output += `${error.message}\n`;
-      updateBackgroundJobItem(item.id, { status: 'failed', output, exitCode: 1 });
-      addOperation({ projectId: item.projectId, projectName: item.projectName, action: `batch.${job.action}`, status: 'failed', detail: output });
+      updateJobItem(item.id, { status: 'failed', output, exitCode: 1 });
+      recordOperation({ projectId: item.projectId, projectName: item.projectName, action: `batch.${job.action}`, status: 'failed', detail: output });
     }
     completed += 1;
-    updateBackgroundJob(jobId, 'running', completed);
+    updateJob(jobId, 'running', completed);
+    emit(jobId, 'progress', { status: 'running', completed });
   }
-  updateBackgroundJob(jobId, failed ? 'failed' : 'success', completed);
+  const finalStatus = failed ? 'failed' : 'success';
+  updateJob(jobId, finalStatus, completed);
+  emit(jobId, 'done', { status: finalStatus });
 }

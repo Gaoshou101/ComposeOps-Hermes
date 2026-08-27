@@ -18,7 +18,7 @@
         <span class="text-xs text-surface-400">确认密码</span>
         <input v-model="confirm" class="input w-full mt-1" type="password" autocomplete="new-password" />
       </label>
-      <p v-if="error" class="text-sm text-red-400">{{ error }}</p>
+      <p v-if="error" class="text-sm text-rose-400">{{ error }}</p>
       <button class="btn-primary w-full justify-center" :disabled="loading">
         <LogIn class="w-4 h-4" /> {{ loading ? '处理中...' : (auth.setupRequired ? '完成初始化' : '登录') }}
       </button>

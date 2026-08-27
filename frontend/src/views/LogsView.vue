@@ -1,7 +1,7 @@
 <template>
   <div class="page-shell page-shell-workspace">
     <div class="page-header">
-      <div class="mr-auto"><h1 class="page-title">实时日志</h1><p class="page-subtitle">搜索、暂停和导出容器输出</p></div>
+      <div><h1 class="page-title">实时日志</h1><p class="page-subtitle">搜索、暂停和导出容器输出</p></div>
       <div class="page-actions">
         <select v-model="projectId" class="input" @change="containerId = ''"><option value="">选择项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
         <select v-model="containerId" class="input"><option value="">选择容器</option><option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option></select>
@@ -15,9 +15,9 @@
       </div>
     </div>
     <p v-if="error" class="alert-error">{{ error }}</p>
-    <div class="flex items-center gap-3 text-xs text-surface-500"><span :class="connected ? 'text-green-400' : ''">{{ connected ? '已连接' : '未连接' }}</span><span>{{ filtered.length }} 条</span><span v-if="paused" class="text-amber-400">已暂停 · {{ pending.length }} 条等待显示</span><label class="toggle-label ml-auto"><input v-model="autoScroll" type="checkbox" />自动滚动</label></div>
+    <div class="flex items-center gap-3 text-muted"><span :class="connected ? 'text-emerald-400' : ''">{{ connected ? '已连接' : '未连接' }}</span><span>{{ filtered.length }} 条</span><span v-if="paused" class="text-amber-400">已暂停 · {{ pending.length }} 条等待显示</span><label class="toggle-label ml-auto"><input v-model="autoScroll" type="checkbox" />自动滚动</label></div>
     <div ref="boxEl" class="terminal-output card flex-1 min-h-[360px]">
-      <div v-for="line in filtered" :key="line.id" class="log-line" :class="line.type === 'stderr' || line.type === 'error' ? 'text-red-400' : 'text-surface-200'">{{ line.data }}</div>
+      <div v-for="line in filtered" :key="line.id" class="log-line" :class="line.type === 'stderr' || line.type === 'error' ? 'text-rose-400' : 'text-surface-200'">{{ line.data }}</div>
     </div>
   </div>
 </template>

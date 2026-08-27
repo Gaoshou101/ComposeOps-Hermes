@@ -7,7 +7,7 @@
     <div v-if="open" class="fixed inset-0 z-40" @click="open = false"></div>
     <section v-if="open" class="event-panel">
       <header class="flex items-center justify-between border-b border-surface-800 px-4 py-3">
-        <div><h2 class="text-sm font-semibold text-surface-100">事件中心</h2><p class="mt-0.5 text-xs text-surface-500">需要关注的运行状态与系统操作</p></div>
+        <div><h2 class="text-sm font-semibold text-surface-100">事件中心</h2><p class="mt-0.5 text-muted">需要关注的运行状态与系统操作</p></div>
         <button class="icon-btn" title="刷新" aria-label="刷新事件" :disabled="loading" @click="load"><RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" /></button>
       </header>
       <div class="max-h-[min(68vh,32rem)] overflow-y-auto p-2">
@@ -16,9 +16,9 @@
           <span class="min-w-0 flex-1"><strong>{{ event.title }}</strong><small>{{ event.detail }}</small></span>
           <ChevronRight class="h-4 w-4 shrink-0 text-surface-600" />
         </router-link>
-        <div v-if="!events.length && !loading" class="empty-state min-h-48 border-0"><CircleCheckBig class="h-8 w-8 text-green-400" /><span>当前没有待处理事件</span></div>
+        <EmptyState icon="CircleCheckBig" icon-class="text-emerald-400" compact title="当前没有待处理事件" description="异常与告警事件会出现在这里" />
       </div>
-      <footer class="flex items-center justify-between border-t border-surface-800 px-4 py-2.5 text-xs text-surface-500">
+      <footer class="flex items-center justify-between border-t border-surface-800 px-4 py-2.5 text-muted">
         <span>{{ eventCount }} 个需要关注</span>
         <router-link to="/operations" class="text-accent hover:text-blue-300" @click="open = false">打开操作中心</router-link>
       </footer>
@@ -30,6 +30,7 @@
 import { computed, markRaw, onMounted, onUnmounted, ref } from 'vue';
 import { AlertTriangle, Bell, ChevronRight, CircleCheckBig, CircleX, RefreshCw, RefreshCwOff } from 'lucide-vue-next';
 import { api } from '../api/client.js';
+import EmptyState from './common/EmptyState.vue';
 
 const open = ref(false);
 const loading = ref(false);
