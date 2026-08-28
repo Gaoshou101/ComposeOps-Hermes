@@ -71,8 +71,9 @@
 import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowRight, Bot, Boxes, ChartNoAxesCombined, FileCode2, History, LogOut, ScrollText, Search, Settings, TerminalSquare, X } from 'lucide-vue-next';
+import { ArrowRight, Bot, Boxes, ChartNoAxesCombined, FileCode2, History, KeyRound, LogOut, ScrollText, Search, Settings, TerminalSquare, X } from 'lucide-vue-next';
 import EventCenter from './EventCenter.vue';
+import { api } from '../api/client.js';
 import EmptyState from './common/EmptyState.vue';
 
 const route = useRoute();
@@ -85,7 +86,8 @@ const selectedCommand = ref(0);
 const commandInput = ref(null);
 const pageNames = { services: '服务总览', compose: 'Compose 配置', logs: '实时日志', shell: '容器终端', ai: 'AI 运维助手', monitor: '资源监控', operations: '操作记录', settings: '系统设置' };
 const currentPage = computed(() => pageNames[route.name] || '运维控制台');
-const commands = [
+const envProjects = ref([]);
+const baseCommands = [
   { to: '/services', label: '服务总览', description: '查看项目健康状态并执行生命周期操作', icon: Boxes, keywords: 'dashboard stack container 项目 容器' },
   { to: '/compose', label: 'Compose 配置', description: '编辑、校验和恢复 Compose 文件', icon: FileCode2, keywords: 'yaml editor backup 配置 备份' },
   { to: '/logs', label: '实时日志', description: '连接容器输出并搜索、暂停或导出', icon: ScrollText, keywords: 'stdout stderr search 日志' },
@@ -98,9 +100,21 @@ const commands = [
   { to: '/settings?tab=notifications', label: '异常通知', description: '设置容器、内存和存储告警渠道', icon: Settings, keywords: 'alert webhook telegram email 告警' },
   { to: '/settings?tab=maintenance', label: 'Docker 维护', description: '检查镜像更新并清理可回收空间', icon: Settings, keywords: 'prune image update cleanup 清理 镜像' },
 ];
+const commands = computed(() => {
+  const envCommands = envProjects.value
+    .filter((project) => project.editable)
+    .map((project) => ({
+      to: `/services?env=${project.id}`,
+      label: `Env: ${project.projectName}`,
+      description: `编辑 ${project.projectName} 的环境变量 (.env)`,
+      icon: KeyRound,
+      keywords: `env environment variable 环境变量 ${project.projectName}`,
+    }));
+  return [...envCommands, ...baseCommands];
+});
 const filteredCommands = computed(() => {
   const query = commandQuery.value.trim().toLowerCase();
-  return query ? commands.filter((item) => `${item.label} ${item.description} ${item.keywords}`.toLowerCase().includes(query)) : commands;
+  return query ? commands.value.filter((item) => `${item.label} ${item.description} ${item.keywords}`.toLowerCase().includes(query)) : commands.value;
 });
 defineEmits(['logout']);
 let pingTimer; let clockTimer;
@@ -128,6 +142,7 @@ watch(commandOpen, (open) => { if (open) nextTick(() => commandInput.value?.focu
 useEscapeKey({ active: commandOpen, onClose: closeCommand, layer: 'command' });
 watch(filteredCommands, () => { selectedCommand.value = 0; });
 onMounted(() => {
+  void api.getProjects().then((data) => { envProjects.value = data.projects || []; }).catch(() => {});
   ping();
   currentTime.value = new Date().toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   pingTimer = setInterval(ping, 5000);

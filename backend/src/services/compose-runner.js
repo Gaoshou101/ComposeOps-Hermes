@@ -43,6 +43,16 @@ export function composeArgs(project, action, overrideFiles = null) {
   return [...composeBase().slice(1), ...files.flatMap((file) => ['-f', file]), ...actionArgs];
 }
 
+export function spawnComposeCommand(project, args, overrideFiles = null) {
+  const base = composeBase();
+  const files = overrideFiles || project.composeFiles;
+  return spawn(base[0], [...base.slice(1), ...files.flatMap((file) => ['-f', file]), ...args], {
+    cwd: project.workingDir,
+    env: { ...process.env, COMPOSE_HTTP_TIMEOUT: '300', COMPOSE_PROGRESS: 'plain' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
 export function spawnCompose(project, action) {
   const base = composeBase();
   return spawn(base[0], composeArgs(project, action), {

@@ -41,6 +41,9 @@ export const api = {
   getComposeFile: (projectId, fileIndex = 0) => request(`/projects/${projectId}/compose?fileIndex=${fileIndex}`),
   saveComposeFile: (projectId, fileIndex, content) =>
     request(`/projects/${projectId}/compose`, { method: 'PUT', body: JSON.stringify({ fileIndex, content }) }),
+  getProjectEnv: (projectId) => request(`/projects/${projectId}/env`),
+  saveProjectEnv: (projectId, payload) => request(`/projects/${projectId}/env`, { method: 'PUT', body: JSON.stringify(payload) }),
+  streamApplyEnv: (projectId, onFrame) => streamComposeControl(projectId, null, onFrame, `/projects/${projectId}/env/apply`, { restart: true }),
   getBackups: (projectId) => request(`/projects/${projectId}/backups`),
   getBackup: (projectId, backupId) => request(`/projects/${projectId}/backups/${backupId}`),
   restoreBackup: (projectId, backupId) => request(`/projects/${projectId}/backups/${backupId}/restore`, { method: 'POST' }),
@@ -73,11 +76,12 @@ export const api = {
  * @param {(frame:{type,data:string})=>void} onFrame
  * @returns {Promise<void>} resolve on stream end
  */
-export async function streamComposeControl(projectId, action, onFrame) {
-  const res = await fetch(`${BASE}/projects/${projectId}/actions`, {
+export async function streamComposeControl(projectId, action, onFrame, path = null, body = null) {
+  const endpoint = path || `/projects/${projectId}/actions`;
+  const res = await fetch(`${BASE}${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action }),
+    body: body ? JSON.stringify(body) : JSON.stringify({ action }),
   });
   if (!res.ok || !res.body) {
     const body = await res.json().catch(() => ({}));

@@ -172,6 +172,8 @@ async function withRunner(project, callback) {
   }
 }
 
+export { withRunner, execInRunner, readArchiveFile, putArchiveFile };
+
 export function pruneWorkspaceRunners(allowedProjectIds = []) {
   const allowed = new Set(allowedProjectIds);
   for (const entry of workspaceRunners.values()) {
@@ -312,6 +314,15 @@ export async function saveWorkspaceCompose(project, fileIndex, content, reason =
       throw error;
     }
     return { ok: true, path: filePath };
+  });
+}
+
+export async function runWorkspaceComposeArgs(project, args, onOutput = () => {}) {
+  const { files } = projectPaths(project);
+  if (!Array.isArray(args) || !args.length) throw Object.assign(new Error('无效的 Compose 参数'), { statusCode: 400 });
+  return withRunner(project, async (container) => {
+    const result = await execInRunner(container, ['docker', 'compose', ...files.flatMap((file) => ['-f', file]), ...args], { onOutput });
+    return result.code;
   });
 }
 

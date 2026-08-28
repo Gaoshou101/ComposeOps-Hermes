@@ -39,6 +39,7 @@
         <button class="btn-ghost" :disabled="!project.managed || locked" @click="trigger('ps')"><ListTree class="w-4 h-4" />状态</button>
         <button class="btn-secondary" :disabled="!project.editable || locked" title="需在项目纳管中勾选 Compose" @click="trigger('pull')"><Download class="w-4 h-4" :class="{ 'animate-spin': actionRunning === 'pull' }" />拉取</button>
         <router-link class="btn-ghost" :class="{ 'pointer-events-none opacity-40': !project.editable }" :to="`/compose?projectId=${project.id}`"><FileCode2 class="w-4 h-4" />配置</router-link>
+        <button class="btn-ghost" :class="{ 'pointer-events-none opacity-40': !project.editable }" :disabled="!project.editable || busy" title="编辑项目环境变量 (.env)" @click="$emit('env')"><KeyRound class="w-4 h-4" />环境变量</button>
         <button class="btn-ghost" :disabled="!project.managed || busy" @click="$emit('activity')"><History class="h-4 w-4" />活动</button>
       </div>
 
@@ -69,7 +70,7 @@
 
 <script setup>
 import { computed } from 'vue';
-import { Bot, ChevronDown, Download, FileCode2, FolderCog, History, ListTree, Pencil, Play, RotateCw, ScrollText, Square, Star, TerminalSquare } from 'lucide-vue-next';
+import { Bot, ChevronDown, Download, FileCode2, FolderCog, History, KeyRound, ListTree, Pencil, Play, RotateCw, ScrollText, Square, Star, TerminalSquare } from 'lucide-vue-next';
 import StatusBadge from '../common/StatusBadge.vue';
 import { api } from '../../api/client.js';
 
@@ -82,7 +83,7 @@ const props = defineProps({
   actionRunning: { type: String, default: '' },
   lastResults: { type: Array, default: () => [] },
 });
-const emit = defineEmits(['toggle-expand', 'toggle-select', 'action', 'activity', 'refresh']);
+const emit = defineEmits(['toggle-expand', 'toggle-select', 'action', 'activity', 'env', 'refresh']);
 
 const locked = computed(() => props.busy || !!props.actionRunning);
 const attention = computed(() => props.project.status !== 'running' || props.project.containers.some((container) => container.health === 'unhealthy'));

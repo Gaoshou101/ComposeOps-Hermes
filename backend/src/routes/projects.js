@@ -4,6 +4,7 @@ import { buildMountPlan } from '../services/mount-plan.js';
 import { readCompose, saveCompose } from '../services/compose-runner.js';
 import { pruneWorkspaceRunners, readWorkspaceCompose, saveWorkspaceCompose } from '../services/compose-workspace.js';
 import { prepareProjectAction } from '../services/project-action-runner.js';
+import { readProjectEnv, saveProjectEnv, applyProjectEnv, assertEnvAccess } from '../services/project-env.js';
 import {
   addOperation,
   getComposeBackup,
@@ -184,6 +185,76 @@ export default async function projectRoutes(fastify) {
     } catch (error) {
       return reply.code(error.statusCode || 500).send({ error: 'restore_failed', message: error.message });
     }
+  });
+
+  // ---- 环境变量(.env)读取 / 保存 / 应用 ----
+  fastify.get('/:id/env', async (request, reply) => {
+    const project = await projectOr404(request.params.id, reply);
+    if (!project) return;
+    try {
+      assertEnvAccess(project);
+      return await readProjectEnv(project);
+    } catch (error) {
+      return reply.code(error.statusCode || 500).send({ error: 'env_read_failed', message: error.message });
+    }
+  });
+
+  fastify.put('/:id/env', async (request, reply) => {
+    const project = await projectOr404(request.params.id, reply);
+    if (!project) return;
+    try {
+      assertEnvAccess(project);
+      const { raw, entries } = request.body || {};
+      const result = await saveProjectEnv(project, { raw, entries });
+      return result;
+    } catch (error) {
+      addOperation({ projectId: project.id, projectName: project.projectName, action: 'env.save', status: 'failed', detail: error.message });
+      return reply.code(error.statusCode || 500).send({ error: 'env_save_failed', message: error.message });
+    }
+  });
+
+  fastify.post('/:id/env/apply', async (request, reply) => {
+    const project = await projectOr404(request.params.id, reply);
+    if (!project) return;
+    try {
+      assertEnvAccess(project);
+    } catch (error) {
+      return reply.code(error.statusCode || 400).send({ error: 'env_apply_forbidden', message: error.message });
+    }
+    const restart = request.body?.restart !== false;
+    if (!restart) return reply.send({ ok: true, restarted: false });
+
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    const send = (type, data) => {
+      if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+    };
+    let output = '';
+    let finished = false;
+    const finish = (code) => {
+      if (finished) return;
+      finished = true;
+      addOperation({ projectId: project.id, projectName: project.projectName, action: 'env.apply', status: code === 0 ? 'success' : 'failed', detail: output });
+      send('exit', { code });
+      reply.raw.end();
+    };
+    let child;
+    applyProjectEnv(project, {
+      onOutput: (type, text) => { output += text; send(type, text); },
+      onChild: (process) => { child = process; },
+    }).then(finish).catch((error) => {
+      const text = `${error.message}\n`;
+      output += text;
+      send('stderr', text);
+      finish(1);
+    });
+    reply.raw.on('close', () => {
+      if (!finished && child && child.exitCode === null && !child.killed) child.kill('SIGTERM');
+    });
   });
 
   fastify.post('/:id/actions', async (request, reply) => {

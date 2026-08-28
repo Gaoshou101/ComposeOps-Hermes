@@ -29,10 +29,11 @@
         v-for="project in visibleProjects" :key="project.id" :project="project"
         :expanded="expandedIds.has(project.id)" :selected="selectedIds.includes(project.id)" :focused="route.query.focus === project.id"
         :busy="busy" :last-results="updateSettings.lastResults" :action-running="project.id === runningAction.id ? runningAction.action : ''"
-        @toggle-expand="toggleExpanded(project.id)" @toggle-select="toggleSelection(project.id)" @refresh="refresh" @activity="activityProject = project" @action="(action) => run(project, action)"
+        @toggle-expand="toggleExpanded(project.id)" @toggle-select="toggleSelection(project.id)" @refresh="refresh" @activity="activityProject = project" @env="envProject = project" @action="(action) => run(project, action)"
       />
     </div>
     <OperationOutputDrawer v-if="output.open" :label="actionLabel(output.action)" :name="output.name" :text="output.text" :batch-tasks="batchTasks" :batch-progress="batchProgress" :completed-count="completedBatchTasks" @close="output.open = false" />
+    <ProjectEnvModal v-if="envProject" :project="envProject" @close="closeEnv" @refresh="refresh" @apply="handleEnvApply" />
     <ProjectActivityDrawer v-if="activityProject" :project="activityProject" @close="activityProject = null" @restored="handleRestored" />
   </div>
 </template>
@@ -42,8 +43,10 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { useRoute, useRouter } from 'vue-router';
 import { AlertTriangle, Boxes, CircleCheckBig, Container, RefreshCw, Search } from 'lucide-vue-next';
 import { useServicesStore } from '../stores/services.js';
+import { useToastStore } from '../stores/toast.js';
 import { api, streamComposeControl } from '../api/client.js';
 import ProjectActivityDrawer from '../components/ProjectActivityDrawer.vue';
+import ProjectEnvModal from '../components/services/ProjectEnvModal.vue';
 import ServiceProjectCard from '../components/services/ServiceProjectCard.vue';
 import BatchOperationsBar from '../components/services/BatchOperationsBar.vue';
 import OperationOutputDrawer from '../components/services/OperationOutputDrawer.vue';
@@ -55,7 +58,7 @@ const router = useRouter();
 const autoRefresh = ref(true); const busy = ref(false); const expandedIds = ref(new Set());
 const searchQuery = ref(''); const filter = ref('all'); const sort = ref('priority');
 const selectedIds = ref([]); const updateSettings = ref({ lastResults: [] }); const focusedProject = ref('');
-const batchTasks = ref([]); const activityProject = ref(null); const runningAction = ref({ id: '', action: '' });
+const batchTasks = ref([]); const activityProject = ref(null); const envProject = ref(null); const runningAction = ref({ id: '', action: '' });
 let jobPollTimer; let activeJobId = ''; let jobPollInFlight = false;
 const output = reactive({ open: false, text: '', action: '', name: '' });
 const containerCount = computed(() => store.projects.reduce((count, project) => count + project.containers.length, 0));
@@ -85,7 +88,7 @@ function resetFilters() { searchQuery.value = ''; filter.value = 'all'; sort.val
 function toggleSelection(projectId) { selectedIds.value = selectedIds.value.includes(projectId) ? selectedIds.value.filter((id) => id !== projectId) : [...selectedIds.value, projectId]; }
 function toggleAllVisible() { const visibleIds = visibleManagedProjects.value.map((project) => project.id); selectedIds.value = allVisibleSelected.value ? selectedIds.value.filter((id) => !visibleIds.includes(id)) : [...new Set([...selectedIds.value, ...visibleIds])]; }
 function toggleExpanded(projectId) { const next = new Set(expandedIds.value); if (next.has(projectId)) next.delete(projectId); else next.add(projectId); expandedIds.value = next; }
-function actionLabel(action) { return ({ up: '启动', restart: '重启', stop: '停止', pull: '拉取', ps: '状态' })[action] || action; }
+function actionLabel(action) { return ({ up: '启动', restart: '重启', stop: '停止', pull: '拉取', ps: '状态', 'env.apply': '应用环境变量', 'env.save': '保存环境变量' })[action] || action; }
 async function run(project, action) {
   clearTimeout(jobPollTimer);
   activeJobId = '';
@@ -100,6 +103,22 @@ async function run(project, action) {
     await refresh();
   } catch (error) { output.text += `\n[请求失败] ${error.message}`; }
   finally { busy.value = false; runningAction.value = { id: '', action: '' }; }
+}
+async function handleEnvApply({ project }) {
+  envProject.value = null;
+  output.open = true; output.text = ''; output.action = 'env.apply'; output.name = project.projectName;
+  busy.value = true;
+  try {
+    await streamComposeControl(project.id, null, (frame) => {
+      if (frame.type === 'stdout' || frame.type === 'stderr') output.text += frame.data;
+      else if (frame.type === 'error') output.text += `\n[错误] ${frame.data}`;
+      else if (frame.type === 'exit') output.text += `\n[退出码 ${frame.data.code}]`;
+    }, `/projects/${project.id}/env/apply`, { restart: true });
+    useToastStore().success('环境变量已应用,容器平滑重建完成');
+    await refresh();
+  } catch (error) {
+    output.text += `\n[请求失败] ${error.message}`;
+  } finally { busy.value = false; }
 }
 async function runBatch(action) {
   const projects = selectedProjects.value;
@@ -138,9 +157,25 @@ async function focusProject() {
   if (!expandedIds.value.has(projectId)) toggleExpanded(projectId);
   await nextTick(); document.getElementById(`project-${projectId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
+function closeEnv() {
+  envProject.value = null;
+  if (route.query.env) {
+    const next = { ...route.query };
+    delete next.env;
+    router.replace({ query: next });
+  }
+}
+async function openEnvFromQuery() {
+  const projectId = String(route.query.env || '');
+  if (!projectId || envProject.value?.id === projectId) return;
+  const project = store.projects.find((p) => p.id === projectId);
+  if (!project) return;
+  envProject.value = project;
+}
+watch(() => route.query.env, openEnvFromQuery);
 watch(autoRefresh, async (value) => { if (!value) return store.stopAutoRefresh(); const preferences = await api.getPreferences(); store.startAutoRefresh(preferences.refreshInterval * 1000); });
 watch([() => route.query.focus, () => store.projects], focusProject, { deep: true });
-onMounted(async () => { const [preferences, updates] = await Promise.all([api.getPreferences(), api.getUpdateSettings()]); updateSettings.value = updates; store.startAutoRefresh(preferences.refreshInterval * 1000); if (route.query.job) void pollJob(String(route.query.job)); });
+onMounted(async () => { const [preferences, updates] = await Promise.all([api.getPreferences(), api.getUpdateSettings()]); updateSettings.value = updates; store.startAutoRefresh(preferences.refreshInterval * 1000); if (route.query.job) void pollJob(String(route.query.job)); void openEnvFromQuery(); });
 watch(() => route.query.job, (job) => { if (job) void pollJob(String(job)); else { activeJobId = ''; clearTimeout(jobPollTimer); } });
 function handleRestored() {
   activityProject.value = null;
