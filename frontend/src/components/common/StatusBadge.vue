@@ -32,7 +32,7 @@ const STATUS = {
   degraded: { label: '运行降级', dot: 'bg-rose-400', pulse: false, glow: 'rgba(251, 113, 133, 0.5)', cls: 'text-rose-300 border-rose-500/30 bg-rose-500/10', tip: '服务质量已降级,请检查' },
   error: { label: '异常', dot: 'bg-rose-400', pulse: false, glow: 'rgba(251, 113, 133, 0.55)', cls: 'text-rose-300 border-rose-500/40 bg-rose-500/10', tip: '运行异常,请检查日志' },
   queued: { label: '排队中', dot: 'bg-accent', pulse: true, glow: 'rgba(37, 99, 235, 0.5)', cls: 'text-blue-300 border-blue-500/30 bg-blue-500/10', tip: '任务已创建,等待执行' },
-  running: { label: '执行中', dot: 'bg-accent', pulse: true, glow: 'rgba(37, 99, 235, 0.5)', cls: 'text-blue-300 border-blue-500/30 bg-blue-500/10', tip: '任务正在执行' },
+  task: { label: '执行中', dot: 'bg-accent', pulse: true, glow: 'rgba(37, 99, 235, 0.5)', cls: 'text-blue-300 border-blue-500/30 bg-blue-500/10', tip: '任务正在执行' },
   pending: { label: '等待', dot: 'bg-surface-500', pulse: false, glow: '', cls: 'text-surface-400 border-surface-600/40 bg-surface-800/40', tip: '等待执行' },
   success: { label: '成功', dot: 'bg-emerald-400', pulse: false, glow: 'rgba(52, 211, 153, 0.35)', cls: 'text-emerald-300 border-emerald-500/30 bg-emerald-500/10', tip: '执行成功' },
   failed: { label: '失败', dot: 'bg-rose-400', pulse: false, glow: 'rgba(251, 113, 133, 0.45)', cls: 'text-rose-300 border-rose-500/40 bg-rose-500/10', tip: '执行失败,请查看详情' },

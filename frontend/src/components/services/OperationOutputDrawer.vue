@@ -1,5 +1,5 @@
 <template>
-  <div class="drawer">
+  <div class="drawer max-w-[calc(100vw-2rem)] sm:max-w-[720px] z-[51]">
     <div class="modal-header"><span>{{ label }} · {{ name }}</span><button class="icon-btn" title="关闭输出面板" @click="$emit('close')"><X class="w-4 h-4" /></button></div>
     <div v-if="batchTasks.length" class="border-b border-surface-800 p-3">
       <div class="mb-2 flex items-center justify-between text-muted"><span>任务进度</span><span>{{ completedCount }} / {{ batchTasks.length }}</span></div>
@@ -21,6 +21,8 @@
 
 <script setup>
 import { CircleCheck, CircleX, LoaderCircle, X } from 'lucide-vue-next';
+import { computed } from 'vue';
+import { useEscapeKey } from '../../composables/useEscapeKey.js';
 
 defineProps({
   label: { type: String, default: '' },
@@ -30,6 +32,7 @@ defineProps({
   batchProgress: { type: Number, default: 0 },
   completedCount: { type: Number, default: 0 },
 });
-defineEmits(['close']);
+const emit = defineEmits(['close']);
+useEscapeKey({ active: computed(() => true), onClose: () => emit('close'), layer: 'drawer', lockBody: true });
 function statusLabel(status) { return ({ pending: '等待', running: '执行中', success: '成功', failed: '失败' })[status] || status; }
 </script>

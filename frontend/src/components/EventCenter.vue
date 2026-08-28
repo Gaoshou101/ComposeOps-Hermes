@@ -4,8 +4,8 @@
       <Bell class="h-4 w-4" />
       <span v-if="eventCount" class="event-count">{{ eventCount > 9 ? '9+' : eventCount }}</span>
     </button>
-    <div v-if="open" class="fixed inset-0 z-40" @click="open = false"></div>
-    <section v-if="open" class="event-panel">
+    <div v-if="open" class="fixed inset-0 z-[50]" @click="open = false"></div>
+    <section v-if="open" class="event-panel z-[50]">
       <header class="flex items-center justify-between border-b border-surface-800 px-4 py-3">
         <div><h2 class="text-sm font-semibold text-surface-100">事件中心</h2><p class="mt-0.5 text-muted">需要关注的运行状态与系统操作</p></div>
         <button class="icon-btn" title="刷新" aria-label="刷新事件" :disabled="loading" @click="load"><RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" /></button>
@@ -28,6 +28,7 @@
 
 <script setup>
 import { computed, markRaw, onMounted, onUnmounted, ref } from 'vue';
+import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { AlertTriangle, Bell, ChevronRight, CircleCheckBig, CircleX, RefreshCw, RefreshCwOff } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import EmptyState from './common/EmptyState.vue';
@@ -108,6 +109,7 @@ async function load() {
   finally { loading.value = false; }
 }
 function toggle() { open.value = !open.value; if (open.value) load(); }
+useEscapeKey({ active: open, onClose: () => { open.value = false; }, layer: 'event' });
 
 onMounted(() => { load(); timer = setInterval(load, 30000); });
 onUnmounted(() => clearInterval(timer));

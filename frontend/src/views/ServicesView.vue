@@ -33,7 +33,7 @@
       />
     </div>
     <OperationOutputDrawer v-if="output.open" :label="actionLabel(output.action)" :name="output.name" :text="output.text" :batch-tasks="batchTasks" :batch-progress="batchProgress" :completed-count="completedBatchTasks" @close="output.open = false" />
-    <ProjectActivityDrawer v-if="activityProject" :project="activityProject" @close="activityProject = null" @restored="refresh" />
+    <ProjectActivityDrawer v-if="activityProject" :project="activityProject" @close="activityProject = null" @restored="handleRestored" />
   </div>
 </template>
 
@@ -142,5 +142,10 @@ watch(autoRefresh, async (value) => { if (!value) return store.stopAutoRefresh()
 watch([() => route.query.focus, () => store.projects], focusProject, { deep: true });
 onMounted(async () => { const [preferences, updates] = await Promise.all([api.getPreferences(), api.getUpdateSettings()]); updateSettings.value = updates; store.startAutoRefresh(preferences.refreshInterval * 1000); if (route.query.job) void pollJob(String(route.query.job)); });
 watch(() => route.query.job, (job) => { if (job) void pollJob(String(job)); else { activeJobId = ''; clearTimeout(jobPollTimer); } });
+function handleRestored() {
+  activityProject.value = null;
+  refresh();
+  useToastStore().success('配置版本已成功回滚并生效');
+}
 onUnmounted(() => { activeJobId = ''; clearTimeout(jobPollTimer); store.stopAutoRefresh(); });
 </script>

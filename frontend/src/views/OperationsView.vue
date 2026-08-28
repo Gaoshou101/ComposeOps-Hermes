@@ -71,7 +71,7 @@
               <td><span class="action-label">{{ actionLabel(job.action) }}</span><div class="mt-1 max-w-52 truncate font-mono text-[10px] text-surface-600" :title="job.id">{{ job.id }}</div></td>
               <td>{{ job.total }} 个项目</td>
               <td><div class="mb-1 flex justify-between text-[11px] text-surface-500"><span>{{ job.completed }} / {{ job.total }}</span><span>{{ jobProgress(job) }}%</span></div><div class="progress"><span :style="{ width: `${jobProgress(job)}%` }"></span></div></td>
-              <td><StatusBadge :status="job.status" /></td>
+              <td><StatusBadge :status="job.status === 'running' ? 'task' : job.status" /></td>
               <td><button class="icon-btn" title="查看任务详情" @click="openJob(job.id)"><Eye class="h-4 w-4" /></button></td>
             </tr>
             <tr v-if="!filteredJobs.length"><td colspan="6"><EmptyState compact :icon="jobs.length ? 'Search' : 'ListChecks'" :title="jobs.length ? '没有匹配的后台任务' : '暂无后台任务'" :description="jobs.length ? '调整筛选条件后重试' : '批量操作会以后台任务形式出现在这里'" /></td></tr>
@@ -80,13 +80,13 @@
       </div>
     </template>
 
-    <div v-if="selectedOperation" class="modal-backdrop" @click.self="selectedOperation = null">
+    <div v-if="selectedOperation" class="modal-backdrop z-[55]" @click.self="selectedOperation = null">
       <div class="modal"><div class="modal-header"><span>{{ actionLabel(selectedOperation.action) }}</span><button class="icon-btn" title="关闭" @click="selectedOperation = null"><X class="h-4 w-4" /></button></div><pre class="terminal-output max-h-[70vh] min-h-48">{{ selectedOperation.detail }}</pre></div>
     </div>
 
-    <div v-if="selectedJob" class="modal-backdrop" @click.self="closeJob">
+    <div v-if="selectedJob" class="modal-backdrop z-[55]" @click.self="closeJob">
       <div class="modal flex max-h-[88vh] max-w-5xl flex-col">
-        <div class="modal-header shrink-0"><span>{{ actionLabel(selectedJob.action) }} · {{ selectedJob.total }} 个项目</span><div class="flex items-center gap-2"><StatusBadge :status="selectedJob.status" /><button class="icon-btn" title="关闭" @click="closeJob"><X class="h-4 w-4" /></button></div></div>
+        <div class="modal-header shrink-0"><span>{{ actionLabel(selectedJob.action) }} · {{ selectedJob.total }} 个项目</span><div class="flex items-center gap-2"><StatusBadge :status="selectedJob.status === 'running' ? 'task' : selectedJob.status" /><button class="icon-btn" title="关闭" @click="closeJob"><X class="h-4 w-4" /></button></div></div>
         <div class="shrink-0 border-b border-surface-800 p-4">
           <div class="mb-2 flex items-center justify-between text-muted"><span>{{ formatTime(selectedJob.createdAt) }} 创建</span><span>{{ selectedJob.completed }} / {{ selectedJob.total }} 已完成</span></div>
           <div class="progress"><span :style="{ width: `${jobProgress(selectedJob)}%` }"></span></div>
@@ -107,6 +107,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useRoute, useRouter } from 'vue-router';
 import { Activity, CircleCheckBig, CircleX, Eye, History, ListChecks, LoaderCircle, RefreshCw, Search, TriangleAlert, X } from 'lucide-vue-next';
 import { api } from '../api/client.js';
@@ -175,6 +176,8 @@ function closeJob() {
   clearTimeout(jobPollTimer); selectedJob.value = null; selectedJobItem.value = null;
   const next = { ...route.query }; delete next.job; router.replace({ query: next });
 }
+useEscapeKey({ active: computed(() => !!selectedOperation.value), onClose: () => { selectedOperation.value = null; }, layer: 'modal', lockBody: true });
+useEscapeKey({ active: computed(() => !!selectedJob.value), onClose: closeJob, layer: 'modal', lockBody: true });
 function formatTime(value) { return value ? new Date(`${value}Z`).toLocaleString() : '—'; }
 function jobProgress(job) { return job.total ? Math.round(job.completed / job.total * 100) : 0; }
 function statusLabel(status) { return ({ pending: '等待执行', queued: '排队中', running: '执行中', success: '执行成功', failed: '执行失败', interrupted: '意外中断' })[status] || status; }

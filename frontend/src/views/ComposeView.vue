@@ -18,8 +18,8 @@
       <div ref="editorEl" class="absolute inset-0" :class="{ invisible: !editorReady }"></div>
     </div>
 
-    <div v-if="showBackups" class="modal-backdrop" @click.self="showBackups = false">
-      <div class="modal max-w-3xl">
+    <div v-if="showBackups" class="modal-backdrop z-[55]" @click.self="showBackups = false">
+      <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-3xl">
         <div class="modal-header"><span>配置备份（最近 20 份）</span><button class="icon-btn" @click="showBackups = false"><X class="w-4 h-4" /></button></div>
         <div class="p-3 space-y-2 overflow-auto max-h-[60vh]">
           <EmptyState icon="History" compact title="暂无配置备份" description="保存一次配置后会自动产生备份" />
@@ -31,14 +31,16 @@
         </div>
       </div>
     </div>
-    <div v-if="comparison" class="modal-backdrop" @click.self="comparison = null">
-      <div class="modal max-w-6xl"><div class="modal-header"><span>当前配置与备份比较</span><button class="icon-btn" @click="comparison = null"><X class="w-4 h-4" /></button></div><div class="grid md:grid-cols-2 gap-px bg-surface-800 max-h-[70vh] overflow-auto"><pre class="diff-pane">{{ comparison.content }}</pre><pre class="diff-pane">{{ content }}</pre></div></div>
+    <div v-if="comparison" class="modal-backdrop z-[55]" @click.self="comparison = null">
+      <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-6xl"><div class="modal-header"><span>当前配置与备份比较</span><button class="icon-btn" @click="comparison = null"><X class="w-4 h-4" /></button></div><div class="grid md:grid-cols-2 gap-px bg-surface-800 max-h-[70vh] overflow-auto"><pre class="diff-pane">{{ comparison.content }}</pre><pre class="diff-pane">{{ content }}</pre></div></div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useEscapeKey } from '../composables/useEscapeKey.js';
+import { useToastStore } from '../stores/toast.js';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { AlignLeft, Eye, FileCode2, History, Save, Undo2, X } from 'lucide-vue-next';
 import Skeleton from '../components/common/Skeleton.vue';
@@ -57,6 +59,9 @@ const saving = ref(false); const error = ref(''); const message = ref(''); const
 const showBackups = ref(false); const comparison = ref(null); let editor;
 const project = computed(() => projects.value.find((p) => p.id === projectId.value));
 const dirty = computed(() => content.value !== original.value);
+const toast = useToastStore();
+useEscapeKey({ active: showBackups, onClose: () => { showBackups.value = false; }, layer: 'modal', lockBody: true });
+useEscapeKey({ active: computed(() => !!comparison.value), onClose: () => { comparison.value = null; }, layer: 'modal', lockBody: true });
 
 onMounted(async () => {
   projects.value = (await api.getProjects()).projects.filter((p) => p.editable);
@@ -86,7 +91,7 @@ async function save() {
 function formatYaml() { try { const next = YAML.stringify(YAML.parse(content.value), { indent: 2, lineWidth: 0 }); editor.setValue(next); } catch (e) { error.value = e.message; } }
 async function loadBackups() { backups.value = (await api.getBackups(projectId.value)).backups || []; showBackups.value = true; }
 async function previewBackup(backup) { comparison.value = await api.getBackup(projectId.value, backup.id); }
-async function restore(backup) { if (!confirm('恢复该备份？当前配置也会先自动备份。')) return; await api.restoreBackup(projectId.value, backup.id); showBackups.value = false; await load(); message.value = '备份已恢复'; }
+async function restore(backup) { if (!confirm('恢复该备份?当前配置也会先自动备份。')) return; try { await api.restoreBackup(projectId.value, backup.id); showBackups.value = false; await load(); toast.success('配置版本已成功回滚并生效'); message.value = '备份已恢复'; } catch (e) { error.value = e.message; } }
 function shortName(file) { return file.split('/').pop(); }
 function formatTime(value) { return new Date(`${value}Z`).toLocaleString(); }
 </script>

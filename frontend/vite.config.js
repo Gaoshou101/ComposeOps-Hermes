@@ -1,9 +1,13 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 
-// 开发环境通过代理转发到后端 Fastify（默认 3001）
+// 开发环境通过代理转发到后端 Fastify(默认 3001)
 export default defineConfig({
   plugins: [vue()],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+  },
   server: {
     port: 5173,
     host: '0.0.0.0',
@@ -14,6 +18,15 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    chunkSizeWarningLimit: 1500,
+    chunkSizeWarningLimit: 3000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'monaco-editor': ['monaco-editor'],
+          'xterm': ['@xterm/xterm', '@xterm/addon-fit'],
+          'vue-vendor': ['vue', 'vue-router', 'pinia', 'lucide-vue-next'],
+        },
+      },
+    },
   },
 });

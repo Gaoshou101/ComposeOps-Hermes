@@ -1,5 +1,5 @@
 <template>
-  <header class="app-header h-16 flex items-center justify-between px-4 sm:px-6 shrink-0">
+  <header class="app-header z-[45] h-16 flex items-center justify-between px-4 sm:px-6 shrink-0">
     <div class="flex min-w-0 items-center gap-3">
       <div class="brand-mark"><Boxes class="w-5 h-5" /></div>
       <div class="min-w-0">
@@ -69,6 +69,7 @@
 
 <script setup>
 import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue';
+import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useRoute, useRouter } from 'vue-router';
 import { ArrowRight, Bot, Boxes, ChartNoAxesCombined, FileCode2, History, LogOut, ScrollText, Search, Settings, TerminalSquare, X } from 'lucide-vue-next';
 import EventCenter from './EventCenter.vue';
@@ -122,9 +123,9 @@ function moveSelection(delta) {
 }
 function onGlobalKeydown(event) {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); commandOpen.value = !commandOpen.value; }
-  else if (event.key === 'Escape' && commandOpen.value) closeCommand();
 }
 watch(commandOpen, (open) => { if (open) nextTick(() => commandInput.value?.focus()); });
+useEscapeKey({ active: commandOpen, onClose: closeCommand, layer: 'command' });
 watch(filteredCommands, () => { selectedCommand.value = 0; });
 onMounted(() => {
   ping();

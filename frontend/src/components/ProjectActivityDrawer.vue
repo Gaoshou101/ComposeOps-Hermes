@@ -1,6 +1,6 @@
 <template>
-  <div v-if="project" class="drawer-backdrop" @click.self="$emit('close')">
-    <aside class="activity-drawer">
+  <div v-if="project" class="drawer-backdrop z-[55]" @click.self="$emit('close')">
+    <aside class="activity-drawer z-[51]">
       <header class="flex items-start gap-3 border-b border-surface-800 px-4 py-4">
         <div class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent/15 text-accent"><History class="h-5 w-5" /></div>
         <div class="min-w-0 flex-1"><h2 class="truncate font-mono text-base font-semibold text-surface-100">{{ project.projectName }}</h2><p class="mt-0.5 text-muted">活动记录与配置版本</p></div>
@@ -35,13 +35,14 @@
     </aside>
   </div>
 
-  <div v-if="selectedOperation" class="modal-backdrop" @click.self="selectedOperation = null">
-    <div class="modal"><div class="modal-header"><span>{{ actionLabel(selectedOperation.action) }} · {{ formatTime(selectedOperation.createdAt) }}</span><button class="icon-btn" @click="selectedOperation = null"><X class="h-4 w-4" /></button></div><pre class="terminal-output max-h-[65vh] min-h-48">{{ selectedOperation.detail || '该操作没有附加输出。' }}</pre></div>
+  <div v-if="selectedOperation" class="modal-backdrop z-[55]" @click.self="selectedOperation = null">
+    <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-2xl"><div class="modal-header"><span>{{ actionLabel(selectedOperation.action) }} · {{ formatTime(selectedOperation.createdAt) }}</span><button class="icon-btn" @click="selectedOperation = null"><X class="h-4 w-4" /></button></div><pre class="terminal-output max-h-[65vh] min-h-48">{{ selectedOperation.detail || '该操作没有附加输出。' }}</pre></div>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { Activity, ChevronRight, Eye, FileClock, FileCode2, History, RefreshCw, Undo2, X } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import EmptyState from './common/EmptyState.vue';
@@ -49,6 +50,9 @@ import EmptyState from './common/EmptyState.vue';
 const props = defineProps({ project: Object });
 const emit = defineEmits(['close', 'restored']);
 const tab = ref('activity'); const loading = ref(false); const restoring = ref(false); const error = ref(''); const operations = ref([]); const backups = ref([]); const selectedOperation = ref(null);
+
+useEscapeKey({ active: computed(() => !!props.project), onClose: () => emit('close'), layer: 'drawer', lockBody: true });
+useEscapeKey({ active: computed(() => !!selectedOperation.value), onClose: () => { selectedOperation.value = null; }, layer: 'modal' });
 
 async function load() {
   if (!props.project) return;
