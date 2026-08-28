@@ -38,7 +38,7 @@ services:
     build:
       context: .
       # BuildKit 自动把宿主 shell 的 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 透传进构建阶段。
-      # 你只需在 `docker compose build` 前设好这俩 env（例如 export HTTPS_PROXY=http://127.0.0.1:7897）。
+      # 你只需在 `docker compose build` 前设好这俩 env(例如 export HTTPS_PROXY=http://127.0.0.1:7897)。
     image: composeops/opsdash:latest
     container_name: opsdash
     restart: unless-stopped
@@ -46,7 +46,7 @@ services:
     ports:
       # Personal-safe default: only expose on this host. Use Tailscale or a TLS
       # reverse proxy for remote access instead of publishing to the LAN/Internet.
-      - "127.0.0.1:3001:3001"
+      - "0.0.0.0:28765:3001"
     volumes:
       # Talk to the host Docker engine (dockerode + `docker compose` CLI).
       # This alone is enough to DISCOVER all compose projects (read-only list).
@@ -71,7 +71,7 @@ services:
       # Optional unattended setup. Prefer the first-run browser setup so the
       # password does not remain in compose environment metadata.
       # - ADMIN_PASSWORD=replace-with-at-least-10-characters
-      # 运行时 AI 出站走代理（若你的 AI Base URL 需翻墙）。Node 22 内置 fetch
+      # 运行时 AI 出站走代理(若你的 AI Base URL 需翻墙)。Node 22 内置 fetch
       # 自动识别 HTTP_PROXY/HTTPS_PROXY/NO_PROXY。不需要时整段注释掉。
       # - HTTP_PROXY=http://host.docker.internal:7897
       # - HTTPS_PROXY=http://host.docker.internal:7897
