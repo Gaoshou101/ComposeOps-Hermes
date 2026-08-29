@@ -32,8 +32,9 @@
         @toggle-expand="toggleExpanded(project.id)" @toggle-select="toggleSelection(project.id)" @refresh="refresh" @activity="activityProject = project" @env="envProject = project" @action="(action) => run(project, action)"
       />
     </div>
-    <OperationOutputDrawer v-if="output.open" :label="actionLabel(output.action)" :name="output.name" :text="output.text" :batch-tasks="batchTasks" :batch-progress="batchProgress" :completed-count="completedBatchTasks" @close="output.open = false" />
+    <OperationOutputDrawer v-if="output.open" :label="actionLabel(output.action)" :name="output.name" :text="output.text" :project-id="output.projectId" :exit-code="output.exitCode" :running="output.running" :batch-tasks="batchTasks" :batch-progress="batchProgress" :completed-count="completedBatchTasks" @close="output.open = false" @diagnose="openDiagnosisForOutput" />
     <ProjectEnvModal v-if="envProject" :project="envProject" @close="closeEnv" @refresh="refresh" @apply="handleEnvApply" />
+    <AIDiagnosisModal v-if="diagnosis" :open="!!diagnosis" :project-id="diagnosis.projectId" :project-name="diagnosis.projectName" :container-id="diagnosis.containerId" :raw-logs="diagnosis.rawLogs" :env-keys="diagnosis.envKeys" :failed-command="diagnosis.failedCommand" :exit-code="diagnosis.exitCode" :env-editable="diagnosis.envEditable" @close="diagnosis = null" />
     <ProjectActivityDrawer v-if="activityProject" :project="activityProject" @close="activityProject = null" @restored="handleRestored" />
   </div>
 </template>
@@ -48,6 +49,7 @@ import { api, streamComposeControl } from '../api/client.js';
 import ProjectActivityDrawer from '../components/ProjectActivityDrawer.vue';
 import ProjectEnvModal from '../components/services/ProjectEnvModal.vue';
 import ServiceProjectCard from '../components/services/ServiceProjectCard.vue';
+import AIDiagnosisModal from '../components/services/AIDiagnosisModal.vue';
 import BatchOperationsBar from '../components/services/BatchOperationsBar.vue';
 import OperationOutputDrawer from '../components/services/OperationOutputDrawer.vue';
 import EmptyState from '../components/common/EmptyState.vue';
@@ -58,9 +60,9 @@ const router = useRouter();
 const autoRefresh = ref(true); const busy = ref(false); const expandedIds = ref(new Set());
 const searchQuery = ref(''); const filter = ref('all'); const sort = ref('priority');
 const selectedIds = ref([]); const updateSettings = ref({ lastResults: [] }); const focusedProject = ref('');
-const batchTasks = ref([]); const activityProject = ref(null); const envProject = ref(null); const runningAction = ref({ id: '', action: '' });
+const batchTasks = ref([]); const activityProject = ref(null); const envProject = ref(null); const diagnosis = ref(null); const runningAction = ref({ id: '', action: '' });
 let jobPollTimer; let activeJobId = ''; let jobPollInFlight = false;
-const output = reactive({ open: false, text: '', action: '', name: '' });
+const output = reactive({ open: false, text: '', action: '', name: '', projectId: '', exitCode: null, running: false });
 const containerCount = computed(() => store.projects.reduce((count, project) => count + project.containers.length, 0));
 const managedCount = computed(() => store.projects.filter((project) => project.managed).length);
 const runningContainerCount = computed(() => store.projects.reduce((count, project) => count + project.containers.filter((container) => container.state === 'running').length, 0));
@@ -93,32 +95,46 @@ async function run(project, action) {
   clearTimeout(jobPollTimer);
   activeJobId = '';
   runningAction.value = { id: project.id, action };
-  busy.value = true; batchTasks.value = []; output.open = true; output.text = ''; output.action = action; output.name = project.projectName;
+  busy.value = true; batchTasks.value = []; output.open = true; output.text = ''; output.action = action; output.name = project.projectName; output.projectId = project.id; output.exitCode = null; output.running = true;
   try {
     await streamComposeControl(project.id, action, (frame) => {
       if (frame.type === 'stdout' || frame.type === 'stderr') output.text += frame.data;
       else if (frame.type === 'error') output.text += `\n[错误] ${frame.data}`;
-      else if (frame.type === 'exit') output.text += `\n[退出码 ${frame.data.code}]`;
+      else if (frame.type === 'exit') { output.exitCode = frame.data.code; output.text += `\n[退出码 ${frame.data.code}]`; }
     });
     await refresh();
-  } catch (error) { output.text += `\n[请求失败] ${error.message}`; }
-  finally { busy.value = false; runningAction.value = { id: '', action: '' }; }
+  } catch (error) { output.text += `\n[请求失败] ${error.message}`; output.exitCode = 1; }
+  finally { busy.value = false; runningAction.value = { id: '', action: '' }; output.running = false; }
 }
 async function handleEnvApply({ project }) {
   envProject.value = null;
-  output.open = true; output.text = ''; output.action = 'env.apply'; output.name = project.projectName;
+  output.open = true; output.text = ''; output.action = 'env.apply'; output.name = project.projectName; output.projectId = project.id; output.exitCode = null; output.running = true;
   busy.value = true;
   try {
     await streamComposeControl(project.id, null, (frame) => {
       if (frame.type === 'stdout' || frame.type === 'stderr') output.text += frame.data;
       else if (frame.type === 'error') output.text += `\n[错误] ${frame.data}`;
-      else if (frame.type === 'exit') output.text += `\n[退出码 ${frame.data.code}]`;
+      else if (frame.type === 'exit') { output.exitCode = frame.data.code; output.text += `\n[退出码 ${frame.data.code}]`; }
     }, `/projects/${project.id}/env/apply`, { restart: true });
     useToastStore().success('环境变量已应用,容器平滑重建完成');
     await refresh();
   } catch (error) {
-    output.text += `\n[请求失败] ${error.message}`;
-  } finally { busy.value = false; }
+    output.text += `\n[请求失败] ${error.message}`; output.exitCode = 1;
+  } finally { busy.value = false; output.running = false; }
+}
+function openDiagnosisForOutput() {
+  const project = store.projects.find((p) => p.id === output.projectId);
+  if (!project) return;
+  diagnosis.value = {
+    projectId: project.id,
+    projectName: project.projectName,
+    containerId: '',
+    rawLogs: output.text.slice(-50000),
+    envKeys: [],
+    failedCommand: output.action ? `docker compose ${output.action}` : 'docker compose up -d --force-recreate',
+    exitCode: output.exitCode,
+    envEditable: !!project.editable,
+  };
 }
 async function runBatch(action) {
   const projects = selectedProjects.value;

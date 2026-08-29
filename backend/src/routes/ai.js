@@ -1,5 +1,5 @@
 import { getAiConfig, setAiConfig, callOpenAI, addAiMessage, getAiHistory, clearAiHistory } from '../services/ai.js';
-import docker from '../services/docker.js';
+import { getActivityDocker } from '../services/docker-hosts.js';
 import { findProjectContainer } from '../services/scanner.js';
 import { readCompose } from '../services/compose-runner.js';
 import { readWorkspaceCompose } from '../services/compose-workspace.js';
@@ -103,37 +103,49 @@ export default async function aiRoutes(fastify) {
       } catch {}
     }
 
-    // 取最近 200 行日志（非 follow）
-    let logs = '';
-    try {
-      const container = docker.getContainer(match.container.id);
-      const inspection = await container.inspect().catch(() => null);
-      const logStream = await container.logs({ follow: false, stdout: true, stderr: true, tail: 200, timestamps: false });
-      if (inspection?.Config?.Tty) {
-        logs = Buffer.isBuffer(logStream) ? logStream.toString('utf8') : '';
-      } else {
-      const { demuxStream } = await import('../lib/docker-streams.js');
-      const demux = demuxStream();
-      const chunks = [];
-      demux.stdout.on('data', (b) => chunks.push(b));
-      demux.stderr.on('data', (b) => chunks.push(b));
-      if (Buffer.isBuffer(logStream)) demux.end(logStream);
-      else logStream.pipe(demux);
-      await Promise.all([
-        new Promise((resolve) => demux.stdout.on('end', resolve)),
-        new Promise((resolve) => demux.stderr.on('end', resolve)),
-      ]);
-      logs = Buffer.concat(chunks).toString('utf8');
+    // 优先使用前端传入的失败上下文(rawLogs),否则回退拉取最近 200 行日志
+    const { rawLogs, failedCommand, exitCode, envKeys } = request.body || {};
+    let logs = String(rawLogs || '').slice(-50000);
+    if (!logs) {
+      try {
+        const container = getActivityDocker().getContainer(match.container.id);
+        const inspection = await container.inspect().catch(() => null);
+        const logStream = await container.logs({ follow: false, stdout: true, stderr: true, tail: 200, timestamps: false });
+        if (inspection?.Config?.Tty) {
+          logs = Buffer.isBuffer(logStream) ? logStream.toString('utf8') : '';
+        } else {
+          const { demuxStream } = await import('../lib/docker-streams.js');
+          const demux = demuxStream();
+          const chunks = [];
+          demux.stdout.on('data', (b) => chunks.push(b));
+          demux.stderr.on('data', (b) => chunks.push(b));
+          if (Buffer.isBuffer(logStream)) demux.end(logStream);
+          else logStream.pipe(demux);
+          await Promise.all([
+            new Promise((resolve) => demux.stdout.on('end', resolve)),
+            new Promise((resolve) => demux.stderr.on('end', resolve)),
+          ]);
+          logs = Buffer.concat(chunks).toString('utf8');
+        }
+      } catch (e) {
+        logs = `读取日志失败: ${e.message}`;
       }
-    } catch (e) {
-      logs = `读取日志失败: ${e.message}`;
     }
 
-    const userPrompt = `请帮我分析以下容器为什么启动失败或异常退出，并给出根因与修复建议。
+    const redactedEnv = (Array.isArray(envKeys) ? envKeys : []).map(({ key, value }) => {
+      const isSecret = /(SECRET|TOKEN|PASSWORD|PASSWD|\bPASS\b|(?:API|PRIVATE|ACCESS|SECRET|AUTH|SIGNING)[_-]?KEY)/i.test(key || '');
+      return `${key}=${isSecret ? '••••••' : value || ''}`;
+    }).join('\n');
+
+    const userPrompt = `请帮我分析以下容器为什么启动失败或异常退出,并给出根因与修复建议。
+${failedCommand ? `\n--- 失败命令 ---\n${failedCommand}\n` : ''}
+${exitCode != null ? `\n--- 退出码 ---\n${exitCode}\n` : ''}
+${redactedEnv ? `\n--- 环境变量键(敏感值已脱敏) ---\n${redactedEnv}\n` : ''}
 ${composeContent ? `\n--- docker-compose.yml ---\n${composeContent}\n` : ''}
 --- 最近日志 ---
 ${logs.slice(-50000)}
 `;
+
 
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',

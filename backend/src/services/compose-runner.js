@@ -4,8 +4,21 @@ import path from 'path';
 import { randomBytes } from 'crypto';
 import { validateYaml } from '../lib/files.js';
 import { addComposeBackup } from '../lib/db.js';
+import { composeEnv, getActiveHost } from './docker-hosts.js';
 
 const COMPOSE_BIN = process.env.COMPOSE_BIN || 'docker';
+
+/** 组合节点环境变量(DOCKER_HOST)与 Compose 超时变量。 */
+export function nodeEnv(project) {
+  const hostEnv = composeEnv(project?.host || getActiveHost());
+  return {
+    ...process.env,
+    ...hostEnv,
+    COMPOSE_HTTP_TIMEOUT: '300',
+    COMPOSE_PROGRESS: 'plain',
+  };
+}
+
 const ACTIONS = {
   up: ['up', '-d'],
   stop: ['stop'],
@@ -48,7 +61,7 @@ export function spawnComposeCommand(project, args, overrideFiles = null) {
   const files = overrideFiles || project.composeFiles;
   return spawn(base[0], [...base.slice(1), ...files.flatMap((file) => ['-f', file]), ...args], {
     cwd: project.workingDir,
-    env: { ...process.env, COMPOSE_HTTP_TIMEOUT: '300', COMPOSE_PROGRESS: 'plain' },
+    env: nodeEnv(project),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 }
@@ -57,7 +70,7 @@ export function spawnCompose(project, action) {
   const base = composeBase();
   return spawn(base[0], composeArgs(project, action), {
     cwd: project.workingDir,
-    env: { ...process.env, COMPOSE_HTTP_TIMEOUT: '300', COMPOSE_PROGRESS: 'plain' },
+    env: nodeEnv(project),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 }
@@ -68,7 +81,7 @@ function runConfigCheck(project, files) {
     const args = [...base.slice(1), ...files.flatMap((file) => ['-f', file]), 'config', '--quiet'];
     const child = spawn(base[0], args, {
       cwd: project.workingDir,
-      env: { ...process.env, COMPOSE_PROGRESS: 'plain' },
+      env: nodeEnv(project),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stderr = '';

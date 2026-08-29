@@ -28,6 +28,7 @@ const route = useRoute(); const projects = ref([]); const projectId = ref(route.
 const containers = computed(() => projects.value.find((p) => p.id === projectId.value)?.containers || []);
 onMounted(async () => {
   [projects.value, capabilities.value] = await Promise.all([api.getProjects().then((r) => r.projects.filter((project) => project.managed)), api.getCapabilities()]);
+  window.addEventListener('composeops:host-changed', onHostChanged);
   term = new Terminal({ fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, monospace', fontSize: 13, cursorBlink: true, theme: { background: '#0b0d10', foreground: '#e5e7eb' } }); fit = new FitAddon(); term.loadAddon(fit); term.open(termEl.value); nextTick(() => { fit.fit(); termReady.value = true; });
   term.onData((data) => { if (ws?.readyState === WebSocket.OPEN) ws.send(data); }); term.onResize(({ cols, rows }) => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'resize', cols, rows })); });
   resizeObserver = new ResizeObserver(() => fit.fit()); resizeObserver.observe(termEl.value);
@@ -41,5 +42,6 @@ function connect() {
   ws.onerror = () => error.value = '终端连接失败'; ws.onclose = () => connected.value = false;
 }
 function disconnect() { if (ws) { ws.onclose = null; ws.close(); ws = null; } connected.value = false; }
-onBeforeUnmount(() => { disconnect(); resizeObserver?.disconnect(); term?.dispose(); });
+function onHostChanged() { disconnect(); projects.value = []; void api.getProjects().then((r) => { projects.value = r.projects.filter((project) => project.managed); }).catch(() => {}); }
+onBeforeUnmount(() => { disconnect(); resizeObserver?.disconnect(); term?.dispose(); window.removeEventListener('composeops:host-changed', onHostChanged); });
 </script>

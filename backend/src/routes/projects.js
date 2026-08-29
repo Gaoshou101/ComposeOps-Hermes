@@ -5,6 +5,7 @@ import { readCompose, saveCompose } from '../services/compose-runner.js';
 import { pruneWorkspaceRunners, readWorkspaceCompose, saveWorkspaceCompose } from '../services/compose-workspace.js';
 import { prepareProjectAction } from '../services/project-action-runner.js';
 import { readProjectEnv, saveProjectEnv, applyProjectEnv, assertEnvAccess } from '../services/project-env.js';
+import { readContainerStat } from '../services/stats.js';
 import {
   addOperation,
   getComposeBackup,
@@ -254,6 +255,56 @@ export default async function projectRoutes(fastify) {
     });
     reply.raw.on('close', () => {
       if (!finished && child && child.exitCode === null && !child.killed) child.kill('SIGTERM');
+    });
+  });
+
+  // ---- 项目容器实时资源指标流(SSE,2.5s 周期,客户端断开自动销毁) ----
+  fastify.get('/:id/stats/stream', async (request, reply) => {
+    const project = await projectOr404(request.params.id, reply);
+    if (!project) return;
+    if (!requireManaged(project, reply)) return;
+    const interval = Math.max(1000, Math.min(Number(request.query.interval) || 2500, 10000));
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    const send = (frame) => {
+      if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify(frame)}\n\n`);
+    };
+    let running = true;
+    let timer = null;
+    let inFlight = null;
+    async function tick() {
+      if (!running || inFlight) return;
+      inFlight = (async () => {
+        const containers = project.containers.filter((item) => item.state === 'running');
+        const rows = await Promise.all(containers.map(async (item) => {
+          try {
+            const stat = await readContainerStat(item.id);
+            return {
+              containerId: item.id,
+              name: item.name,
+              ...stat,
+            };
+          } catch {
+            return null;
+          }
+        }));
+        send({ type: 'stats', data: rows.filter(Boolean), ts: Date.now() });
+      })().catch((error) => {
+        send({ type: 'error', data: error.message });
+      }).finally(() => {
+        inFlight = null;
+      });
+    }
+    timer = setInterval(() => void tick(), interval);
+    timer.unref?.();
+    void tick();
+    reply.raw.on('close', () => {
+      running = false;
+      if (timer) clearInterval(timer);
     });
   });
 

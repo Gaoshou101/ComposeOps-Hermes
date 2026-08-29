@@ -245,3 +245,13 @@ body {
 .skeleton-fade-leave-active { transition: opacity 0.25s ease; }
 .skeleton-fade-enter-from,
 .skeleton-fade-leave-to { opacity: 0; }
+.host-switch { @apply inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-800 px-2.5 text-sm text-surface-200 hover:border-surface-600 hover:bg-surface-700 transition-colors; }
+.host-dropdown { @apply fixed right-3 top-[4.5rem] z-[50] w-72 overflow-hidden rounded-xl border border-surface-700 bg-surface-900 shadow-2xl; }
+.host-item { @apply flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-surface-800; }
+.host-item.active { @apply bg-surface-800/70; }
+.sparkline { @apply shrink-0 overflow-visible; }
+.spark-area { @apply opacity-25; }
+.metric-chip { @apply ml-1 inline-flex shrink-0 items-center rounded-full bg-surface-800/80 px-2 py-0.5 text-[10px] font-medium tabular-nums; }
+.ai-diagnosis { @apply whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-surface-200; }
+.ai-diagnosis .code-block { @apply my-2 rounded-lg border border-surface-700 bg-black/40 px-3 py-2 text-emerald-200; }
+.ai-diagnose-bar { @apply flex shrink-0 flex-wrap items-center gap-2 border-t border-surface-800 bg-surface-900/80 px-3 py-2.5; }

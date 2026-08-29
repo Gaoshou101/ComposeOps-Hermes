@@ -10,6 +10,7 @@ import wsRoutes from './routes/ws.js';
 import authRoutes from './routes/auth.js';
 import personalRoutes from './routes/personal.js';
 import jobRoutes from './routes/jobs.js';
+import hostRoutes from './routes/hosts.js';
 import docker from './services/docker.js';
 import { isAuthenticated, isConfigured, setPassword, validateOrigin } from './lib/auth.js';
 import { startAlertMonitor, stopAlertMonitor } from './services/alert-monitor.js';
@@ -78,6 +79,7 @@ await fastify.register(
     await api.register(systemRoutes, { prefix: '/system' });
     await api.register(personalRoutes, { prefix: '/personal' });
     await api.register(jobRoutes, { prefix: '/jobs' });
+    await api.register(hostRoutes, { prefix: '/hosts' });
   },
   { prefix: '/api/v1' }
 );

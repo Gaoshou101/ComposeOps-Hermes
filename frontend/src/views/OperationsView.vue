@@ -109,15 +109,16 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useRoute, useRouter } from 'vue-router';
-import { Activity, CircleCheckBig, CircleX, Eye, History, ListChecks, LoaderCircle, RefreshCw, Search, TriangleAlert, X } from 'lucide-vue-next';
+import { Activity, CircleCheckBig, CircleX, Eye, History, ListChecks, LoaderCircle, RefreshCw, Search, Sparkles, TriangleAlert, X } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import StatusBadge from '../components/common/StatusBadge.vue';
 import EmptyState from '../components/common/EmptyState.vue';
+import AIDiagnosisModal from '../components/services/AIDiagnosisModal.vue';
 
 const route = useRoute();
 const router = useRouter();
 const operations = ref([]); const jobs = ref([]); const loading = ref(false);
-const selectedOperation = ref(null); const selectedJob = ref(null); const selectedJobItem = ref(null);
+const selectedOperation = ref(null); const selectedJob = ref(null); const selectedJobItem = ref(null); const diagnosis = ref(null);
 const query = ref(''); const jobQuery = ref('');
 const statusFilter = ref(route.query.status === 'failed' ? 'failed' : 'all');
 const jobStatusFilter = ref('all');
@@ -175,6 +176,18 @@ async function openJob(id, updateRoute = true) {
 function closeJob() {
   clearTimeout(jobPollTimer); selectedJob.value = null; selectedJobItem.value = null;
   const next = { ...route.query }; delete next.job; router.replace({ query: next });
+}
+function diagnoseOperation() {
+  const item = selectedOperation.value;
+  if (!item) return;
+  diagnosis.value = {
+    projectId: item.projectId || '',
+    projectName: item.projectName || '系统操作',
+    rawLogs: (item.detail || '').slice(-50000),
+    failedCommand: actionLabel(item.action),
+    exitCode: 1,
+    envEditable: false,
+  };
 }
 useEscapeKey({ active: computed(() => !!selectedOperation.value), onClose: () => { selectedOperation.value = null; }, layer: 'modal', lockBody: true });
 useEscapeKey({ active: computed(() => !!selectedJob.value), onClose: closeJob, layer: 'modal', lockBody: true });

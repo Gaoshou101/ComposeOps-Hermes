@@ -47,6 +47,13 @@ export const api = {
   getBackups: (projectId) => request(`/projects/${projectId}/backups`),
   getBackup: (projectId, backupId) => request(`/projects/${projectId}/backups/${backupId}`),
   restoreBackup: (projectId, backupId) => request(`/projects/${projectId}/backups/${backupId}/restore`, { method: 'POST' }),
+  // docker hosts
+  getHosts: () => request('/hosts'),
+  saveHost: (payload) => request('/hosts', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteHost: (id) => request(`/hosts/${id}`, { method: 'DELETE' }),
+  pingHost: (id, probe) => request(`/hosts/${id}/ping`, { method: 'POST', body: JSON.stringify(probe ? { probe } : {}) }),
+  setActiveHost: (hostId) => request('/hosts/active', { method: 'PUT', body: JSON.stringify({ hostId }) }),
+  getActiveHost: () => request('/hosts/active'),
   // ai
   getAiConfig: () => request('/ai/config'),
   saveAiConfig: (payload) => request('/ai/config', { method: 'POST', body: JSON.stringify(payload) }),
@@ -137,6 +144,33 @@ export async function streamSse(path, body, onFrame, signal) {
       } catch {}
     }
   }
+}
+
+/** 项目容器实时资源指标 SSE 流(GET)。 */
+export function streamProjectStats(projectId, onFrame, signal, interval = 2500) {
+  return fetch(`${BASE}/projects/${projectId}/stats/stream?interval=${interval}`, { signal }).then(async (res) => {
+    if (!res.ok || !res.body) {
+      const payload = await res.json().catch(() => ({}));
+      throw new Error(payload.message || payload.error || '指标流请求失败');
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data:')) continue;
+        try {
+          onFrame(JSON.parse(line.slice(5).trim()));
+        } catch {}
+      }
+    }
+  });
 }
 
 /** 构造 WebSocket 绝对地址 */

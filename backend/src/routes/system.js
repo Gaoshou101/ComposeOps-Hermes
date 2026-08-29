@@ -1,7 +1,8 @@
 import { readFileSync } from 'fs';
 import { execSync } from 'child_process';
 import os from 'os';
-import docker from '../services/docker.js';
+import { getActivityDocker } from '../services/docker-hosts.js';
+import { parseContainerStat } from '../services/stats.js';
 
 /**
  * 宿主机指标：CPU / 内存 / 磁盘 / 网络
@@ -98,31 +99,20 @@ function readNetStats(prev) {
   return net;
 }
 async function readContainerStats() {
+  const docker = getActivityDocker();
   const containers = await docker.listContainers({ all: false });
   const rows = await Promise.all(containers.map(async (c) => {
     try {
       const stat = await docker.getContainer(c.Id).stats({ stream: false });
-      const cpu = stat.cpu_stats?.cpu_usage?.total_usage || 0;
-      const sys = stat.cpu_stats?.system_cpu_usage || 0;
-      const previousCpu = stat.precpu_stats?.cpu_usage?.total_usage || 0;
-      const previousSys = stat.precpu_stats?.system_cpu_usage || 0;
-      const onlineCpus = stat.cpu_stats?.online_cpus || stat.cpu_stats?.cpu_usage?.percpu_usage?.length || 1;
-      let cpuPercent = 0;
-      if (sys > previousSys) {
-        const cpuDelta = cpu - previousCpu;
-        const sysDelta = sys - previousSys;
-        cpuPercent = sysDelta > 0 ? (cpuDelta / sysDelta * onlineCpus * 100) : 0;
-      }
-      const memUsage = stat.memory_stats?.usage || 0;
-      const memLimit = stat.memory_stats?.limit || 0;
+      const parsed = parseContainerStat(stat);
       return {
         id: c.Id,
         name: (c.Names[0] || '').replace(/^\//, ''),
         image: c.Image,
-        cpuPercent: +cpuPercent.toFixed(2),
-        memUsage,
-        memLimit,
-        memPercent: memLimit > 0 ? +(memUsage / memLimit * 100).toFixed(2) : 0,
+        cpuPercent: parsed.cpuPercent,
+        memUsage: Math.round(parsed.memUsageMB * 1024 * 1024),
+        memLimit: Math.round(parsed.memLimitMB * 1024 * 1024),
+        memPercent: parsed.memPercent,
       };
     } catch { return null; }
   }));

@@ -12,6 +12,7 @@
         <button class="icon-btn" :title="paused ? '继续接收' : '暂停显示'" @click="togglePause"><Play v-if="paused" class="w-4 h-4" /><Pause v-else class="w-4 h-4" /></button>
         <button class="icon-btn" title="下载日志" :disabled="!lines.length" @click="download"><Download class="w-4 h-4" /></button>
         <button class="icon-btn" title="清屏" @click="lines = []"><Trash2 class="w-4 h-4" /></button>
+        <button v-if="hasErrors" class="btn-primary" @click="diagnosis = true"><Sparkles class="w-4 h-4" />✨ AI 诊断</button>
       </div>
     </div>
     <p v-if="error" class="alert-error">{{ error }}</p>
@@ -19,18 +20,25 @@
     <div ref="boxEl" class="terminal-output card flex-1 min-h-[360px]">
       <div v-for="line in filtered" :key="line.id" class="log-line" :class="line.type === 'stderr' || line.type === 'error' ? 'text-rose-400' : 'text-surface-200'">{{ line.data }}</div>
     </div>
+    <AIDiagnosisModal v-if="diagnosis" :open="diagnosis" :project-id="projectId" :project-name="projectName" :container-id="containerId" :raw-logs="recentErrorLogs" :exit-code="null" @close="diagnosis = false" />
   </div>
 </template>
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { Download, Pause, Play, Square, Trash2 } from 'lucide-vue-next';
+import { Download, Pause, Play, Sparkles, Square, Trash2 } from 'lucide-vue-next';
 import { api, wsUrl } from '../api/client.js';
+import AIDiagnosisModal from '../components/services/AIDiagnosisModal.vue';
 const route = useRoute(); const projects = ref([]); const projectId = ref(route.query.projectId || ''); const containerId = ref(route.query.containerId || '');
-const tail = ref(200); const lines = ref([]); const pending = ref([]); const search = ref(''); const connected = ref(false); const paused = ref(false); const autoScroll = ref(true); const error = ref(''); const boxEl = ref(null); let ws; let sequence = 0;
+const tail = ref(200); const lines = ref([]); const pending = ref([]); const search = ref(''); const connected = ref(false); const paused = ref(false); const autoScroll = ref(true); const error = ref(''); const boxEl = ref(null); const diagnosis = ref(false); let ws; let sequence = 0;
 const containers = computed(() => projects.value.find((p) => p.id === projectId.value)?.containers || []);
+const projectName = computed(() => projects.value.find((p) => p.id === projectId.value)?.projectName || '');
+const hasErrors = computed(() => lines.value.some((line) => /(fatal|error|crash|exception|failed)/i.test(line.data)));
+const recentErrorLogs = computed(() => lines.value.filter((line) => line.type === 'stderr' || line.type === 'error').map((line) => line.data).join('').slice(-50000));
 const filtered = computed(() => search.value ? lines.value.filter((line) => line.data.toLowerCase().includes(search.value.toLowerCase())) : lines.value);
-onMounted(async () => { projects.value = (await api.getProjects()).projects.filter((project) => project.managed); const prefs = await api.getPreferences(); tail.value = prefs.logTail; if (containerId.value && projects.value.some((project) => project.id === projectId.value)) connect(); });
+onMounted(async () => { projects.value = (await api.getProjects()).projects.filter((project) => project.managed); const prefs = await api.getPreferences(); tail.value = prefs.logTail; if (containerId.value && projects.value.some((project) => project.id === projectId.value)) connect(); window.addEventListener('composeops:host-changed', onHostChanged); });
+function onHostChanged() { disconnect(); projects.value = []; void reloadProjects(); }
+async function reloadProjects() { try { projects.value = (await api.getProjects()).projects.filter((project) => project.managed); if (containerId.value && projects.value.some((project) => project.id === projectId.value)) connect(); } catch {} }
 function connect() {
   disconnect(); error.value = '';
   ws = new WebSocket(wsUrl(`/ws/logs?projectId=${encodeURIComponent(projectId.value)}&containerId=${encodeURIComponent(containerId.value)}&tail=${tail.value}`));
@@ -41,5 +49,5 @@ function append(item) { lines.value.push(item); if (lines.value.length > 5000) l
 function togglePause() { paused.value = !paused.value; if (!paused.value) { for (const item of pending.value.splice(0)) append(item); } }
 function disconnect() { if (ws) { ws.onclose = null; ws.close(); ws = null; } connected.value = false; }
 function download() { const blob = new Blob([lines.value.map((l) => l.data).join('')], { type: 'text/plain' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `composeops-${Date.now()}.log`; a.click(); URL.revokeObjectURL(a.href); }
-onBeforeUnmount(disconnect);
+onBeforeUnmount(() => { disconnect(); window.removeEventListener('composeops:host-changed', onHostChanged); });
 </script>

@@ -56,9 +56,14 @@
         <div v-for="container in project.containers" :key="container.id" class="min-h-12 py-2 flex items-center gap-2">
           <span class="status-dot" :class="container.state === 'running' ? 'bg-emerald-400' : 'bg-rose-400'"></span>
           <div class="min-w-0 flex-1">
-            <div class="text-sm font-mono truncate">{{ container.name }}</div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-sm font-mono truncate">{{ container.name }}</span>
+              <span v-if="metrics[container.id]?.cpu != null" class="metric-chip" :class="metrics[container.id].cpu >= 85 ? 'bg-rose-950/50 text-rose-300' : metrics[container.id].cpu >= 60 ? 'bg-amber-950/50 text-amber-300' : 'text-emerald-300'">CPU {{ metrics[container.id].cpu.toFixed(1) }}%</span>
+              <span v-if="metrics[container.id]?.mem != null" class="metric-chip" :class="metrics[container.id].mem >= 90 ? 'bg-rose-950/50 text-rose-300' : 'text-emerald-300'">MEM {{ metrics[container.id].memUsageMB.toFixed(0) }}MB / {{ metrics[container.id].mem.toFixed(1) }}%</span>
+            </div>
             <div class="text-muted truncate">{{ container.image }}<span v-if="container.ports.length"> · {{ portText(container) }}</span><span v-if="container.health" :class="healthClass(container.health)"> · {{ container.health }}</span></div>
           </div>
+          <SparklineChart v-if="metrics[container.id]?.history && metrics[container.id].history.length >= 2" :cpu="metrics[container.id].history.map((point) => point.cpuPercent)" :mem="metrics[container.id].history.map((point) => point.memPercent)" class="hidden sm:block" />
           <router-link class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="实时日志" :to="`/logs?projectId=${project.id}&containerId=${container.id}`"><ScrollText class="w-4 h-4" /></router-link>
           <router-link class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="容器终端" :to="`/shell?projectId=${project.id}&containerId=${container.id}`"><TerminalSquare class="w-4 h-4" /></router-link>
           <router-link class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="AI 诊断" :to="`/ai?projectId=${project.id}&containerId=${container.id}&diagnose=1`"><Bot class="w-4 h-4" /></router-link>
@@ -69,10 +74,11 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Bot, ChevronDown, Download, FileCode2, FolderCog, History, KeyRound, ListTree, Pencil, Play, RotateCw, ScrollText, Square, Star, TerminalSquare } from 'lucide-vue-next';
 import StatusBadge from '../common/StatusBadge.vue';
-import { api } from '../../api/client.js';
+import SparklineChart from '../common/SparklineChart.vue';
+import { api, streamProjectStats } from '../../api/client.js';
 
 const props = defineProps({
   project: { type: Object, required: true },
@@ -84,6 +90,47 @@ const props = defineProps({
   lastResults: { type: Array, default: () => [] },
 });
 const emit = defineEmits(['toggle-expand', 'toggle-select', 'action', 'activity', 'env', 'refresh']);
+
+const metrics = ref({});
+let statsAbort = null;
+let statsTimer = null;
+
+watch(() => props.expanded, (expanded) => {
+  if (!expanded) { closeStats(); return; }
+  openStats();
+});
+watch(() => props.project.id, () => { closeStats(); if (props.expanded) openStats(); });
+onMounted(() => { if (props.expanded) openStats(); });
+onBeforeUnmount(closeStats);
+
+async function openStats() {
+  closeStats();
+  if (!props.project.managed || !props.project.containers.some((c) => c.state === 'running')) return;
+  statsAbort = new AbortController();
+  try {
+    await streamProjectStats(props.project.id, (frame) => {
+      if (frame.type === 'stats') applyStats(frame.data || []);
+      else if (frame.type === 'error') { /* 指标流按节点能力静默降级 */ }
+    }, statsAbort.signal, 2500);
+  } catch {
+    // fetch abort 或网络错误:静默降级,不打断卡片交互
+  }
+}
+function applyStats(rows) {
+  const next = { ...metrics.value };
+  for (const row of rows) {
+    const prev = next[row.containerId] || { history: [] };
+    const history = [...prev.history, { cpuPercent: row.cpuPercent, memPercent: row.memPercent }];
+    if (history.length > 26) history.shift();
+    next[row.containerId] = { cpu: row.cpuPercent, mem: row.memPercent, memUsageMB: row.memUsageMB, history };
+  }
+  metrics.value = next;
+}
+function closeStats() {
+  if (statsAbort) { try { statsAbort.abort(); } catch {} statsAbort = null; }
+  if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
+  metrics.value = {};
+}
 
 const locked = computed(() => props.busy || !!props.actionRunning);
 const attention = computed(() => props.project.status !== 'running' || props.project.containers.some((container) => container.health === 'unhealthy'));

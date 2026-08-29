@@ -81,6 +81,62 @@
       </div>
     </section>
 
+    <section v-if="tab === 'hosts'" class="settings-section">
+      <div class="flex items-center justify-between gap-3">
+        <div><h2 class="section-title">Docker 节点纳管</h2><p class="text-sm text-surface-400 mt-1">添加远程 Docker 主机(Local/TCP/SSH),全局切换后所有项目、日志与指标跟随目标节点。</p></div>
+        <button class="btn-primary" @click="openHostEditor()"><Server class="w-4 h-4" />添加远程主机</button>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div v-for="host in hostsStore.hosts" :key="host.id" class="card p-3 flex items-start gap-3" :class="{ 'ring-1 ring-emerald-500/60': host.id === hostsStore.activeHostId }">
+          <span class="mt-1.5 w-2.5 h-2.5 shrink-0 rounded-full" :class="host.status === 'online' ? 'bg-emerald-400 shadow-glow-emerald' : host.status === 'offline' ? 'bg-rose-400' : 'bg-surface-600'"></span>
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2"><strong class="font-mono text-sm">{{ host.name }}</strong><span class="count-badge">{{ host.type.toUpperCase() }}</span><span v-if="host.id === hostsStore.activeHostId" class="count-badge text-emerald-300">当前</span></div>
+            <div class="mt-1 text-muted font-mono text-xs">{{ host.type === 'local' ? '本机 Docker Socket' : `${host.host}:${host.port}` }}<template v-if="host.latencyMs"> · {{ host.latencyMs }}ms</template><template v-if="host.version"> · v{{ host.version }}</template><template v-if="host.containerCount != null"> · {{ host.containerCount }} 容器</template></div>
+            <div class="mt-1 flex flex-wrap gap-1.5">
+              <button class="btn-ghost" :disabled="hostsStore.pinging === host.id" @click="pingHost(host)"><Activity class="w-4 h-4" />{{ hostsStore.pinging === host.id ? '检测中' : '测试连接' }}</button>
+              <button v-if="host.id !== hostsStore.activeHostId" class="btn-secondary" @click="activate(host)"><Zap class="w-4 h-4" />切换</button>
+              <button v-if="!host.builtin" class="btn-ghost" @click="openHostEditor(host)"><Pencil class="w-4 h-4" />编辑</button>
+              <button v-if="!host.builtin" class="btn-ghost text-rose-300" @click="removeHost(host)"><Trash2 class="w-4 h-4" />删除</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div v-if="hostEditor" class="modal-backdrop z-[55]" @click.self="hostEditor = null">
+      <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-2xl flex max-h-[90vh] flex-col">
+        <div class="modal-header shrink-0"><span>{{ hostEditor.id ? '编辑远程主机' : '添加远程主机' }}</span><button class="icon-btn" title="关闭" @click="hostEditor = null"><X class="w-4 h-4" /></button></div>
+        <div class="overflow-y-auto p-4 space-y-3">
+          <div class="form-grid">
+            <label class="md:col-span-2">节点名称<input v-model="hostEditor.name" class="input" placeholder="例如 K8s Worker / 生产机" /></label>
+            <label>连接方式<select v-model="hostEditor.type" class="input"><option value="tcp">TCP (Docker API)</option><option value="ssh">SSH</option></select></label>
+            <label>端口<input v-model.number="hostEditor.port" type="number" class="input" :placeholder="hostEditor.type === 'ssh' ? '22' : '2375'" /></label>
+            <label>主机地址<input v-model="hostEditor.host" class="input" placeholder="192.168.1.10" /></label>
+            <label>用户名<input v-model="hostEditor.username" class="input" placeholder="root" /></label>
+          </div>
+          <template v-if="hostEditor.type === 'ssh'">
+            <div class="form-grid">
+              <label class="md:col-span-2">SSH 密码<input v-model="hostEditor.password" type="password" class="input" :placeholder="hostEditor.hasPassword ? '已配置,留空保持不变' : '…'" /></label>
+              <label class="md:col-span-2">私钥(可选)<textarea v-model="hostEditor.privateKey" rows="4" class="input font-mono" :placeholder="hostEditor.hasPrivateKey ? '已配置,留空保持不变' : '-----BEGIN OPENSSH PRIVATE KEY-----…'"></textarea></label>
+            </div>
+          </template>
+          <template v-else>
+            <details class="text-sm"><summary class="cursor-pointer text-surface-300">TLS 客户端证书(可选)</summary>
+              <div class="form-grid mt-2">
+                <label class="md:col-span-2">CA 证书<textarea v-model="hostEditor.tls.ca" rows="3" class="input font-mono" :placeholder="hostEditor.tls.ca ? '已配置,留空保持不变' : '-----BEGIN CERTIFICATE-----…'"></textarea></label>
+                <label class="md:col-span-2">客户端证书<textarea v-model="hostEditor.tls.cert" rows="3" class="input font-mono" placeholder="-----BEGIN CERTIFICATE-----…"></textarea></label>
+                <label class="md:col-span-2">客户端私钥<textarea v-model="hostEditor.tls.key" rows="3" class="input font-mono" placeholder="-----BEGIN PRIVATE KEY-----…"></textarea></label>
+              </div>
+            </details>
+          </template>
+          <p v-if="hostEditor.pingResult" class="text-sm" :class="hostEditor.pingResult.ok ? 'text-emerald-400' : 'text-rose-400'">{{ hostEditor.pingResult.ok ? `连接成功 · ${hostEditor.pingResult.latencyMs}ms · v${hostEditor.pingResult.version} · ${hostEditor.pingResult.containerCount} 容器` : `连接失败:${hostEditor.pingResult.message}` }}</p>
+        </div>
+        <div class="flex shrink-0 items-center justify-end gap-2 border-t border-surface-800 p-3">
+          <button class="btn-secondary" :disabled="hostEditor.pinging" @click="testHostConnection"><Activity class="w-4 h-4" />{{ hostEditor.pinging ? '检测中…' : '测试连接' }}</button>
+          <button class="btn-primary" @click="saveHost"><Save class="w-4 h-4" />保存节点</button>
+        </div>
+      </div>
+    </div>
     <section v-if="tab === 'about'" class="settings-section"><h2 class="section-title">ComposeOps</h2><p class="text-sm text-surface-400">单用户 Docker Compose 运维台。默认建议仅监听本机或通过 Tailscale 访问。</p><div class="text-sm space-y-1"><p>Web Shell：{{ capabilities.shellEnabled ? '已启用' : '未启用' }}</p><p>环境指标范围：{{ capabilities.hostMetricsScope === 'host' ? '宿主机' : 'ComposeOps 容器' }}</p></div></section>
   </div>
 </template>
@@ -88,14 +144,15 @@
 <script setup>
 import { computed, markRaw, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { Bell, Bot, Download, FolderCog, Info, KeyRound, RefreshCw, Save, Send, ShieldCheck, SlidersHorizontal, Trash2, Upload, Wrench } from 'lucide-vue-next';
-import { api } from '../api/client.js'; import { useAiStore } from '../stores/ai.js'; import StatCard from '../components/StatCard.vue';
+import { Activity, Bell, Bot, Download, FolderCog, Info, KeyRound, Pencil, RefreshCw, Save, Send, Server, ShieldCheck, SlidersHorizontal, Trash2, Upload, Wrench, X, Zap } from 'lucide-vue-next';
+import { api } from '../api/client.js'; import { useAiStore } from '../stores/ai.js'; import { useHostsStore } from '../stores/hosts.js'; import StatCard from '../components/StatCard.vue';
 import EmptyState from '../components/common/EmptyState.vue';
-const tabs = [{ id: 'ai', label: 'AI', icon: markRaw(Bot) }, { id: 'personal', label: '偏好', icon: markRaw(SlidersHorizontal) }, { id: 'notifications', label: '通知', icon: markRaw(Bell) }, { id: 'maintenance', label: '维护', icon: markRaw(Wrench) }, { id: 'mounts', label: '项目纳管', icon: markRaw(FolderCog) }, { id: 'about', label: '关于', icon: markRaw(Info) }];
+const tabs = [{ id: 'ai', label: 'AI', icon: markRaw(Bot) }, { id: 'personal', label: '偏好', icon: markRaw(SlidersHorizontal) }, { id: 'notifications', label: '通知', icon: markRaw(Bell) }, { id: 'maintenance', label: '维护', icon: markRaw(Wrench) }, { id: 'mounts', label: '项目纳管', icon: markRaw(FolderCog) }, { id: 'hosts', label: 'Docker 节点', icon: markRaw(Server) }, { id: 'about', label: '关于', icon: markRaw(Info) }];
 const route = useRoute();
 const initialTab = tabs.some((item) => item.id === route.query.tab) ? route.query.tab : 'ai';
-const tab = ref(initialTab); const message = ref(''); const error = ref(''); const aiStore = useAiStore(); const ai = ref({}); const aiMasked = ref(false); const preferences = ref({ refreshInterval: 5, logTail: 200 }); const password = ref({ currentPassword: '', nextPassword: '' }); const notifications = ref({}); const updates = ref({ autoEnabled: false, intervalHours: 24 }); const updateResults = ref([]); const checkingUpdates = ref(false); const usage = ref(null); const prune = ref({ images: true, buildCache: true, containers: false, volumes: false }); const capabilities = ref({});
+const tab = ref(initialTab); const message = ref(''); const error = ref(''); const aiStore = useAiStore(); const hostsStore = useHostsStore(); const ai = ref({}); const aiMasked = ref(false); const preferences = ref({ refreshInterval: 5, logTail: 200 }); const password = ref({ currentPassword: '', nextPassword: '' }); const notifications = ref({}); const updates = ref({ autoEnabled: false, intervalHours: 24 }); const updateResults = ref([]); const checkingUpdates = ref(false); const usage = ref(null); const prune = ref({ images: true, buildCache: true, containers: false, volumes: false }); const capabilities = ref({});
 const mountPlan = ref(null); const mountLoading = ref(false); const highlightedProjectId = computed(() => String(route.query.projectId || ''));
+const hostEditor = ref(null);
 const updateSummary = computed(() => ({ total: updateResults.value.length, updated: updateResults.value.filter((item) => item.status === 'updated').length, failed: updateResults.value.filter((item) => item.status === 'failed').length }));
 const selectedProjectIds = ref([]); const savedManagedProjectIds = ref([]);
 const selectedMountProjectIds = ref([]); const savedMountProjectIds = ref([]);
@@ -109,7 +166,94 @@ const mountsDirty = computed(() => {
 });
 const selectionDirty = computed(() => managementDirty.value || mountsDirty.value);
 function ok(text) { message.value = text; error.value = ''; } function fail(e) { error.value = e.message; message.value = ''; }
-onMounted(async () => { try { await aiStore.loadConfig(); const cfg = aiStore.config; ai.value = { baseUrl: cfg.baseUrl, apiKey: '', model: cfg.model, systemPrompt: cfg.systemPrompt }; aiMasked.value = !!cfg.apiKey; const [prefs, notificationConfig, updateConfig, systemCapabilities, plan] = await Promise.all([api.getPreferences(), api.getNotifications(), api.getUpdateSettings(), api.getCapabilities(), api.getMountPlan()]); preferences.value = prefs; notifications.value = notificationConfig; updates.value = updateConfig; updateResults.value = updateConfig.lastResults || []; capabilities.value = systemCapabilities; applyMountPlan(plan); await loadUsage(); } catch (e) { fail(e); } });
+function openHostEditor(host) {
+  hostEditor.value = host ? {
+    id: host.id,
+    name: host.name,
+    type: host.type === 'ssh' ? 'ssh' : 'tcp',
+    host: host.host || '',
+    port: host.port || (host.type === 'ssh' ? 22 : 2375),
+    username: host.username || 'root',
+    password: host.hasPassword ? '' : '',
+    privateKey: host.hasPrivateKey ? '' : '',
+    hasPassword: host.hasPassword,
+    hasPrivateKey: host.hasPrivateKey,
+    tls: { ca: '', cert: '', key: '' },
+    pingResult: null,
+    pinging: false,
+  } : { id: '', name: '', type: 'tcp', host: '', port: 2375, username: 'root', password: '', privateKey: '', hasPassword: false, hasPrivateKey: false, tls: { ca: '', cert: '', key: '' }, pingResult: null, pinging: false };
+}
+async function testHostConnection() {
+  const editor = hostEditor.value;
+  if (!editor) return;
+  editor.pinging = true;
+  editor.pingResult = null;
+  try {
+    const payload = editorToPayload(editor);
+    const result = await api.pingHost(await saveTemporaryHost(payload));
+    editor.pingResult = { ok: result.ok, latencyMs: result.latencyMs, version: result.version, message: result.message };
+  } catch (e) {
+    editor.pingResult = { ok: false, message: e.message };
+  } finally {
+    editor.pinging = false;
+  }
+}
+async function saveTemporaryHost(payload) {
+  // 复用 upsert:新建返回 host.id
+  const host = await api.saveHost(payload);
+  return host.id;
+}
+function editorToPayload(editor) {
+  const payload = {
+    id: editor.id || undefined,
+    name: editor.name,
+    type: editor.type,
+    host: editor.host,
+    port: editor.port,
+    username: editor.username,
+  };
+  if (editor.type === 'tcp' && (editor.tls?.ca || editor.tls?.cert || editor.tls?.key)) {
+    payload.tls = { ca: editor.tls.ca, cert: editor.tls.cert, key: editor.tls.key };
+  }
+  if (editor.type === 'ssh') {
+    if (editor.password) payload.password = editor.password;
+    if (editor.privateKey) payload.privateKey = editor.privateKey;
+  }
+  return payload;
+}
+async function saveHost() {
+  const editor = hostEditor.value;
+  if (!editor) return;
+  try {
+    if (!editor.name.trim()) throw new Error('节点名称不能为空');
+    if (editor.type !== 'local' && !editor.host.trim()) throw new Error('请填写主机地址');
+    await hostsStore.addOrUpdate(editorToPayload(editor));
+    hostEditor.value = null;
+    ok('Docker 节点已保存');
+  } catch (e) { fail(e); }
+}
+async function pingHost(host) {
+  try {
+    await hostsStore.ping(host.id);
+    ok(`节点 ${host.name} 连接正常`);
+  } catch (e) { fail(e); }
+}
+async function activate(host) {
+  try {
+    await hostsStore.switchHost(host.id);
+    ok(`已切换到节点 ${host.name},项目列表将自动刷新`);
+    window.dispatchEvent(new CustomEvent('composeops:host-changed'));
+  } catch (e) { fail(e); }
+}
+async function removeHost(host) {
+  if (!window.confirm(`确认删除节点 ${host.name}?`)) return;
+  try {
+    await hostsStore.remove(host.id);
+    ok('节点已删除');
+  } catch (e) { fail(e); }
+}
+
+onMounted(async () => { try { await aiStore.loadConfig(); const cfg = aiStore.config; ai.value = { baseUrl: cfg.baseUrl, apiKey: '', model: cfg.model, systemPrompt: cfg.systemPrompt }; aiMasked.value = !!cfg.apiKey; const [prefs, notificationConfig, updateConfig, systemCapabilities, plan] = await Promise.all([api.getPreferences(), api.getNotifications(), api.getUpdateSettings(), api.getCapabilities(), api.getMountPlan()]); preferences.value = prefs; void hostsStore.load(); notifications.value = notificationConfig; updates.value = updateConfig; updateResults.value = updateConfig.lastResults || []; capabilities.value = systemCapabilities; applyMountPlan(plan); await loadUsage(); } catch (e) { fail(e); } });
 async function saveAi() { try { const payload = { ...ai.value }; if (!payload.apiKey) delete payload.apiKey; await aiStore.saveConfig(payload); ai.value.apiKey = ''; aiMasked.value = true; ok('AI 配置已保存'); } catch (e) { fail(e); } }
 async function savePreferences() { try { preferences.value = await api.savePreferences(preferences.value); ok('个人偏好已保存'); } catch (e) { fail(e); } }
 async function changePassword() { try { if (password.value.nextPassword.length < 10) throw new Error('新密码至少需要 10 个字符'); await api.changePassword(password.value); password.value = { currentPassword: '', nextPassword: '' }; ok('管理员密码已修改，其他会话已退出'); } catch (e) { fail(e); } }

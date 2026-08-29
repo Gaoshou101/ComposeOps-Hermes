@@ -2,6 +2,7 @@ import { WebSocket } from 'ws';
 import { findProjectContainer } from '../services/scanner.js';
 import { getBackgroundJob } from '../lib/db.js';
 import { subscribeJobEvents } from '../services/job-events.js';
+import { getActivityDocker } from '../services/docker-hosts.js';
 
 /**
  * WebSocket 路由：实时日志流与容器 Web Shell。
@@ -51,8 +52,7 @@ export default async function wsRoutes(fastify) {
       socket.send(JSON.stringify({ type: 'error', data: 'container not found in project' }));
       return socket.close();
     }
-    const docker = fastify.docker;
-    const container = docker.getContainer(match.container.id);
+    const container = getActivityDocker().getContainer(match.container.id);
 
     let logStream;
     try {
@@ -116,8 +116,7 @@ export default async function wsRoutes(fastify) {
       socket.send(JSON.stringify({ type: 'error', data: 'container not found in project' }));
       return socket.close();
     }
-    const docker = fastify.docker;
-    const container = docker.getContainer(match.container.id);
+    const container = getActivityDocker().getContainer(match.container.id);
 
     let exec;
     try {

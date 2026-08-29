@@ -21,6 +21,7 @@
       <span v-else class="status-pill text-rose-300">
         <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span><span class="hidden sm:inline">服务离线</span>
       </span>
+      <HostSwitcher />
       <EventCenter />
       <span class="hidden lg:inline text-muted">{{ currentTime }}</span>
       <span class="h-5 w-px bg-surface-800"></span>
@@ -71,13 +72,16 @@
 import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowRight, Bot, Boxes, ChartNoAxesCombined, FileCode2, History, KeyRound, LogOut, ScrollText, Search, Settings, TerminalSquare, X } from 'lucide-vue-next';
+import { ArrowRight, Bot, Boxes, ChartNoAxesCombined, FileCode2, History, KeyRound, Layers, LogOut, ScrollText, Search, Settings, TerminalSquare, X } from 'lucide-vue-next';
 import EventCenter from './EventCenter.vue';
+import HostSwitcher from './HostSwitcher.vue';
 import { api } from '../api/client.js';
+import { useHostsStore } from '../stores/hosts.js';
 import EmptyState from './common/EmptyState.vue';
 
 const route = useRoute();
 const router = useRouter();
+const hostsStore = useHostsStore();
 const backendOnline = ref(false);
 const currentTime = ref('');
 const commandOpen = ref(false);
@@ -101,6 +105,16 @@ const baseCommands = [
   { to: '/settings?tab=maintenance', label: 'Docker 维护', description: '检查镜像更新并清理可回收空间', icon: Settings, keywords: 'prune image update cleanup 清理 镜像' },
 ];
 const commands = computed(() => {
+  const nodeCommands = hostsStore.hosts
+    .filter((host) => host.id !== hostsStore.activeHostId)
+    .map((host) => ({
+      id: `node-${host.id}`,
+      run: () => void switchNode(host),
+      label: `Switch Node: ${host.name}`,
+      description: host.type === 'local' ? '切换到本机 Docker' : `切换到 ${host.type.toUpperCase()} ${host.host}:${host.port}`,
+      icon: Layers,
+      keywords: `switch node host docker 节点 切换 ${host.name}`,
+    }));
   const envCommands = envProjects.value
     .filter((project) => project.editable)
     .map((project) => ({
@@ -110,7 +124,7 @@ const commands = computed(() => {
       icon: KeyRound,
       keywords: `env environment variable 环境变量 ${project.projectName}`,
     }));
-  return [...envCommands, ...baseCommands];
+  return [...nodeCommands, ...envCommands, ...baseCommands];
 });
 const filteredCommands = computed(() => {
   const query = commandQuery.value.trim().toLowerCase();
@@ -129,7 +143,16 @@ async function ping() {
 }
 function closeCommand() { commandOpen.value = false; commandQuery.value = ''; }
 function isCurrent(item) { return item.to.includes('?') ? route.fullPath === item.to : route.path === item.to; }
-function runCommand(item) { router.push(item.to); closeCommand(); }
+function runCommand(item) {
+  if (item.run) { item.run(); closeCommand(); return; }
+  router.push(item.to); closeCommand();
+}
+async function switchNode(host) {
+  try {
+    await hostsStore.switchHost(host.id);
+    window.dispatchEvent(new CustomEvent('composeops:host-changed'));
+  } catch {}
+}
 function runSelected() { const item = filteredCommands.value[selectedCommand.value]; if (item) runCommand(item); }
 function moveSelection(delta) {
   const count = filteredCommands.value.length;
@@ -142,6 +165,7 @@ watch(commandOpen, (open) => { if (open) nextTick(() => commandInput.value?.focu
 useEscapeKey({ active: commandOpen, onClose: closeCommand, layer: 'command' });
 watch(filteredCommands, () => { selectedCommand.value = 0; });
 onMounted(() => {
+  if (!hostsStore.hosts.length) void hostsStore.load();
   void api.getProjects().then((data) => { envProjects.value = data.projects || []; }).catch(() => {});
   ping();
   currentTime.value = new Date().toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });

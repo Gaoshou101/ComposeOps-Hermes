@@ -16,23 +16,34 @@
       </div>
     </div>
     <pre class="terminal-output flex-1">{{ text }}</pre>
+    <div v-if="failed && !running && projectId" class="ai-diagnose-bar">
+      <button class="btn-primary" @click="$emit('diagnose')"><Sparkles class="w-4 h-4" />✨ 一键 AI 诊断</button>
+      <span class="text-xs text-muted">检测到执行失败,可交给 AI 分析根因与修复建议</span>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { CircleCheck, CircleX, LoaderCircle, X } from 'lucide-vue-next';
+import { CircleCheck, CircleX, LoaderCircle, Sparkles, X } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { useEscapeKey } from '../../composables/useEscapeKey.js';
 
-defineProps({
+const props = defineProps({
   label: { type: String, default: '' },
   name: { type: String, default: '' },
   text: { type: String, default: '' },
+  projectId: { type: String, default: '' },
+  exitCode: { type: Number, default: null },
+  running: { type: Boolean, default: false },
   batchTasks: { type: Array, default: () => [] },
   batchProgress: { type: Number, default: 0 },
   completedCount: { type: Number, default: 0 },
 });
-const emit = defineEmits(['close']);
+const emit = defineEmits(['close', 'diagnose']);
+const failed = computed(() => {
+  if (props.exitCode != null && props.exitCode !== 0) return true;
+  return /(fatal|error|crash|exception|failed|failed to|error:|exited with code)/i.test(props.text);
+});
 useEscapeKey({ active: computed(() => true), onClose: () => emit('close'), layer: 'drawer', lockBody: true });
 function statusLabel(status) { return ({ pending: '等待', running: '执行中', success: '成功', failed: '失败' })[status] || status; }
 </script>

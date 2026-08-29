@@ -1,4 +1,5 @@
 import docker from './docker.js';
+import { getActivityDocker } from './docker-hosts.js';
 
 export const CONTAINER_ACTIONS = new Set(['up', 'restart', 'stop', 'ps']);
 
@@ -17,7 +18,7 @@ export function supportsContainerAction(action) {
  * Compose 文件不可达时的受限控制：只操作 Docker 已上报且属于当前纳管项目的现有容器。
  * 不创建、删除容器，也不修改网络、卷或 Compose 配置。
  */
-export async function runContainerAction(project, action, onOutput = () => {}, dockerClient = docker) {
+export async function runContainerAction(project, action, onOutput = () => {}, dockerClient = getActivityDocker()) {
   if (!supportsContainerAction(action)) {
     throw Object.assign(new Error('该操作需要挂载 Compose 项目目录'), { statusCode: 409 });
   }

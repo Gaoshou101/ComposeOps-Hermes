@@ -64,11 +64,17 @@ useEscapeKey({ active: showBackups, onClose: () => { showBackups.value = false; 
 useEscapeKey({ active: computed(() => !!comparison.value), onClose: () => { comparison.value = null; }, layer: 'modal', lockBody: true });
 
 onMounted(async () => {
-  projects.value = (await api.getProjects()).projects.filter((p) => p.editable);
+  await reloadProjects();
   await nextTick(); createEditor(); if (projectId.value) await load();
   window.addEventListener('beforeunload', beforeUnload);
+  window.addEventListener('composeops:host-changed', onHostChanged);
 });
-onBeforeUnmount(() => { editor?.dispose(); window.removeEventListener('beforeunload', beforeUnload); });
+async function reloadProjects() { projects.value = (await api.getProjects()).projects.filter((p) => p.editable); }
+function onHostChanged() {
+  if (dirty.value && !window.confirm('节点已切换,当前未保存的修改将丢失,确认继续?')) return;
+  void reloadProjects().then(() => { if (projectId.value && !projects.value.some((p) => p.id === projectId.value)) { projectId.value = ''; selectProject(); } });
+}
+onBeforeUnmount(() => { editor?.dispose(); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('composeops:host-changed', onHostChanged); });
 onBeforeRouteLeave(() => !dirty.value || window.confirm('配置尚未保存，确认离开？'));
 function beforeUnload(event) { if (dirty.value) { event.preventDefault(); event.returnValue = ''; } }
 function createEditor() {

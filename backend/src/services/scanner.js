@@ -2,6 +2,7 @@ import { access } from 'fs/promises';
 import { createHash } from 'crypto';
 import path from 'node:path';
 import docker from './docker.js';
+import { getActiveHostType, getActivityDocker } from './docker-hosts.js';
 import { getProjectMountEnabled, getProjectPreference } from '../lib/db.js';
 import { safeProjectMountPath } from './mount-plan.js';
 
@@ -64,7 +65,10 @@ function parseComposeFiles(raw, workingDir) {
 }
 
 export async function scanProjects() {
-  const containers = await docker.listContainers({ all: true });
+  const activeDocker = getActivityDocker();
+  const containers = await activeDocker.listContainers({ all: true });
+  // 远程节点无法访问本机 compose 目录,标记为容器控制模式。
+  const nodeType = getActiveHostType();
 
   // 按 compose project 分组（以 workingDir 为 key）
   const projects = new Map();
@@ -132,7 +136,7 @@ export async function scanProjects() {
     project.unreachableComposeFiles = composeReachability
       .filter((file) => !file.reachable)
       .map((file) => file.path);
-    project.mounted = project.workingDirReachable && composeReachability.length > 0 &&
+    project.mounted = nodeType === 'local' && project.workingDirReachable && composeReachability.length > 0 &&
       composeReachability.every((file) => file.reachable);
     if (project.mounted) project.mountState = 'ready';
     else if (!project.workingDir) project.mountState = 'metadata_missing';
@@ -142,7 +146,7 @@ export async function scanProjects() {
     project.managed = !!preference.managed;
     project.mountEnabled = getProjectMountEnabled(project.id);
     // 未长期挂载的已选目录由短生命周期 workspace 容器按需挂载并执行。
-    const workspaceRoot = safeProjectMountPath(project.workingDir);
+    const workspaceRoot = nodeType === 'local' ? safeProjectMountPath(project.workingDir) : '';
     project.workspaceAvailable = !!workspaceRoot && project.composeFiles.length > 0 &&
       project.composeFiles.every((file) => {
         const normalized = path.posix.normalize(file);

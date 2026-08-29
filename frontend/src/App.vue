@@ -27,12 +27,19 @@ import AppSidebar from './components/AppSidebar.vue';
 import ToastContainer from './components/common/ToastContainer.vue';
 import LoginView from './views/LoginView.vue';
 import { useAuthStore } from './stores/auth.js';
+import { useServicesStore } from './stores/services.js';
 
 const auth = useAuthStore();
+const servicesStore = useServicesStore();
 const expire = () => auth.expire();
+const refreshOnHostChange = () => { void servicesStore.refresh(); };
 onMounted(() => {
   window.addEventListener('composeops:unauthorized', expire);
+  window.addEventListener('composeops:host-changed', refreshOnHostChange);
   auth.check();
 });
-onBeforeUnmount(() => window.removeEventListener('composeops:unauthorized', expire));
+onBeforeUnmount(() => {
+  window.removeEventListener('composeops:unauthorized', expire);
+  window.removeEventListener('composeops:host-changed', refreshOnHostChange);
+});
 </script>
