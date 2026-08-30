@@ -9,6 +9,7 @@ const routes = [
   { path: '/ai', name: 'ai', component: () => import('./views/AiView.vue') },
   { path: '/monitor', name: 'monitor', component: () => import('./views/MonitorView.vue') },
   { path: '/operations', name: 'operations', component: () => import('./views/OperationsView.vue') },
+  { path: '/blueprints', name: 'blueprints', component: () => import('./views/BlueprintsView.vue') },
   { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
 ];
 

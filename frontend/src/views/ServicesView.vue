@@ -29,13 +29,14 @@
         v-for="project in visibleProjects" :key="project.id" :project="project"
         :expanded="expandedIds.has(project.id)" :selected="selectedIds.includes(project.id)" :focused="route.query.focus === project.id"
         :busy="busy" :last-results="updateSettings.lastResults" :action-running="project.id === runningAction.id ? runningAction.action : ''"
-        @toggle-expand="toggleExpanded(project.id)" @toggle-select="toggleSelection(project.id)" @refresh="refresh" @activity="activityProject = project" @env="envProject = project" @action="(action) => run(project, action)"
+        @toggle-expand="toggleExpanded(project.id)" @toggle-select="toggleSelection(project.id)" @refresh="refresh" @activity="activityProject = project" @env="envProject = project" @upgrade="upgradeProject = project" @action="(action) => run(project, action)"
       />
     </div>
     <OperationOutputDrawer v-if="output.open" :label="actionLabel(output.action)" :name="output.name" :text="output.text" :project-id="output.projectId" :exit-code="output.exitCode" :running="output.running" :batch-tasks="batchTasks" :batch-progress="batchProgress" :completed-count="completedBatchTasks" @close="output.open = false" @diagnose="openDiagnosisForOutput" />
     <ProjectEnvModal v-if="envProject" :project="envProject" @close="closeEnv" @refresh="refresh" @apply="handleEnvApply" />
     <AIDiagnosisModal v-if="diagnosis" :open="!!diagnosis" :project-id="diagnosis.projectId" :project-name="diagnosis.projectName" :container-id="diagnosis.containerId" :raw-logs="diagnosis.rawLogs" :env-keys="diagnosis.envKeys" :failed-command="diagnosis.failedCommand" :exit-code="diagnosis.exitCode" :env-editable="diagnosis.envEditable" @close="diagnosis = null" />
     <ProjectActivityDrawer v-if="activityProject" :project="activityProject" @close="activityProject = null" @restored="handleRestored" />
+    <ProjectUpgradeModal v-if="upgradeProject" :project="upgradeProject" :open="!!upgradeProject" @close="upgradeProject = null" @upgrade="handleUpgrade" />
   </div>
 </template>
 
@@ -50,6 +51,7 @@ import ProjectActivityDrawer from '../components/ProjectActivityDrawer.vue';
 import ProjectEnvModal from '../components/services/ProjectEnvModal.vue';
 import ServiceProjectCard from '../components/services/ServiceProjectCard.vue';
 import AIDiagnosisModal from '../components/services/AIDiagnosisModal.vue';
+import ProjectUpgradeModal from '../components/services/ProjectUpgradeModal.vue';
 import BatchOperationsBar from '../components/services/BatchOperationsBar.vue';
 import OperationOutputDrawer from '../components/services/OperationOutputDrawer.vue';
 import EmptyState from '../components/common/EmptyState.vue';
@@ -60,7 +62,7 @@ const router = useRouter();
 const autoRefresh = ref(true); const busy = ref(false); const expandedIds = ref(new Set());
 const searchQuery = ref(''); const filter = ref('all'); const sort = ref('priority');
 const selectedIds = ref([]); const updateSettings = ref({ lastResults: [] }); const focusedProject = ref('');
-const batchTasks = ref([]); const activityProject = ref(null); const envProject = ref(null); const diagnosis = ref(null); const runningAction = ref({ id: '', action: '' });
+const batchTasks = ref([]); const activityProject = ref(null); const envProject = ref(null); const diagnosis = ref(null); const upgradeProject = ref(null); const runningAction = ref({ id: '', action: '' });
 let jobPollTimer; let activeJobId = ''; let jobPollInFlight = false;
 const output = reactive({ open: false, text: '', action: '', name: '', projectId: '', exitCode: null, running: false });
 const containerCount = computed(() => store.projects.reduce((count, project) => count + project.containers.length, 0));
@@ -118,6 +120,25 @@ async function handleEnvApply({ project }) {
     }, `/projects/${project.id}/env/apply`, { restart: true });
     useToastStore().success('环境变量已应用,容器平滑重建完成');
     await refresh();
+  } catch (error) {
+    output.text += `\n[请求失败] ${error.message}`; output.exitCode = 1;
+  } finally { busy.value = false; output.running = false; }
+}
+async function handleUpgrade(project) {
+  upgradeProject.value = null;
+  output.open = true; output.text = ''; output.action = 'images.upgrade'; output.name = project.projectName; output.projectId = project.id; output.exitCode = null; output.running = true;
+  busy.value = true;
+  try {
+    await api.streamUpgrade(project.id, (frame) => {
+      if (frame.type === 'stdout' || frame.type === 'stderr') output.text += frame.data;
+      else if (frame.type === 'error') output.text += `\n[错误] ${frame.data}`;
+      else if (frame.type === 'exit') { output.exitCode = frame.data.code; output.text += `\n[退出码 ${frame.data.code}]`; }
+      else if (frame.type === 'result') {
+        if (frame.data?.degraded) output.text += `\n[升级后容器未通过健康检查,可在活动/备份中回滚]`;
+      }
+    });
+    useToastStore().success('镜像升级完成');
+    store.refresh();
   } catch (error) {
     output.text += `\n[请求失败] ${error.message}`; output.exitCode = 1;
   } finally { busy.value = false; output.running = false; }

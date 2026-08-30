@@ -5,6 +5,7 @@ import { readCompose, saveCompose } from '../services/compose-runner.js';
 import { pruneWorkspaceRunners, readWorkspaceCompose, saveWorkspaceCompose } from '../services/compose-workspace.js';
 import { prepareProjectAction } from '../services/project-action-runner.js';
 import { readProjectEnv, saveProjectEnv, applyProjectEnv, assertEnvAccess } from '../services/project-env.js';
+import { getProjectUpdates, upgradeProject, rollbackProject } from '../services/image-updater.js';
 import { readContainerStat } from '../services/stats.js';
 import {
   addOperation,
@@ -344,6 +345,89 @@ export default async function projectRoutes(fastify) {
     prepared.run((type, text) => { output += text; send(type, text); }, (process) => { child = process; })
       .then(finish)
       .catch((error) => { const text = `${error.message}\n`; output += text; send('stderr', text); finish(1); });
+    reply.raw.on('close', () => {
+      if (!finished && child && child.exitCode === null && !child.killed) child.kill('SIGTERM');
+    });
+  });
+  // ---- 镜像更新雷达 ----
+  fastify.get('/:id/updates', async (request, reply) => {
+    const project = await projectOr404(request.params.id, reply);
+    if (!project) return;
+    try {
+      return await getProjectUpdates(project, { force: request.query.force === '1' });
+    } catch (error) {
+      return reply.code(error.statusCode || 502).send({ error: 'updates_check_failed', message: error.message });
+    }
+  });
+
+  fastify.post('/:id/upgrade', async (request, reply) => {
+    const project = await projectOr404(request.params.id, reply);
+    if (!project) return;
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    const send = (type, data) => {
+      if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+    };
+    let output = '';
+    let finished = false;
+    const finish = (payload) => {
+      if (finished) return;
+      finished = true;
+      send('result', payload);
+      reply.raw.end();
+    };
+    let child;
+    upgradeProject(project, {
+      onOutput: (type, text) => { output += text; send(type, text); },
+      onChild: (process) => { child = process; },
+    }).then((result) => {
+      send('exit', { code: result.code });
+      finish({ ok: true, ...result, output });
+    }).catch((error) => {
+      const text = `${error.message}\n`;
+      output += text;
+      send('stderr', text);
+      finish({ ok: false, message: error.message, output });
+    });
+    reply.raw.on('close', () => {
+      if (!finished && child && child.exitCode === null && !child.killed) child.kill('SIGTERM');
+    });
+  });
+
+  fastify.post('/:id/rollback', async (request, reply) => {
+    const project = await projectOr404(request.params.id, reply);
+    if (!project) return;
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    const send = (type, data) => {
+      if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+    };
+    let output = '';
+    let finished = false;
+    const finish = (payload) => {
+      if (finished) return;
+      finished = true;
+      send('result', payload);
+      reply.raw.end();
+    };
+    let child;
+    rollbackProject(project, {
+      onOutput: (type, text) => { output += text; send(type, text); },
+      onChild: (process) => { child = process; },
+    }).then((result) => {
+      send('exit', { code: result.code });
+      finish({ ok: true, ...result });
+    }).catch((error) => {
+      finish({ ok: false, message: error.message });
+    });
     reply.raw.on('close', () => {
       if (!finished && child && child.exitCode === null && !child.killed) child.kill('SIGTERM');
     });

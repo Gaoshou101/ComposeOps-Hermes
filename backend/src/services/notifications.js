@@ -16,6 +16,7 @@ const DEFAULTS = {
   smtpPassword: '',
   emailFrom: '',
   emailTo: '',
+  events: ['exit', 'oom', 'unhealthy'],
 };
 
 export function getNotificationConfig(maskSecrets = false) {

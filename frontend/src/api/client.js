@@ -54,6 +54,20 @@ export const api = {
   pingHost: (id, probe) => request(`/hosts/${id}/ping`, { method: 'POST', body: JSON.stringify(probe ? { probe } : {}) }),
   setActiveHost: (hostId) => request('/hosts/active', { method: 'PUT', body: JSON.stringify({ hostId }) }),
   getActiveHost: () => request('/hosts/active'),
+  // image update radar
+  getProjectUpdates: (projectId, force = false) => request(`/projects/${projectId}/updates?force=${force ? '1' : '0'}`),
+  streamUpgrade: (projectId, onFrame) => streamComposeControl(projectId, null, onFrame, `/projects/${projectId}/upgrade`, {}),
+  streamRollback: (projectId, onFrame) => streamComposeControl(projectId, null, onFrame, `/projects/${projectId}/rollback`, {}),
+  checkAllUpdates: () => request('/ops/updates/check-all', { method: 'POST' }),
+  // docker storage
+  getStorageDf: () => request('/ops/storage/df'),
+  pruneStorage: (mode, confirm) => request('/ops/storage/prune', { method: 'POST', body: JSON.stringify({ mode, confirm }) }),
+  // app blueprints
+  getBlueprints: () => request('/ops/blueprints'),
+  streamBlueprintDeploy: (blueprintId, values, onFrame) => streamComposeControl(null, null, onFrame, '/ops/blueprints/deploy', { blueprintId, values }),
+  // alert events
+  getNotificationEvents: () => request('/ops/notifications/events'),
+  saveNotificationEvents: (events) => request('/ops/notifications/events', { method: 'PUT', body: JSON.stringify({ events }) }),
   // ai
   getAiConfig: () => request('/ai/config'),
   saveAiConfig: (payload) => request('/ai/config', { method: 'POST', body: JSON.stringify(payload) }),

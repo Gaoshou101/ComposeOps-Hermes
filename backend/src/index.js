@@ -11,9 +11,11 @@ import authRoutes from './routes/auth.js';
 import personalRoutes from './routes/personal.js';
 import jobRoutes from './routes/jobs.js';
 import hostRoutes from './routes/hosts.js';
+import opsRoutes from './routes/ops.js';
 import docker from './services/docker.js';
 import { isAuthenticated, isConfigured, setPassword, validateOrigin } from './lib/auth.js';
 import { startAlertMonitor, stopAlertMonitor } from './services/alert-monitor.js';
+import { startHealthAlerter, stopHealthAlerter } from './services/health-alerter.js';
 import { closeAllWorkspaceRunners } from './services/compose-workspace.js';
 import { initializeBackgroundJobs } from './services/background-jobs.js';
 
@@ -80,6 +82,7 @@ await fastify.register(
     await api.register(personalRoutes, { prefix: '/personal' });
     await api.register(jobRoutes, { prefix: '/jobs' });
     await api.register(hostRoutes, { prefix: '/hosts' });
+    await api.register(opsRoutes, { prefix: '/ops' });
   },
   { prefix: '/api/v1' }
 );
@@ -118,6 +121,7 @@ const start = async () => {
     if (interruptedJobs.length) fastify.log.warn({ jobs: interruptedJobs }, 'marked unfinished background jobs as interrupted');
     await fastify.listen({ port: PORT, host: HOST });
     startAlertMonitor();
+    startHealthAlerter();
     fastify.log.info(`OpsDash backend listening on http://${HOST}:${PORT}`);
   } catch (err) {
     fastify.log.error(err);
@@ -127,6 +131,7 @@ const start = async () => {
 
 fastify.addHook('onClose', async () => {
   stopAlertMonitor();
+  stopHealthAlerter();
   await closeAllWorkspaceRunners();
 });
 

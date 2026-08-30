@@ -255,3 +255,9 @@ body {
 .ai-diagnosis { @apply whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-surface-200; }
 .ai-diagnosis .code-block { @apply my-2 rounded-lg border border-surface-700 bg-black/40 px-3 py-2 text-emerald-200; }
 .ai-diagnose-bar { @apply flex shrink-0 flex-wrap items-center gap-2 border-t border-surface-800 bg-surface-900/80 px-3 py-2.5; }
+.storage-bar { @apply flex h-3 w-full gap-px overflow-hidden rounded-full bg-surface-800; }
+.storage-seg { @apply h-full transition-all duration-300; }
+.blueprint-icon { @apply grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-surface-700 bg-surface-800 text-xl; }
+.update-badge { @apply inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-950/40 px-2 py-0.5 text-[10px] font-medium text-amber-300 transition-colors hover:bg-amber-900/50; }
+@keyframes update-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.35); } 50% { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0); } }
+.update-badge { animation: update-pulse 2.4s ease-in-out infinite; }

@@ -1,6 +1,6 @@
 # 📌 ComposeOps - PROJECT_CONTEXT.md
-> **上次更新时间**:2026-08-29 09:55 (Asia/Shanghai)
-> **当前版本/阶段**:v0.3 - 三大高级运维功能(一键 AI 诊断 / 多节点纳管 / 容器实时监控)已交付
+> **上次更新时间**:2026-08-29 22:20 (Asia/Shanghai)
+> **当前版本/阶段**:v0.4 - 四大高级运维功能(镜像更新雷达 / 磁盘清理 Hub / 应用模板市场 / 多渠道宕机告警)已交付
 
 ## 1. 核心概述 (Executive Summary)
 - **项目目标**:单用户 Docker Compose 运维控制台(工作区名 `ComposeOps`,镜像/容器沿用旧名 `OpsDash`)。通过 Docker Socket 自动发现带 `com.docker.compose.project` 标签的 Compose 项目,以"先发现、后显式纳管"的权限模型提供项目启停、Compose 配置编辑、环境变量管理、实时日志、容器终端、AI 排错、批量任务、多 Docker 节点纳管与资源监控等能力。
@@ -14,17 +14,19 @@
   - 项目纳管/挂载模型(容器控制模式 vs Compose 直连/按需 workspace 容器)、Compose 备份/恢复、批量后台任务(`background-jobs` + WS 推送)、审计操作历史、通知告警(Bark/Telegram/企微/邮件/Webhook)、镜像更新检查与 Docker 维护清理、AI 对话助手。
   - 项目环境变量(`.env`):`GET/PUT /api/v1/projects/:id/env` 与 `POST /:id/env/apply`,解析/序列化/校验工具库、原子写 + 时间戳备份、`docker compose up -d --force-recreate` 应用并通过 SSE 实时回传,前端 `ProjectEnvModal` 表格/Raw 双模 + 敏感变量脱敏 + `useEscapeKey`。
   - 三大高级运维功能(commit `a9081e5`):一键 AI 诊断(增强 `/ai/diagnose` 支持 rawLogs/failedCommand/exitCode/envKeys 脱敏,`AIDiagnosisModal` 流式展示 + 复制命令 + 跳转编辑器,入口在操作输出抽屉/日志页/操作中心);多节点管理(Local/TCP/SSH CRUD + 连通检测 + `DOCKER_HOST` 子进程切换,`HostSwitcher` 全局切换 + Settings 节点 Tab + Cmd+K `Switch Node` 指令,切换广播 `composeops:host-changed` 各页联动刷新);容器实时监控(`GET /projects/:id/stats/stream` SSE,`SparklineChart.vue` 轻量 SVG 双线,卡片展开行胶囊读数 + `/monitor` 表格趋势线,CPU≥85%/MEM≥90% 告警色)。
+  - 四大高级运维功能(本轮,待提交):镜像更新雷达(`backend/src/services/image-updater.js` Registry Digest 对比 + 1h TTL 缓存,`GET /projects/:id/updates` + `POST /updates/check-all`;平滑升级自动备份 compose/.env → pull → up -d → 15s 健康轮询 + 一键回滚;前端 `ProjectUpgradeModal` + 卡片 Update Available 徽章);Docker 磁盘可视化清理 Hub(`backend/src/services/docker-storage.js` `docker system df` 解析,`GET /ops/storage/df` + `POST /ops/storage/prune` safe/volumes/builder/all 深度清理需 PRUNE 确认;前端 `StoragePruneModal` 分段进度条 + Settings 维护 Tab 磁盘占用条);应用模板市场(`backend/src/data/blueprints.json` 17 个内置模板,`backend/src/services/app-blueprints.js` 渲染 Compose/Env + 部署直达 `/projects/<name>` 或 workspace 回退,`GET/POST /ops/blueprints` SSE 任务流;前端 `BlueprintsView` + `BlueprintDeployModal` 表单/预览,侧边栏「应用市场」+ Cmd+K `App Store:` 指令);多渠道宕机告警(`backend/src/services/health-alerter.js` 60s 巡检 exit/OOM/unhealthy/crashloop + 10min/容器防抖 + 8 行尾日志,Telegram/Bark/企微/邮件/Webhook,事件配置 `/ops/notifications/events` GET/PUT;前端 Settings 通知 Tab 触发事件勾选)。
 - **开发中/刚刚完成的部分 (Recent)**:
-  - 本轮创建 `AGENTS.md`(环境与操作备忘)与 `PROJECT_CONTEXT.md`(本文档),作为可持续维护的会话交接载体。
-  - 最近提交 `a9081e5`(三大功能,34 文件 +1457/-94)、`12201ce`(环境变量,12 文件 +832/-12),工作区干净无未提交改动。
+  - 本轮(四大功能,待提交):镜像更新雷达(Registry Digest 对比 + 1h 缓存 + 一键平滑升级 + 回滚)、Docker 磁盘可视化清理 Hub(StoragePruneModal 深度清理)、应用模板市场(17 个内置模板 1-Click 部署)、多渠道宕机告警(Telegram/Bark/Webhook 带 8 行尾日志)。
+  - 集成点:`ServiceProjectCard` Update Available 徽章、`SettingsView` 维护 Tab 磁盘占用条 + 通知 Tab 触发事件勾选、`AppHeader` Cmd+K `App Store:` 指令、`BlueprintsView` 独立页。
+  - 最近提交 `a9081e5`(三大功能)、`12201ce`(环境变量),当前改动尚未提交。
 
 ## 3. 下一步任务清单 (Next Action Items)
-- [ ] **紧急/首要任务**:对三大新功能做一次真机/容器内实测——特别是多节点 SSH/TCP 连接的 `ping` 与切换(`DOCKER_HOST` 子进程是否真正连通)、`stats/stream` 在远程节点下的指标拉取、AI 诊断在无 Docker 环境下的降级路径;开发环境可用 `node backend/src/index.js`(`SERVE_FRONTEND=1 PORT=3001 ENABLE_SHELL=1`)验证。
+- [ ] **紧急/首要任务**:提交并推送本轮四大功能改动(commit message 见下),随后在容器/真机实测镜像升级回滚链路、蓝图 1-Click 部署、存储清理 Hub 深度清理与多渠道告警测试通知。
 - [ ] **后续规划**:
-  - [ ] 远程节点下 Compose 配置编辑/环境变量目前被 403 guard 拦截,可规划经 SSH 通道的远程文件读写(基于既有 workspace 或 dockerode exec)。
-  - [ ] 指标流增加丢线重连与断点续采;Sparkline 支持 hover 查看具体数值。
-  - [ ] AI 诊断结果落库/历史;诊断结论一键生成修复命令并直接触发 Compose 操作。
-  - [ ] 批量任务支持"失败自动暂停/重试";节点健康状态周期性探测与告警。
+  - [ ] 远程节点下 Compose 配置编辑/环境变量目前被 403 guard 拦截,可规划经 SSH 通道的远程文件读写。
+  - [ ] 镜像更新检测缓存过期可加后台定时任务自动刷新;升级回滚支持多版本快照列表。
+  - [ ] 蓝图模板支持自定义 Git 源/私有镜像;部署前端口冲突自动检测提示。
+  - [ ] 告警防抖改为基于状态变化的事件触发(而非纯轮询),并支持通知渠道分组(如 OOM 只发紧急渠道)。
 
 ## 4. 关键上下文与决策记录 (Crucial Context & Decisions)
 - **核心业务逻辑/陷阱**:
@@ -39,6 +41,10 @@
   - 远程节点只支持容器级操作(up/restart/stop/ps),Compose/Env 编辑在远程节点返回 403——这是安全边界,不要移除。
   - 节点凭据(SSH 密码/私钥、TLS 证书)明文存 settings 表,前端返回掩码;目前是单用户面板,如需更强安全可评估加密落盘。
   - 指标不做重型图表库,`SparklineChart` 用原生 SVG path(20-30 点),保持轻量。
+  - 镜像更新检测:优先走 Docker Registry API 比对 Digest,不 `docker pull` 探活(避免动本地镜像);结果 1h TTL 缓存防 Registry Rate Limit;升级前备份 `docker-compose.yml` + `.env`。
+  - 磁盘清理:`safe` 只清理悬空镜像/退出容器/未用构建缓存;`volumes/all` 深度清理需 `PRUNE` 二次确认,孤儿卷清理有红字风险提示。
+  - 蓝图部署目录固定 `/projects/<name>`(容器内可达),直写失败自动回退 workspace 容器模式;部署同样走 SSE 任务流。
+  - 告警巡检 60s 轮询 + 单容器 10min 防抖;`health-alerter` 由 `index.js` 启停,`ops.js` 提供事件配置读写(`/ops/notifications/events`)。
   - `git push origin main` 的 HTTPS 在沙箱握手失败,SSH 地址沙箱 DNS 解析失败,均需提升权限执行;commit 需 `sandbox_permissions=require_escalated`。
 - **重要配置/环境变量**:
   - 后端:`PORT`(默认 3001)、`HOST`、`SERVE_FRONTEND=1`(静态托管前端 dist)、`ENABLE_SHELL=1`(开启容器 Web Shell)、`DB_PATH`、`COMPOSE_BIN`、`COMPOSEOPS_WORKSPACE_IDLE_MS/CACHE_MAX`、`DISABLE_BACKGROUND_JOBS=1`。

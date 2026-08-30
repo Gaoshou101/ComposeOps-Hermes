@@ -20,6 +20,7 @@
         <span class="hidden md:block text-muted font-mono truncate flex-1" :title="project.workingDir">{{ project.workingDir }}</span>
         <ChevronDown class="w-4 h-4 text-surface-500 shrink-0 transition-transform" :class="{ 'rotate-180': expanded }" />
       </button>
+      <button v-if="updateInfo?.hasUpdate" class="update-badge shrink-0" title="检测到镜像可更新,点击一键升级" @click.stop="$emit('upgrade')"><Sparkles class="w-3.5 h-3.5" />Update Available</button>
       <button class="icon-btn" title="编辑备注" @click="editNote(project)"><Pencil class="w-4 h-4" /></button>
     </header>
 
@@ -38,6 +39,7 @@
         <button class="btn-danger" :disabled="!project.managed || locked" @click="trigger('stop')"><Square class="w-4 h-4" :class="{ 'animate-spin': actionRunning === 'stop' }" />停止</button>
         <button class="btn-ghost" :disabled="!project.managed || locked" @click="trigger('ps')"><ListTree class="w-4 h-4" />状态</button>
         <button class="btn-secondary" :disabled="!project.editable || locked" title="需在项目纳管中勾选 Compose" @click="trigger('pull')"><Download class="w-4 h-4" :class="{ 'animate-spin': actionRunning === 'pull' }" />拉取</button>
+        <button v-if="updateInfo?.hasUpdate" class="btn-secondary" :disabled="!project.editable || locked" title="一键平滑升级到最新镜像" @click="$emit('upgrade')"><Sparkles class="w-4 h-4" />平滑升级</button>
         <router-link class="btn-ghost" :class="{ 'pointer-events-none opacity-40': !project.editable }" :to="`/compose?projectId=${project.id}`"><FileCode2 class="w-4 h-4" />配置</router-link>
         <button class="btn-ghost" :class="{ 'pointer-events-none opacity-40': !project.editable }" :disabled="!project.editable || busy" title="编辑项目环境变量 (.env)" @click="$emit('env')"><KeyRound class="w-4 h-4" />环境变量</button>
         <button class="btn-ghost" :disabled="!project.managed || busy" @click="$emit('activity')"><History class="h-4 w-4" />活动</button>
@@ -75,7 +77,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { Bot, ChevronDown, Download, FileCode2, FolderCog, History, KeyRound, ListTree, Pencil, Play, RotateCw, ScrollText, Square, Star, TerminalSquare } from 'lucide-vue-next';
+import { Bot, ChevronDown, Download, FileCode2, FolderCog, History, KeyRound, ListTree, Pencil, Play, RotateCw, ScrollText, Sparkles, Square, Star, TerminalSquare } from 'lucide-vue-next';
 import StatusBadge from '../common/StatusBadge.vue';
 import SparklineChart from '../common/SparklineChart.vue';
 import { api, streamProjectStats } from '../../api/client.js';
@@ -89,9 +91,10 @@ const props = defineProps({
   actionRunning: { type: String, default: '' },
   lastResults: { type: Array, default: () => [] },
 });
-const emit = defineEmits(['toggle-expand', 'toggle-select', 'action', 'activity', 'env', 'refresh']);
+const emit = defineEmits(['toggle-expand', 'toggle-select', 'action', 'activity', 'env', 'upgrade', 'refresh']);
 
 const metrics = ref({});
+const updateInfo = ref(null);
 let statsAbort = null;
 let statsTimer = null;
 
@@ -99,9 +102,19 @@ watch(() => props.expanded, (expanded) => {
   if (!expanded) { closeStats(); return; }
   openStats();
 });
-watch(() => props.project.id, () => { closeStats(); if (props.expanded) openStats(); });
-onMounted(() => { if (props.expanded) openStats(); });
+watch(() => props.project.id, () => { closeStats(); checkUpdates(); if (props.expanded) openStats(); });
+onMounted(() => { checkUpdates(); if (props.expanded) openStats(); });
 onBeforeUnmount(closeStats);
+
+async function checkUpdates() {
+  updateInfo.value = null;
+  if (!props.project.managed) return;
+  try {
+    updateInfo.value = await api.getProjectUpdates(props.project.id);
+  } catch {
+    updateInfo.value = null; // 检测失败静默,不打断列表
+  }
+}
 
 async function openStats() {
   closeStats();

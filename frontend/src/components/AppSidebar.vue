@@ -24,7 +24,7 @@
 </template>
 
 <script setup>
-import { Boxes, FileCode2, ScrollText, TerminalSquare, Bot, ChartNoAxesCombined, History, Settings } from 'lucide-vue-next';
+import { Boxes, FileCode2, ScrollText, TerminalSquare, Bot, ChartNoAxesCombined, History, Settings, Store } from 'lucide-vue-next';
 const groups = [
   { label: '运行', items: [
     { to: '/services', icon: Boxes, label: '服务' },
@@ -35,6 +35,9 @@ const groups = [
     { to: '/shell', icon: TerminalSquare, label: '终端' },
     { to: '/ai', icon: Bot, label: 'AI' },
     { to: '/monitor', icon: ChartNoAxesCombined, label: '监控' },
+  ] },
+  { label: '扩展', items: [
+    { to: '/blueprints', icon: Store, label: '应用市场' },
   ] },
   { label: '系统', items: [
     { to: '/operations', icon: History, label: '记录' },

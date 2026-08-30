@@ -72,7 +72,7 @@
 import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowRight, Bot, Boxes, ChartNoAxesCombined, FileCode2, History, KeyRound, Layers, LogOut, ScrollText, Search, Settings, TerminalSquare, X } from 'lucide-vue-next';
+import { ArrowRight, Bot, Boxes, ChartNoAxesCombined, FileCode2, History, KeyRound, Layers, LogOut, ScrollText, Search, Settings, Store, TerminalSquare, X } from 'lucide-vue-next';
 import EventCenter from './EventCenter.vue';
 import HostSwitcher from './HostSwitcher.vue';
 import { api } from '../api/client.js';
@@ -91,6 +91,7 @@ const commandInput = ref(null);
 const pageNames = { services: '服务总览', compose: 'Compose 配置', logs: '实时日志', shell: '容器终端', ai: 'AI 运维助手', monitor: '资源监控', operations: '操作记录', settings: '系统设置' };
 const currentPage = computed(() => pageNames[route.name] || '运维控制台');
 const envProjects = ref([]);
+const appBlueprints = ref([]);
 const baseCommands = [
   { to: '/services', label: '服务总览', description: '查看项目健康状态并执行生命周期操作', icon: Boxes, keywords: 'dashboard stack container 项目 容器' },
   { to: '/compose', label: 'Compose 配置', description: '编辑、校验和恢复 Compose 文件', icon: FileCode2, keywords: 'yaml editor backup 配置 备份' },
@@ -124,7 +125,16 @@ const commands = computed(() => {
       icon: KeyRound,
       keywords: `env environment variable 环境变量 ${project.projectName}`,
     }));
-  return [...nodeCommands, ...envCommands, ...baseCommands];
+  const blueprintCommands = appBlueprints.value
+    .slice(0, 12)
+    .map((blueprint) => ({
+      to: '/blueprints',
+      label: `App Store: ${blueprint.name}`,
+      description: `一键部署 ${blueprint.name} (${blueprint.category})`,
+      icon: Store,
+      keywords: `app store blueprint deploy 部署 应用市场 ${blueprint.name}`,
+    }));
+  return [...nodeCommands, ...envCommands, ...blueprintCommands, ...baseCommands];
 });
 const filteredCommands = computed(() => {
   const query = commandQuery.value.trim().toLowerCase();
@@ -167,6 +177,7 @@ watch(filteredCommands, () => { selectedCommand.value = 0; });
 onMounted(() => {
   if (!hostsStore.hosts.length) void hostsStore.load();
   void api.getProjects().then((data) => { envProjects.value = data.projects || []; }).catch(() => {});
+  void api.getBlueprints().then((data) => { appBlueprints.value = data.blueprints || []; }).catch(() => {});
   ping();
   currentTime.value = new Date().toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   pingTimer = setInterval(ping, 5000);
