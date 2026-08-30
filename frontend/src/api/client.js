@@ -56,6 +56,21 @@ export const api = {
   getActiveHost: () => request('/hosts/active'),
   // image update radar
   getProjectUpdates: (projectId, force = false) => request(`/projects/${projectId}/updates?force=${force ? '1' : '0'}`),
+  getProjectWebUi: (projectId) => request(`/projects/${projectId}/webui`),
+  listDbDumpTargets: (projectId) => request(`/projects/${projectId}/db-dump`),
+  listCronJobs: () => request('/cron'),
+  createCronJob: (payload) => request('/cron', { method: 'POST', body: JSON.stringify(payload) }),
+  updateCronJob: (id, payload) => request(`/cron/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteCronJob: (id) => request(`/cron/${id}`, { method: 'DELETE' }),
+  runCronJob: (id) => request(`/cron/${id}/run`, { method: 'POST' }),
+  getCronHistory: (limit = 50) => request(`/cron/history?limit=${limit}`),
+  // db dump
+  streamDbDump: (projectId, containerId, dbName = '') =>
+    fetch(`${BASE}/projects/${projectId}/db-dump`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ containerId, dbName }),
+    }),
   streamUpgrade: (projectId, onFrame) => streamComposeControl(projectId, null, onFrame, `/projects/${projectId}/upgrade`, {}),
   streamRollback: (projectId, onFrame) => streamComposeControl(projectId, null, onFrame, `/projects/${projectId}/rollback`, {}),
   checkAllUpdates: () => request('/ops/updates/check-all', { method: 'POST' }),

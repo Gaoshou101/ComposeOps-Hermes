@@ -17,29 +17,46 @@
       </main>
     </div>
     <ToastContainer />
+    <CheatSheetModal :open="cheatSheet" @close="cheatSheet = false" />
   </div>
 </template>
 
 <script setup>
-import { onMounted, onBeforeUnmount } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import AppHeader from './components/AppHeader.vue';
 import AppSidebar from './components/AppSidebar.vue';
 import ToastContainer from './components/common/ToastContainer.vue';
+import CheatSheetModal from './components/common/CheatSheetModal.vue';
 import LoginView from './views/LoginView.vue';
 import { useAuthStore } from './stores/auth.js';
 import { useServicesStore } from './stores/services.js';
 
 const auth = useAuthStore();
 const servicesStore = useServicesStore();
+const cheatSheet = ref(false);
 const expire = () => auth.expire();
 const refreshOnHostChange = () => { void servicesStore.refresh(); };
+
+function onGlobalKeydown(event) {
+  if (event.key !== '?' || event.metaKey || event.ctrlKey || event.altKey) return;
+  const target = event.target;
+  if (target?.tagName && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+  if (target?.isContentEditable) return;
+  event.preventDefault();
+  cheatSheet.value = true;
+}
+function openCheatSheet() { cheatSheet.value = true; }
 onMounted(() => {
   window.addEventListener('composeops:unauthorized', expire);
   window.addEventListener('composeops:host-changed', refreshOnHostChange);
+  window.addEventListener('keydown', onGlobalKeydown, { capture: true });
+  window.addEventListener('composeops:open-cheatsheet', openCheatSheet);
   auth.check();
 });
 onBeforeUnmount(() => {
   window.removeEventListener('composeops:unauthorized', expire);
   window.removeEventListener('composeops:host-changed', refreshOnHostChange);
+  window.removeEventListener('keydown', onGlobalKeydown, { capture: true });
+  window.removeEventListener('composeops:open-cheatsheet', openCheatSheet);
 });
 </script>

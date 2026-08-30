@@ -3,6 +3,7 @@ import { findProjectContainer } from '../services/scanner.js';
 import { getBackgroundJob } from '../lib/db.js';
 import { subscribeJobEvents } from '../services/job-events.js';
 import { getActivityDocker } from '../services/docker-hosts.js';
+import { aggregateProjectLogs } from '../services/log-aggregator.js';
 
 /**
  * WebSocket 路由：实时日志流与容器 Web Shell。
@@ -90,6 +91,39 @@ export default async function wsRoutes(fastify) {
     socket.on('close', () => {
       try { logStream.destroy(); } catch {}
     });
+  });
+
+  // ---- 多容器聚合日志流 ----
+  fastify.get('/aggregated-logs', { websocket: true }, async (socket, request) => {
+    const { projectId, containers } = request.query;
+    if (!projectId) {
+      safeSend(socket, { type: 'error', data: 'missing projectId' });
+      return socket.close();
+    }
+    const { findProject } = await import('../services/scanner.js');
+    const project = await findProject(String(projectId)).catch(() => null);
+    if (!project) {
+      safeSend(socket, { type: 'error', data: 'project not found' });
+      return socket.close();
+    }
+    if (!project.managed) {
+      safeSend(socket, { type: 'error', data: '项目尚未加入管理' });
+      return socket.close();
+    }
+    const ids = String(containers || '').split(',').map((item) => item.trim()).filter(Boolean);
+    let aggregator;
+    try {
+      aggregator = await aggregateProjectLogs({
+        project,
+        containerIds: ids,
+        onLine: (line) => safeSend(socket, { type: 'line', data: line }),
+      });
+      safeSend(socket, { type: 'meta', data: { count: ids.length || project.containers.length } });
+    } catch (e) {
+      safeSend(socket, { type: 'error', data: e.message });
+      return socket.close();
+    }
+    socket.on('close', () => { if (aggregator) aggregator.stop(); });
   });
 
   // ---- 容器 Web Shell ----

@@ -1,0 +1,176 @@
+<template>
+  <div class="page-shell">
+    <div class="page-header">
+      <div><h1 class="page-title">定时任务</h1><p class="page-subtitle">可视化 Cron 调度:自动备份、Docker 清理与镜像检查</p></div>
+      <div class="page-actions">
+        <button class="btn-secondary" :disabled="loading" @click="load"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />刷新</button>
+        <button class="btn-primary" @click="openCreate"><Clock3 class="w-4 h-4" />新建定时任务</button>
+      </div>
+    </div>
+    <p v-if="error" class="alert-error">{{ error }}</p>
+    <p v-if="message" class="alert-success">{{ message }}</p>
+
+    <div v-if="!jobs.length && !loading" class="flex flex-1 items-center justify-center py-16"><EmptyState icon="Clock3" title="还没有定时任务" description="创建后可按 Cron 周期自动执行,失败时通过现有通知渠道告警" action-label="新建任务" @action="openCreate" /></div>
+
+    <div v-if="jobs.length" class="flex-1 space-y-2">
+      <article v-for="job in jobs" :key="job.id" class="card p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <strong class="text-sm text-surface-100">{{ job.name }}</strong>
+            <span class="count-badge">{{ job.typeLabel }}</span>
+            <span class="count-badge font-mono text-xs">{{ job.cron }}</span>
+            <span v-if="job.enabled" class="count-badge text-emerald-300">启用</span>
+            <span v-else class="count-badge text-surface-500">停用</span>
+          </div>
+          <div class="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-muted">
+            <span>下次执行:{{ job.nextRunAt ? new Date(job.nextRunAt).toLocaleString('zh-CN') : '—' }}</span>
+            <template v-if="job.lastRunAt">
+              <span :class="job.lastStatus === 'success' ? 'text-emerald-400' : 'text-rose-400'">最近:{{ job.lastStatus === 'success' ? '成功' : '失败' }}</span>
+              <span>于 {{ new Date(job.lastRunAt).toLocaleString('zh-CN') }}</span>
+              <span v-if="job.lastError" class="text-rose-400 truncate max-w-[320px]" :title="job.lastError">{{ job.lastError }}</span>
+            </template>
+          </div>
+        </div>
+        <div class="flex shrink-0 items-center gap-2">
+          <button class="btn-secondary" :disabled="runningId === job.id" @click="runNow(job)"><Play class="w-4 h-4" :class="{ 'animate-pulse': runningId === job.id }" />立即执行</button>
+          <label class="toggle-label" :title="job.enabled ? '点击停用' : '点击启用'"><input type="checkbox" :checked="job.enabled" @change="toggleEnabled(job)" /></label>
+          <button class="icon-btn" title="删除任务" @click="removeJob(job)"><Trash2 class="w-4 h-4 text-rose-300" /></button>
+        </div>
+      </article>
+
+      <div class="border-t border-surface-800 pt-3">
+        <div class="flex items-center justify-between"><h2 class="section-title">执行历史</h2><span class="text-muted text-xs">最多保留 200 条</span></div>
+        <div v-if="history.length" class="space-y-1">
+          <div v-for="item in history" :key="item.id" class="flex flex-wrap items-center gap-2 text-xs py-1 border-b border-surface-800/60">
+            <span class="count-badge shrink-0" :class="item.status === 'success' ? 'text-emerald-300' : 'text-rose-300'">{{ item.status === 'success' ? '成功' : '失败' }}</span>
+            <span class="shrink-0 text-surface-400">{{ new Date(item.at).toLocaleString('zh-CN') }}</span>
+            <span class="text-surface-300">{{ item.jobName }}</span>
+            <span class="text-muted">{{ item.durationMs }}ms</span>
+            <span v-if="item.error" class="text-rose-400 truncate flex-1 max-w-[360px]" :title="item.error">{{ item.error }}</span>
+          </div>
+        </div>
+        <p v-else class="text-muted text-sm py-3">暂无执行记录,点击「立即执行」触发一次。</p>
+      </div>
+    </div>
+
+    <div v-if="editor" class="modal-backdrop z-[55]" @click.self="closeEditor">
+      <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-lg flex max-h-[88vh] flex-col">
+        <div class="modal-header shrink-0"><span>新建定时任务</span><button class="icon-btn" title="关闭" @click="closeEditor"><X class="w-4 h-4" /></button></div>
+        <div class="min-h-0 flex-1 overflow-y-auto p-4 space-y-3">
+          <p v-if="editorError" class="alert-error">{{ editorError }}</p>
+          <label>任务名称<input v-model="editor.name" class="input" placeholder="例如:每天凌晨自动备份数据库" /></label>
+          <label>任务类型<select v-model="editor.type" class="input"><option v-for="(info, key) in types" :key="key" :value="key">{{ info.label }} — {{ info.description }}</option></select></label>
+          <label>周期模板<select v-model="editor.cron" class="input" @change="onCronTemplateChange"><option value="0 3 * * *">每天凌晨 3:00</option><option value="0 0 * * 0">每周日 0:00</option><option value="0 * * * *">每小时整点</option><option value="*/5 * * * *">每 5 分钟(测试用)</option><option value="custom">自定义表达式…</option></select></label>
+          <label v-if="manualCron">Cron 表达式<input v-model="editor.cron" class="input font-mono" placeholder="分 时 日 月 周,如 0 3 * * *" /><span class="text-xs text-muted">下一次执行:{{ nextPreview }}</span></label>
+          <details class="text-sm"><summary class="cursor-pointer text-surface-300">支持的预设表达式</summary><div class="mt-2 space-y-1 text-xs text-muted font-mono"><p>0 3 * * *- 每天 03:00</p><p>0 0 * * 0 - 每周日 00:00</p><p>0 * * * * - 每小时整点</p><p>*/30 * * * * - 每 30 分钟</p></div></details>
+        </div>
+        <div class="flex shrink-0 items-center justify-end gap-2 border-t border-surface-800 p-3">
+          <button class="btn-secondary" @click="closeEditor">取消</button>
+          <button class="btn-primary" :disabled="saving" @click="saveEditor"><Save class="w-4 h-4" />创建任务</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { computed, onMounted, ref } from 'vue';
+import { Clock3, Play, RefreshCw, Save, Trash2, X } from 'lucide-vue-next';
+import { api } from '../api/client.js';
+import EmptyState from '../components/common/EmptyState.vue';
+import { useToastStore } from '../stores/toast.js';
+
+const toast = useToastStore();
+const jobs = ref([]);
+const types = ref({});
+const history = ref([]);
+const loading = ref(false);
+const runningId = ref('');
+const error = ref('');
+const message = ref('');
+const editor = ref(null);
+const editorError = ref('');
+const saving = ref(false);
+const manualCron = ref(false);
+
+function onCronTemplateChange() {
+  if (!editor.value) return;
+  manualCron.value = editor.value.cron === 'custom';
+  if (manualCron.value) editor.value.cron = '';
+}
+const nextPreview = computed(() => {
+  if (!editor.value?.cron || editor.value.cron === 'custom') return '';
+  // 本地粗算:借用后端下次执行语义,简单提示 cron 格式合法即可
+  return /^(\S+\s+){4}\S+$/.test(editor.value.cron) ? '格式正确' : '请填写 5 段表达式';
+});
+
+async function load() {
+  loading.value = true;
+  error.value = '';
+  try {
+    const data = await api.listCronJobs();
+    jobs.value = data.jobs || [];
+    types.value = data.types || {};
+    history.value = (await api.getCronHistory()).history || [];
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    loading.value = false;
+  }
+}
+function openCreate() {
+  editor.value = { name: '', type: 'db-backup', cron: '0 3 * * *', enabled: true };
+  editorError.value = '';
+}
+function closeEditor() { if (!saving.value) { editor.value = null; editorError.value = ''; } }
+async function saveEditor() {
+  if (!editor.value) return;
+  saving.value = true;
+  editorError.value = '';
+  try {
+    if (editor.value.cron === 'custom') editor.value.cron = '';
+    if (!editor.value.name.trim()) throw new Error('请填写任务名称');
+    if (!editor.value.cron.trim()) throw new Error('请填写 Cron 表达式(5 段)');
+    await api.createCronJob(editor.value);
+    toast.success('定时任务已创建');
+    closeEditor();
+    await load();
+  } catch (e) {
+    editorError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function runNow(job) {
+  runningId.value = job.id;
+  try {
+    const result = await api.runCronJob(job.id);
+    toast.success(result.summary || '执行成功');
+    await load();
+  } catch (e) {
+    toast.error(e.message);
+  } finally {
+    runningId.value = '';
+  }
+}
+async function toggleEnabled(job) {
+  try {
+    await api.updateCronJob(job.id, { enabled: !job.enabled });
+    job.enabled = !job.enabled;
+    await load();
+  } catch (e) {
+    toast.error(e.message);
+  }
+}
+async function removeJob(job) {
+  if (!window.confirm(`确认删除定时任务「${job.name}」?`)) return;
+  try {
+    await api.deleteCronJob(job.id);
+    toast.success('任务已删除');
+    await load();
+  } catch (e) {
+    toast.error(e.message);
+  }
+}
+onMounted(load);
+</script>

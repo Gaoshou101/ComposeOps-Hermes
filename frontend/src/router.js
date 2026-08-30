@@ -10,6 +10,7 @@ const routes = [
   { path: '/monitor', name: 'monitor', component: () => import('./views/MonitorView.vue') },
   { path: '/operations', name: 'operations', component: () => import('./views/OperationsView.vue') },
   { path: '/blueprints', name: 'blueprints', component: () => import('./views/BlueprintsView.vue') },
+  { path: '/cron', name: 'cron', component: () => import('./views/CronTasksView.vue') },
   { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
 ];
 

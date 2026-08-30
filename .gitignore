@@ -11,3 +11,5 @@ backend/data/*.db-wal
 coverage/
 .vite/
 *.tgz
+backend/data/cron-jobs.json
+backend/data/backups/

@@ -5,6 +5,7 @@
       <div class="page-actions">
         <label class="toggle-label"><input v-model="autoRefresh" type="checkbox" />自动刷新</label>
         <button class="btn-secondary" :disabled="store.loading" @click="refresh"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': store.loading }" />刷新</button>
+        <button class="icon-btn" title="快捷键速查表(?)" @click="openCheatSheet"><Keyboard class="w-4 h-4" /></button>
       </div>
     </div>
     <p v-if="store.error" class="alert-error">{{ store.error }}</p>
@@ -27,9 +28,9 @@
     <div v-else class="flex-1 space-y-3">
       <ServiceProjectCard
         v-for="project in visibleProjects" :key="project.id" :project="project"
-        :expanded="expandedIds.has(project.id)" :selected="selectedIds.includes(project.id)" :focused="route.query.focus === project.id"
+        :expanded="expandedIds.has(project.id)" :selected="selectedIds.includes(project.id)" :focused="route.query.focus === project.id || kbFocusId === project.id"
         :busy="busy" :last-results="updateSettings.lastResults" :action-running="project.id === runningAction.id ? runningAction.action : ''"
-        @toggle-expand="toggleExpanded(project.id)" @toggle-select="toggleSelection(project.id)" @refresh="refresh" @activity="activityProject = project" @env="envProject = project" @upgrade="upgradeProject = project" @action="(action) => run(project, action)"
+        @toggle-expand="toggleExpanded(project.id)" @toggle-select="toggleSelection(project.id)" @refresh="refresh" @activity="activityProject = project" @env="envProject = project" @upgrade="upgradeProject = project" @db-dump="dbDumpProject = project" @action="(action) => run(project, action)"
       />
     </div>
     <OperationOutputDrawer v-if="output.open" :label="actionLabel(output.action)" :name="output.name" :text="output.text" :project-id="output.projectId" :exit-code="output.exitCode" :running="output.running" :batch-tasks="batchTasks" :batch-progress="batchProgress" :completed-count="completedBatchTasks" @close="output.open = false" @diagnose="openDiagnosisForOutput" />
@@ -37,21 +38,24 @@
     <AIDiagnosisModal v-if="diagnosis" :open="!!diagnosis" :project-id="diagnosis.projectId" :project-name="diagnosis.projectName" :container-id="diagnosis.containerId" :raw-logs="diagnosis.rawLogs" :env-keys="diagnosis.envKeys" :failed-command="diagnosis.failedCommand" :exit-code="diagnosis.exitCode" :env-editable="diagnosis.envEditable" @close="diagnosis = null" />
     <ProjectActivityDrawer v-if="activityProject" :project="activityProject" @close="activityProject = null" @restored="handleRestored" />
     <ProjectUpgradeModal v-if="upgradeProject" :project="upgradeProject" :open="!!upgradeProject" @close="upgradeProject = null" @upgrade="handleUpgrade" />
+    <DbDumpModal v-if="dbDumpProject" :project="dbDumpProject" @close="dbDumpProject = null" />
   </div>
 </template>
 
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { AlertTriangle, Boxes, CircleCheckBig, Container, RefreshCw, Search } from 'lucide-vue-next';
+import { AlertTriangle, Boxes, CircleCheckBig, Container, Keyboard, RefreshCw, Search } from 'lucide-vue-next';
 import { useServicesStore } from '../stores/services.js';
 import { useToastStore } from '../stores/toast.js';
+import { useKeyboardNavigation } from '../composables/useKeyboardNavigation.js';
 import { api, streamComposeControl } from '../api/client.js';
 import ProjectActivityDrawer from '../components/ProjectActivityDrawer.vue';
 import ProjectEnvModal from '../components/services/ProjectEnvModal.vue';
 import ServiceProjectCard from '../components/services/ServiceProjectCard.vue';
 import AIDiagnosisModal from '../components/services/AIDiagnosisModal.vue';
 import ProjectUpgradeModal from '../components/services/ProjectUpgradeModal.vue';
+import DbDumpModal from '../components/services/DbDumpModal.vue';
 import BatchOperationsBar from '../components/services/BatchOperationsBar.vue';
 import OperationOutputDrawer from '../components/services/OperationOutputDrawer.vue';
 import EmptyState from '../components/common/EmptyState.vue';
@@ -62,7 +66,7 @@ const router = useRouter();
 const autoRefresh = ref(true); const busy = ref(false); const expandedIds = ref(new Set());
 const searchQuery = ref(''); const filter = ref('all'); const sort = ref('priority');
 const selectedIds = ref([]); const updateSettings = ref({ lastResults: [] }); const focusedProject = ref('');
-const batchTasks = ref([]); const activityProject = ref(null); const envProject = ref(null); const diagnosis = ref(null); const upgradeProject = ref(null); const runningAction = ref({ id: '', action: '' });
+const batchTasks = ref([]); const activityProject = ref(null); const envProject = ref(null); const diagnosis = ref(null); const upgradeProject = ref(null); const dbDumpProject = ref(null); const runningAction = ref({ id: '', action: '' }); const kbFocusId = ref('');
 let jobPollTimer; let activeJobId = ''; let jobPollInFlight = false;
 const output = reactive({ open: false, text: '', action: '', name: '', projectId: '', exitCode: null, running: false });
 const containerCount = computed(() => store.projects.reduce((count, project) => count + project.containers.length, 0));
@@ -214,6 +218,39 @@ watch(autoRefresh, async (value) => { if (!value) return store.stopAutoRefresh()
 watch([() => route.query.focus, () => store.projects], focusProject, { deep: true });
 onMounted(async () => { const [preferences, updates] = await Promise.all([api.getPreferences(), api.getUpdateSettings()]); updateSettings.value = updates; store.startAutoRefresh(preferences.refreshInterval * 1000); if (route.query.job) void pollJob(String(route.query.job)); void openEnvFromQuery(); });
 watch(() => route.query.job, (job) => { if (job) void pollJob(String(job)); else { activeJobId = ''; clearTimeout(jobPollTimer); } });
+watch(kbFocusId, (id) => {
+  if (!id) return;
+  nextTick(() => { document.getElementById(`project-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); });
+});
+useKeyboardNavigation({
+  enabled: computed(() => route.name === 'services' && !envProject.value && !dbDumpProject.value && !upgradeProject.value && !activityProject.value && !diagnosis.value),
+  onCheatSheet: () => { window.dispatchEvent(new CustomEvent('composeops:open-cheatsheet')); },
+  getProjectIds: () => visibleProjects.value.map((project) => project.id),
+  onMove: (id) => { kbFocusId.value = id; },
+  onAction: (action) => handleKbAction(action),
+});
+function openCheatSheet() { window.dispatchEvent(new CustomEvent('composeops:open-cheatsheet')); }
+async function handleKbAction(action) {
+  const project = store.projects.find((p) => p.id === kbFocusId.value);
+  if (!project) return;
+  if (action === 'expand') { toggleExpanded(project.id); return; }
+  if (action === 'l') { router.push({ path: '/logs', query: { projectId: project.id } }); return; }
+  if (action === 'e') { envProject.value = project; return; }
+  if (action === 'c') { router.push({ path: '/compose', query: { projectId: project.id } }); return; }
+  if (action === 'r') {
+    if (!window.confirm(`确认重启 ${project.projectName}?`)) return;
+    void run(project, 'restart');
+    return;
+  }
+  if (action === 'w') {
+    try {
+      const data = await api.getProjectWebUi(project.id);
+      const url = data?.links?.[0]?.ports?.[0]?.url;
+      if (url) window.open(url, '_blank', 'noopener');
+      else useToastStore().info('该项目没有可直达的 WebUI 端口');
+    } catch { useToastStore().error('WebUI 检测失败'); }
+  }
+}
 function handleRestored() {
   activityProject.value = null;
   refresh();

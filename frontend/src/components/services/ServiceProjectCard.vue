@@ -20,6 +20,7 @@
         <span class="hidden md:block text-muted font-mono truncate flex-1" :title="project.workingDir">{{ project.workingDir }}</span>
         <ChevronDown class="w-4 h-4 text-surface-500 shrink-0 transition-transform" :class="{ 'rotate-180': expanded }" />
       </button>
+      <WebUiLauncher v-if="webuiLinks.length" :links="webuiLinks" class="hidden md:inline-flex" />
       <button v-if="updateInfo?.hasUpdate" class="update-badge shrink-0" title="检测到镜像可更新,点击一键升级" @click.stop="$emit('upgrade')"><Sparkles class="w-3.5 h-3.5" />Update Available</button>
       <button class="icon-btn" title="编辑备注" @click="editNote(project)"><Pencil class="w-4 h-4" /></button>
     </header>
@@ -43,6 +44,7 @@
         <router-link class="btn-ghost" :class="{ 'pointer-events-none opacity-40': !project.editable }" :to="`/compose?projectId=${project.id}`"><FileCode2 class="w-4 h-4" />配置</router-link>
         <button class="btn-ghost" :class="{ 'pointer-events-none opacity-40': !project.editable }" :disabled="!project.editable || busy" title="编辑项目环境变量 (.env)" @click="$emit('env')"><KeyRound class="w-4 h-4" />环境变量</button>
         <button class="btn-ghost" :disabled="!project.managed || busy" @click="$emit('activity')"><History class="h-4 w-4" />活动</button>
+        <button v-if="dbContainers.length" class="btn-ghost" :disabled="!project.managed || busy" title="一键导出数据库备份并下载" @click="$emit('db-dump')"><Database class="h-4 w-4 text-emerald-300" />备份数据库</button>
       </div>
 
       <div v-if="!project.managed" class="alert-warning flex flex-col sm:flex-row sm:items-center gap-2">
@@ -67,6 +69,7 @@
           </div>
           <SparklineChart v-if="metrics[container.id]?.history && metrics[container.id].history.length >= 2" :cpu="metrics[container.id].history.map((point) => point.cpuPercent)" :mem="metrics[container.id].history.map((point) => point.memPercent)" class="hidden sm:block" />
           <router-link class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="实时日志" :to="`/logs?projectId=${project.id}&containerId=${container.id}`"><ScrollText class="w-4 h-4" /></router-link>
+          <router-link v-if="dbContainers.length" class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="聚合日志(所有容器)" :to="`/logs?projectId=${project.id}`"><Layers class="w-4 h-4 text-emerald-300" /></router-link>
           <router-link class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="容器终端" :to="`/shell?projectId=${project.id}&containerId=${container.id}`"><TerminalSquare class="w-4 h-4" /></router-link>
           <router-link class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="AI 诊断" :to="`/ai?projectId=${project.id}&containerId=${container.id}&diagnose=1`"><Bot class="w-4 h-4" /></router-link>
         </div>
@@ -77,8 +80,9 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { Bot, ChevronDown, Download, FileCode2, FolderCog, History, KeyRound, ListTree, Pencil, Play, RotateCw, ScrollText, Sparkles, Square, Star, TerminalSquare } from 'lucide-vue-next';
+import { Bot, ChevronDown, Database, Download, FileCode2, FolderCog, History, KeyRound, Layers, ListTree, Pencil, Play, RotateCw, ScrollText, Sparkles, Square, Star, TerminalSquare } from 'lucide-vue-next';
 import StatusBadge from '../common/StatusBadge.vue';
+import WebUiLauncher from './WebUiLauncher.vue';
 import SparklineChart from '../common/SparklineChart.vue';
 import { api, streamProjectStats } from '../../api/client.js';
 
@@ -91,10 +95,11 @@ const props = defineProps({
   actionRunning: { type: String, default: '' },
   lastResults: { type: Array, default: () => [] },
 });
-const emit = defineEmits(['toggle-expand', 'toggle-select', 'action', 'activity', 'env', 'upgrade', 'refresh']);
+const emit = defineEmits(['toggle-expand', 'toggle-select', 'action', 'activity', 'env', 'db-dump', 'upgrade', 'refresh']);
 
 const metrics = ref({});
 const updateInfo = ref(null);
+const webuiLinks = ref([]);
 let statsAbort = null;
 let statsTimer = null;
 
@@ -102,8 +107,8 @@ watch(() => props.expanded, (expanded) => {
   if (!expanded) { closeStats(); return; }
   openStats();
 });
-watch(() => props.project.id, () => { closeStats(); checkUpdates(); if (props.expanded) openStats(); });
-onMounted(() => { checkUpdates(); if (props.expanded) openStats(); });
+watch(() => props.project.id, () => { closeStats(); checkUpdates(); loadWebUi(); if (props.expanded) openStats(); });
+onMounted(() => { checkUpdates(); loadWebUi(); if (props.expanded) openStats(); });
 onBeforeUnmount(closeStats);
 
 async function checkUpdates() {
@@ -113,6 +118,17 @@ async function checkUpdates() {
     updateInfo.value = await api.getProjectUpdates(props.project.id);
   } catch {
     updateInfo.value = null; // 检测失败静默,不打断列表
+  }
+}
+
+async function loadWebUi() {
+  webuiLinks.value = [];
+  if (!props.project.managed) return;
+  try {
+    const data = await api.getProjectWebUi(props.project.id);
+    webuiLinks.value = (data?.links || []).flatMap((entry) => entry.ports.map((port) => ({ port: port.port, url: port.url, containerName: entry.containerName })));
+  } catch {
+    webuiLinks.value = []; // 检测失败静默
   }
 }
 
@@ -146,6 +162,7 @@ function closeStats() {
 }
 
 const locked = computed(() => props.busy || !!props.actionRunning);
+const dbContainers = computed(() => props.project.containers.filter((c) => /(postgres|postgis|mysql|mariadb|redis|valkey|mongo)/i.test(c.image)));
 const attention = computed(() => props.project.status !== 'running' || props.project.containers.some((container) => container.health === 'unhealthy'));
 const statusDotClass = computed(() => (props.project.status === 'running' ? 'bg-emerald-400' : props.project.status === 'partial' ? 'bg-amber-400' : 'bg-rose-400'));
 const imageState = computed(() => {

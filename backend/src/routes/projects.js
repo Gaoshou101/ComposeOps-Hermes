@@ -432,4 +432,39 @@ export default async function projectRoutes(fastify) {
       if (!finished && child && child.exitCode === null && !child.killed) child.kill('SIGTERM');
     });
   });
+
+  // ---- 数据库一键 Dump ----
+  fastify.get('/:id/db-dump', async (request, reply) => {
+    const project = await projectOr404(request.params.id, reply);
+    if (!project) return;
+    return { containers: await listProjectDbContainers(project) };
+  });
+
+  fastify.post('/:id/db-dump', async (request, reply) => {
+    const project = await projectOr404(request.params.id, reply);
+    if (!project) return;
+    const { containerId, dbName } = request.body || {};
+    if (!containerId) return reply.code(400).send({ error: 'missing_container', message: '请选择要导出的数据库容器' });
+    try {
+      const result = await runDbDump(project, containerId, { dbName });
+      if (result.exitCode !== 0) {
+        result.stream.destroy();
+        return reply.code(502).send({ error: 'dump_failed', message: '数据库导出命令执行失败,详见操作记录' });
+      }
+      reply.type('application/gzip');
+      reply.header('Content-Disposition', `attachment; filename="${result.filename}"`);
+      return reply.send(result.stream);
+    } catch (error) {
+      return reply.code(error.statusCode || 502).send({ error: 'db_dump_failed', message: error.message });
+    }
+  });
+
+  // ---- WebUI 智能雷达 ----
+  fastify.get('/:id/webui', async (request, reply) => {
+    const project = await projectOr404(request.params.id, reply);
+    if (!project) return;
+    const entries = scanProjectWebPorts(project);
+    const links = buildWebUiLinks(request.headers.host, entries);
+    return { projectId: project.id, projectName: project.projectName, links };
+  });
 }
