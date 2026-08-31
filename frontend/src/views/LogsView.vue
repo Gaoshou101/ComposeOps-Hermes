@@ -13,7 +13,7 @@
         <button v-else class="btn-danger" @click="disconnect"><Square class="w-4 h-4" />断开</button>
         <button class="icon-btn" :title="paused ? '继续接收' : '暂停显示'" @click="togglePause"><Play v-if="paused" class="w-4 h-4" /><Pause v-else class="w-4 h-4" /></button>
         <button class="icon-btn" title="下载日志" :disabled="!filtered.length" @click="download"><Download class="w-4 h-4" /></button>
-        <button class="icon-btn" title="清屏" @click="lines = []"><Trash2 class="w-4 h-4" /></button>
+        <button class="icon-btn" title="清屏" @click="clearLines"><Trash2 class="w-4 h-4" /></button>
         <button v-if="hasErrors" class="btn-primary" @click="diagnosis = true"><Sparkles class="w-4 h-4" />✨ AI 诊断</button>
       </div>
     </div>
@@ -73,23 +73,26 @@ const error = ref('');
 const boxEl = ref(null);
 const diagnosis = ref(false);
 const sequence = ref(0);
+const errorLines = ref(0);
 const LINE_H = 24;
 const OVERSCAN = 30;
 const viewStart = ref(0);
 const viewEnd = ref(0);
-const viewBoxH = ref(0);
 let ws;
 let wsSeg;
+let followFrame = 0;
+let resizeObserver;
 
 const containers = computed(() => projects.value.find((p) => p.id === projectId.value)?.containers || []);
 const projectName = computed(() => projects.value.find((p) => p.id === projectId.value)?.projectName || '');
-const hasErrors = computed(() => lines.value.some((line) => /(fatal|error|crash|exception|failed)/i.test(line.data)));
+const hasErrors = computed(() => errorLines.value > 0);
 const recentErrorLogs = computed(() => lines.value.filter((line) => line.type === 'stderr' || line.type === 'error').map((line) => line.data).join('').slice(-50000));
 const canConnect = computed(() => projectId.value && (aggregateMode.value || containerId.value));
 const scrollPadTop = computed(() => viewStart.value * LINE_H);
 const scrollPadBottom = computed(() => Math.max(0, (filtered.value.length - viewEnd.value) * LINE_H));
 const visibleLines = computed(() => viewEnd.value > viewStart.value ? filtered.value.slice(viewStart.value, viewEnd.value) : []);
-watch(filtered, () => { nextTick(syncViewport); });
+watch(levelFilter, () => nextTick(syncViewport));
+watch(search, () => nextTick(syncViewport));
 
 const filtered = computed(() => {
   let result = lines.value;
@@ -109,7 +112,7 @@ const filtered = computed(() => {
 });
 
 onMounted(async () => {
-  viewEnd.value = 200;
+  nextTick(syncViewport);
   projects.value = (await api.getProjects()).projects.filter((project) => project.managed);
   const prefs = await api.getPreferences();
   tail.value = prefs.logTail;
@@ -117,6 +120,10 @@ onMounted(async () => {
   // 仅当 URL 只有 projectId 时进入聚合模式(带 containerId 则单容器)
   aggregateMode.value = !!(route.query.projectId && !route.query.containerId);
   window.addEventListener('composeops:host-changed', onHostChanged);
+  if (boxEl.value) {
+    resizeObserver = new ResizeObserver(() => syncViewport());
+    resizeObserver.observe(boxEl.value);
+  }
 });
 
 function onHostChanged() { disconnect(); projects.value = []; void reloadProjects(); }
@@ -126,13 +133,13 @@ async function reloadProjects() {
     if ((containerId.value || aggregateMode.value) && projects.value.some((project) => project.id === projectId.value)) connect();
   } catch {}
 }
-function onProjectChange() { containerId.value = ''; selectedContainers.value = []; disconnect(); lines.value = []; }
-function onContainerChange() { disconnect(); lines.value = []; }
+function onProjectChange() { containerId.value = ''; selectedContainers.value = []; disconnect(); clearLines(); }
+function onContainerChange() { disconnect(); clearLines(); }
 function toggleAggregate() {
   aggregateMode.value = !aggregateMode.value;
   selectedContainers.value = [];
   disconnect();
-  lines.value = [];
+  clearLines();
 }
 
 function connect() {
@@ -176,18 +183,32 @@ function flushPending() {
 function append(item) {
   lines.value.push(item);
   if (lines.value.length > 5000) lines.value.splice(0, lines.value.length - 5000);
-  if (autoScroll.value && !autoScrollPaused.value) {
-    nextTick(() => { if (boxEl.value) boxEl.value.scrollTop = boxEl.value.scrollHeight; syncViewport(); });
-  }
+  if (/(fatal|error|crash|exception|failed)/i.test(item.data)) errorLines.value += 1;
+  if (autoScroll.value && !autoScrollPaused.value) scheduleFollow();
+}
+function clearLines() {
+  lines.value = [];
+  errorLines.value = 0;
+  viewStart.value = 0;
+  viewEnd.value = 0;
+  nextTick(syncViewport);
+}
+/** rAF 合并的滚底调度:高频日志每帧只滚一次,避免反复强制 reflow 卡死主线程。 */
+function scheduleFollow() {
+  if (!autoScroll.value || autoScrollPaused.value || followFrame) return;
+  followFrame = requestAnimationFrame(() => {
+    followFrame = 0;
+    if (!boxEl.value) return;
+    boxEl.value.scrollTop = boxEl.value.scrollHeight;
+    syncViewport();
+  });
 }
 function syncViewport() {
   if (!boxEl.value) return;
   const height = boxEl.value.clientHeight || 420;
   const scrollTop = boxEl.value.scrollTop;
-  viewBoxH.value = height;
   viewStart.value = Math.max(0, Math.floor(scrollTop / LINE_H) - OVERSCAN);
   viewEnd.value = Math.min(filtered.value.length, Math.ceil((scrollTop + height) / LINE_H) + OVERSCAN);
-  requestAnimationFrame(() => { if (boxEl.value && Math.abs(boxEl.value.scrollTop - scrollTop) > 1) { boxEl.value.scrollTop = scrollTop; } });
 }
 function onScroll() { syncViewport(); }
 function togglePause() { paused.value = !paused.value; if (!paused.value) flushPending(); }
@@ -195,9 +216,9 @@ function onWheel(event) {
   if (!connected.value || !autoScroll.value) return;
   if (event.deltaY < 0) { autoScrollPaused.value = true; return; }
   autoScrollPaused.value = false;
-  nextTick(() => { if (boxEl.value) boxEl.value.scrollTop = boxEl.value.scrollHeight; syncViewport(); });
+  scheduleFollow();
 }
-function resumeScroll() { autoScrollPaused.value = false; nextTick(() => { if (boxEl.value) boxEl.value.scrollTop = boxEl.value.scrollHeight; syncViewport(); }); }
+function resumeScroll() { autoScrollPaused.value = false; scheduleFollow(); }
 function disconnect() {
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
   if (wsSeg) { wsSeg.onclose = null; wsSeg.close(); wsSeg = null; }
@@ -211,5 +232,10 @@ function download() {
   a.click();
   URL.revokeObjectURL(a.href);
 }
-onBeforeUnmount(() => { disconnect(); window.removeEventListener('composeops:host-changed', onHostChanged); });
+onBeforeUnmount(() => {
+  disconnect();
+  if (followFrame) cancelAnimationFrame(followFrame);
+  resizeObserver?.disconnect();
+  window.removeEventListener('composeops:host-changed', onHostChanged);
+});
 </script>
