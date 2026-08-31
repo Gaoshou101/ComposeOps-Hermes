@@ -1,4 +1,4 @@
-import { getAiConfig, setAiConfig, callOpenAI, addAiMessage, getAiHistory, clearAiHistory } from '../services/ai.js';
+import { getAiConfig, setAiConfig, callOpenAI, addAiMessage, getAiHistory, clearAiHistory, fetchAiModels } from '../services/ai.js';
 import { getActivityDocker } from '../services/docker-hosts.js';
 import { findProjectContainer } from '../services/scanner.js';
 import { readCompose } from '../services/compose-runner.js';
@@ -19,6 +19,17 @@ export default async function aiRoutes(fastify) {
       return { ok: true };
     } catch (error) {
       return reply.code(400).send({ error: 'invalid_ai_config', message: error.message });
+    }
+  });
+
+  // POST /api/v1/ai/fetch-models  body: { baseUrl?, apiKey? } —— 拉取远程可用模型列表
+  fastify.post('/fetch-models', async (request, reply) => {
+    const { baseUrl, apiKey } = request.body || {};
+    try {
+      const models = await fetchAiModels({ baseUrl, apiKey });
+      return { models, count: models.length };
+    } catch (error) {
+      return reply.code(400).send({ error: 'fetch_models_failed', message: error.message });
     }
   });
 

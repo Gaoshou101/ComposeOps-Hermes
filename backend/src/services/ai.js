@@ -26,6 +26,43 @@ export function setAiConfig({ baseUrl, apiKey, model, systemPrompt }) {
 }
 
 /**
+ * 获取远程模型列表(OpenAI 兼容 /v1/models 与 Ollama /api/tags)。
+ * @param {string} baseUrl 若不传则读已保存配置
+ * @param {string} apiKey  若不传则读已保存配置
+ * @returns {Promise<string[]>} 模型名数组
+ */
+export async function fetchAiModels({ baseUrl, apiKey } = {}) {
+  const cfg = getAiConfig();
+  const url = (baseUrl || cfg.baseUrl || '').replace(/\/+$/, '');
+  const key = apiKey || cfg.apiKey;
+  if (!url) throw new Error('请先填写 Base URL');
+  if (!key) throw new Error('请先填写 API Key');
+
+  const timeout = AbortSignal.timeout(8000);
+  const resp = await fetch(`${url}/models`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
+    signal: timeout,
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    const msg = resp.status === 401 ? '鉴权失败(401),请检查 API Key' : `请求失败 ${resp.status}`;
+    throw new Error(`${msg}: ${text.slice(0, 160)}`);
+  }
+  const data = await resp.json().catch(() => ({}));
+  // OpenAI: { data: [{ id }] }  |  Ollama: { models: [{ name }] }
+  const raw = data?.data || data?.models || data?.result || [];
+  if (!Array.isArray(raw)) throw new Error('响应格式无法识别,未能解析模型列表');
+  const models = raw
+    .map((item) => item?.id || item?.name || item?.model || '')
+    .filter((name) => typeof name === 'string' && name.trim())
+    .map((name) => name.trim())
+    .filter((name, index, arr) => arr.indexOf(name) === index);
+  if (!models.length) throw new Error('接口返回了空模型列表');
+  return models;
+}
+
+/**
  * 调用 OpenAI 兼容的 chat/completions 接口。
  * @param {Object} opts
  * @param {string} opts.baseUrl

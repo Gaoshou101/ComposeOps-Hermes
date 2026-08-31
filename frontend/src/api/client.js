@@ -143,6 +143,7 @@ export const api = {
   // ai
   getAiConfig: () => request('/ai/config'),
   saveAiConfig: (payload) => request('/ai/config', { method: 'POST', body: JSON.stringify(payload) }),
+  fetchAiModels: (payload = {}) => request('/ai/fetch-models', { method: 'POST', body: JSON.stringify(payload) }),
   getAiHistory: () => request('/ai/history'),
   clearAiHistory: () => request('/ai/history', { method: 'DELETE' }),
   // system

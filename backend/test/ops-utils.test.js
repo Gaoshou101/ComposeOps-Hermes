@@ -8,7 +8,7 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'composeops-ops-test-'));
 process.env.DB_PATH = path.join(tempDir, 'test.db');
 
 const { parseImageRef, extractImageRefs } = await import('../src/services/image-updater.js');
-const { parseDockerDf } = await import('../src/services/docker-storage.js');
+const { parseDockerDf, parseDockerDfOutput, parseDockerDfTextTable } = await import('../src/services/docker-storage.js');
 const { renderBlueprintCompose, renderBlueprintEnv, getBlueprint, listBlueprints } = await import('../src/services/app-blueprints.js');
 const { evaluateContainer, buildTitle, buildBody, stripDockerMultiplex } = await import('../src/services/health-alerter.js');
 
@@ -97,4 +97,65 @@ test('health-alerter: stripDockerMultiplex 去掉 8 字节头', () => {
   const payload = Buffer.from('hello', 'utf8');
   const frame = Buffer.concat([header, payload, header, Buffer.from('world', 'utf8')]);
   assert.equal(stripDockerMultiplex(frame), 'helloworld');
+});
+
+test('docker-storage: parseDockerDfOutput 解析整体 JSON(--format json)', () => {
+  const raw = JSON.stringify({
+    Images: [{ Size: 1000, Containers: 0 }, { Size: 500, Containers: 1 }],
+    Containers: [{ SizeRw: 200, State: 'exited' }, { SizeRw: 100, State: 'running' }],
+    Volumes: [{ Name: 'v1', UsageData: { Size: 300, RefCount: 0 } }],
+    BuildCache: [{ Size: 50, InUse: false }],
+  });
+  const parsed = parseDockerDfOutput(raw);
+  assert.equal(parsed.images.total, 1500);
+  assert.equal(parsed.images.reclaimable, 1000);
+  assert.equal(parsed.reclaimable, 1000 + 200 + 300 + 50);
+});
+
+test('docker-storage: parseDockerDfOutput 解析 NDJSON 多行独立对象', () => {
+  const raw = [
+    JSON.stringify({ Type: 'Images', TotalCount: 2, ActiveCount: 1, Size: 1200, Reclaimable: 800 }),
+    JSON.stringify({ Type: 'Containers', TotalCount: 1, ActiveCount: 1, Size: 300, Reclaimable: 0 }),
+    JSON.stringify({ Type: 'Volumes', TotalCount: 1, ActiveCount: 0, Size: 500, Reclaimable: 500 }),
+    JSON.stringify({ Type: 'BuildCache', TotalCount: 1, ActiveCount: 0, Size: 100, Reclaimable: 100 }),
+  ].join('\n');
+  const parsed = parseDockerDfOutput(raw);
+  // NDJSON 模式:Size 作为 total,Reclaimable>0 的块计入 reclaimable
+  assert.equal(parsed.images.total, 1200);
+  assert.equal(parsed.images.reclaimable, 800);
+  assert.equal(parsed.volumes.total, 500);
+  assert.equal(parsed.buildCache.reclaimable, 100);
+});
+
+test('docker-storage: parseDockerDfOutput 容忍 WARNING/ANSI 脏输出', () => {
+  const raw = '\x1b[2J WARNING: Error getting usage insights\n' + JSON.stringify({
+    Images: [{ Size: 10, Containers: 0 }],
+  }) + '\n';
+  const parsed = parseDockerDfOutput(raw);
+  assert.equal(parsed.images.total, 10);
+});
+
+test('docker-storage: parseDockerDfOutput 回退纯文本表格解析', () => {
+  const raw = [
+    'TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE',
+    'Images          5         2         1.2GB     800MB (66.6%)',
+    'Containers      3         1         50MB      10MB (20%)',
+    'Local Volumes   2         1         5MB       5MB (100%)',
+    'Build Cache     4         0         0B        0B',
+  ].join('\n');
+  const parsed = parseDockerDfOutput(raw);
+  assert.ok(Math.abs(parsed.images.total - 1.2 * 1024 ** 3) < 1);
+  assert.ok(Math.abs(parsed.images.reclaimable - 800 * 1024 ** 2) < 1);
+  assert.equal(parsed.containers.count, 3);
+  assert.ok(Math.abs(parsed.volumes.total - 5 * 1024 ** 2) < 1);
+  assert.ok(Math.abs(parsed.total - (1.2 * 1024 ** 3 + 50 * 1024 ** 2 + 5 * 1024 ** 2)) < 1);
+});
+
+test('docker-storage: parseDockerDfOutput 空/不可解析输出安全返回全 0', () => {
+  for (const raw of ['', '\n', 'WARNING: something\n', 'not json at all']) {
+    const parsed = parseDockerDfOutput(raw);
+    assert.equal(parsed.total, 0);
+    assert.equal(parsed.reclaimable, 0);
+    assert.deepEqual(parsed.images, { count: 0, total: 0, reclaimable: 0 });
+  }
 });

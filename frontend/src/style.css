@@ -307,6 +307,16 @@ body {
 .cron-preset-card {
   @apply flex items-center gap-3 rounded-xl border border-surface-700/60 bg-surface-900/60 p-3 text-left transition-all duration-150 hover:border-accent/40 hover:bg-surface-800/70 active:scale-[0.98] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)];
 }
+/* AI 模型 Combobox 下拉 */
+.model-dropdown {
+  @apply absolute left-0 right-0 top-full z-[60] mt-1 max-h-64 overflow-y-auto rounded-lg border border-surface-700 bg-surface-900 p-1 shadow-2xl shadow-black/40 backdrop-blur-md;
+}
+.model-dropdown-search {
+  @apply mb-1 w-full rounded-md border border-surface-700 bg-surface-950/70 px-2 py-1.5 text-xs text-surface-100 outline-none focus:border-accent;
+}
+.model-option {
+  @apply flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-surface-300 transition-colors hover:bg-surface-800 hover:text-surface-100;
+}
 .ops-row { @apply transition-colors hover:bg-surface-800/25; }
 .ops-project { @apply inline-flex max-w-52 items-center truncate rounded-md bg-surface-800/60 px-2 py-1 text-xs font-medium text-surface-200; }
 .ops-action { @apply inline-flex rounded-md bg-accent/10 px-2 py-1 text-xs font-medium text-accent; }

@@ -8,7 +8,23 @@
 
     <section v-if="tab === 'ai'" class="settings-section">
       <h2 class="section-title">OpenAI 兼容接口</h2>
-      <div class="form-grid"><label>Base URL<input v-model="ai.baseUrl" class="input" /></label><label>模型<input v-model="ai.model" class="input" /></label><label class="md:col-span-2">API Key<input v-model="ai.apiKey" type="password" class="input" :placeholder="aiMasked ? '已配置，留空保持不变' : 'sk-...'" /></label><label class="md:col-span-2">系统 Prompt<textarea v-model="ai.systemPrompt" rows="6" class="input"></textarea></label></div>
+      <div class="form-grid">
+        <label>Base URL<input v-model="ai.baseUrl" class="input" placeholder="https://api.openai.com/v1" /></label>
+        <label>模型
+          <div class="relative">
+            <div class="flex items-center gap-1.5">
+              <input v-model="ai.model" class="input w-full" placeholder="选择或输入模型名称" @focus="openModelList" />
+              <button class="icon-btn shrink-0" title="获取可用模型列表" :disabled="aiModelsLoading" @click="fetchAiModels"><RefreshCw class="h-4 w-4" :class="{ 'animate-spin': aiModelsLoading }" /></button>
+            </div>
+            <div v-if="modelListOpen && filteredAiModels.length" class="model-dropdown">
+              <input v-model="aiModelQuery" class="model-dropdown-search" placeholder="搜索模型..." @click.stop />
+              <button v-for="name in filteredAiModels" :key="name" class="model-option" :class="{ 'bg-accent/10 text-accent': name === ai.model }" @click="selectAiModel(name)"><span class="truncate">{{ name }}</span><Check v-if="name === ai.model" class="h-3.5 w-3.5 shrink-0 text-accent" /></button>
+            </div>
+          </div>
+        </label>
+        <label class="md:col-span-2">API Key<input v-model="ai.apiKey" type="password" class="input" :placeholder="aiMasked ? '已配置,留空保持不变' : 'sk-...'" /></label>
+        <label class="md:col-span-2">系统 Prompt<textarea v-model="ai.systemPrompt" rows="6" class="input"></textarea></label>
+      </div>
       <button class="btn-primary" @click="saveAi"><Save class="w-4 h-4" />保存 AI 配置</button>
     </section>
 
@@ -149,14 +165,19 @@
 <script setup>
 import { computed, markRaw, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { Activity, Bell, Bot, Download, FolderCog, HardDrive, Info, KeyRound, Pencil, RefreshCw, Save, Send, Server, ShieldCheck, SlidersHorizontal, Trash2, Upload, Wrench, X, Zap } from 'lucide-vue-next';
-import { api } from '../api/client.js'; import { useAiStore } from '../stores/ai.js'; import { useHostsStore } from '../stores/hosts.js'; import StatCard from '../components/StatCard.vue';
+import { Activity, Bell, Bot, Check, Download, FolderCog, HardDrive, Info, KeyRound, Pencil, RefreshCw, Save, Send, Server, ShieldCheck, SlidersHorizontal, Trash2, Upload, Wrench, X, Zap } from 'lucide-vue-next';
+import { api } from '../api/client.js'; import { useAiStore } from '../stores/ai.js'; import { useHostsStore } from '../stores/hosts.js'; import { useToastStore } from '../stores/toast.js'; import StatCard from '../components/StatCard.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import StoragePruneModal from '../components/settings/StoragePruneModal.vue';
 const tabs = [{ id: 'ai', label: 'AI', icon: markRaw(Bot) }, { id: 'personal', label: '偏好', icon: markRaw(SlidersHorizontal) }, { id: 'notifications', label: '通知', icon: markRaw(Bell) }, { id: 'maintenance', label: '维护', icon: markRaw(Wrench) }, { id: 'mounts', label: '项目纳管', icon: markRaw(FolderCog) }, { id: 'hosts', label: 'Docker 节点', icon: markRaw(Server) }, { id: 'about', label: '关于', icon: markRaw(Info) }];
 const route = useRoute();
 const initialTab = tabs.some((item) => item.id === route.query.tab) ? route.query.tab : 'ai';
 const tab = ref(initialTab); const message = ref(''); const error = ref(''); const aiStore = useAiStore(); const hostsStore = useHostsStore(); const ai = ref({}); const aiMasked = ref(false); const preferences = ref({ refreshInterval: 5, logTail: 200 }); const password = ref({ currentPassword: '', nextPassword: '' }); const notifications = ref({}); const updates = ref({ autoEnabled: false, intervalHours: 24 }); const updateResults = ref([]); const checkingUpdates = ref(false); const usage = ref(null); const capabilities = ref({}); const storageModal = ref(false); const alertEvents = ref(['exit', 'oom', 'unhealthy']);
+const toast = useToastStore();
+const aiModels = ref([]);
+const aiModelsLoading = ref(false);
+const aiModelQuery = ref('');
+const modelListOpen = ref(false);
 const mountPlan = ref(null); const mountLoading = ref(false); const highlightedProjectId = computed(() => String(route.query.projectId || ''));
 const hostEditor = ref(null);
 const updateSummary = computed(() => ({ total: updateResults.value.length, updated: updateResults.value.filter((item) => item.status === 'updated').length, failed: updateResults.value.filter((item) => item.status === 'failed').length }));
@@ -175,6 +196,29 @@ const mountsDirty = computed(() => {
 });
 const selectionDirty = computed(() => managementDirty.value || mountsDirty.value);
 function ok(text) { message.value = text; error.value = ''; } function fail(e) { error.value = e.message; message.value = ''; }
+const filteredAiModels = computed(() => {
+  const q = aiModelQuery.value.trim().toLowerCase();
+  return q ? aiModels.value.filter((name) => name.toLowerCase().includes(q)) : aiModels.value;
+});
+async function fetchAiModels() {
+  if (aiModelsLoading.value) return;
+  aiModelsLoading.value = true;
+  try {
+    const { models, count } = await api.fetchAiModels({ baseUrl: ai.value.baseUrl, apiKey: ai.value.apiKey || undefined });
+    aiModels.value = models || [];
+    modelListOpen.value = true;
+    toast.success(`成功获取 ${count || models.length} 个可用模型`);
+  } catch (e) {
+    fail(e);
+    toast.error(`获取模型列表失败:${e.message}`);
+  } finally {
+    aiModelsLoading.value = false;
+  }
+}
+function openModelList() { modelListOpen.value = true; }
+function selectAiModel(name) { ai.value.model = name; modelListOpen.value = false; aiModelQuery.value = ''; }
+function closeModelList() { modelListOpen.value = false; aiModelQuery.value = ''; }
+
 function openHostEditor(host) {
   hostEditor.value = host ? {
     id: host.id,
@@ -262,7 +306,7 @@ async function removeHost(host) {
   } catch (e) { fail(e); }
 }
 
-onMounted(async () => { try { await aiStore.loadConfig(); const cfg = aiStore.config; ai.value = { baseUrl: cfg.baseUrl, apiKey: '', model: cfg.model, systemPrompt: cfg.systemPrompt }; aiMasked.value = !!cfg.apiKey; const [prefs, notificationConfig, updateConfig, systemCapabilities, plan] = await Promise.all([api.getPreferences(), api.getNotifications(), api.getUpdateSettings(), api.getCapabilities(), api.getMountPlan()]); preferences.value = prefs; void hostsStore.load(); notifications.value = notificationConfig; updates.value = updateConfig; updateResults.value = updateConfig.lastResults || []; capabilities.value = systemCapabilities; applyMountPlan(plan); await loadUsage(); try { const ev = await api.getNotificationEvents(); alertEvents.value = ev.events || ['exit', 'oom', 'unhealthy']; } catch (e) { /* 忽略事件回填失败 */ } } catch (e) { fail(e); } });
+onMounted(async () => { try { await aiStore.loadConfig(); const cfg = aiStore.config; ai.value = { baseUrl: cfg.baseUrl, apiKey: '', model: cfg.model, systemPrompt: cfg.systemPrompt }; aiMasked.value = !!cfg.apiKey; if (cfg.baseUrl && cfg.apiKey) void fetchAiModels(); const [prefs, notificationConfig, updateConfig, systemCapabilities, plan] = await Promise.all([api.getPreferences(), api.getNotifications(), api.getUpdateSettings(), api.getCapabilities(), api.getMountPlan()]); preferences.value = prefs; void hostsStore.load(); notifications.value = notificationConfig; updates.value = updateConfig; updateResults.value = updateConfig.lastResults || []; capabilities.value = systemCapabilities; applyMountPlan(plan); await loadUsage(); try { const ev = await api.getNotificationEvents(); alertEvents.value = ev.events || ['exit', 'oom', 'unhealthy']; } catch (e) { /* 忽略事件回填失败 */ } } catch (e) { fail(e); } });
 async function saveAi() { try { const payload = { ...ai.value }; if (!payload.apiKey) delete payload.apiKey; await aiStore.saveConfig(payload); ai.value.apiKey = ''; aiMasked.value = true; ok('AI 配置已保存'); } catch (e) { fail(e); } }
 async function savePreferences() { try { preferences.value = await api.savePreferences(preferences.value); ok('个人偏好已保存'); } catch (e) { fail(e); } }
 async function changePassword() { try { if (password.value.nextPassword.length < 10) throw new Error('新密码至少需要 10 个字符'); await api.changePassword(password.value); password.value = { currentPassword: '', nextPassword: '' }; ok('管理员密码已修改，其他会话已退出'); } catch (e) { fail(e); } }
