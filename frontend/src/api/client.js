@@ -144,6 +144,8 @@ export const api = {
   getAiConfig: () => request('/ai/config'),
   saveAiConfig: (payload) => request('/ai/config', { method: 'POST', body: JSON.stringify(payload) }),
   fetchAiModels: (payload = {}) => request('/ai/fetch-models', { method: 'POST', body: JSON.stringify(payload) }),
+  execContainer: (payload) => request('/ai/exec', { method: 'POST', body: JSON.stringify(payload) }),
+  getProjectLogs: (projectId, containerId, tail = 200) => request('/ai/logs', { method: 'POST', body: JSON.stringify({ projectId, containerId, tail }) }),
   getAiHistory: () => request('/ai/history'),
   clearAiHistory: () => request('/ai/history', { method: 'DELETE' }),
   // system

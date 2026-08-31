@@ -1,6 +1,6 @@
 # 📌 ComposeOps - PROJECT_CONTEXT.md
-> **上次更新时间**:2026-08-31 17:35 (Asia/Shanghai)
-> **当前版本/阶段**:v0.7 - UI 视觉质感升阶与去 Emoji 原生化(Linear 风格排版 / 空状态重塑 / 全站 Lucide 图标)已交付
+> **上次更新时间**:2026-08-31 20:05 (Asia/Shanghai)
+> **当前版本/阶段**:v0.8 - AI 排障 3 步闭环(日志上下文联动 / 容器只读探针 / 联网检索 Grounding)已交付
 
 ## 1. 核心概述 (Executive Summary)
 - **项目目标**:单用户 Docker Compose 运维控制台(工作区名 `ComposeOps`,镜像/容器沿用旧名 `OpsDash`)。通过 Docker Socket 自动发现带 `com.docker.compose.project` 标签的 Compose 项目,以"先发现、后显式纳管"的权限模型提供项目启停、Compose 配置编辑、环境变量管理、实时日志、容器终端、AI 排错、批量任务、多 Docker 节点纳管与资源监控等能力。
@@ -15,17 +15,19 @@
   - 项目环境变量(`.env`):`GET/PUT /api/v1/projects/:id/env` 与 `POST /:id/env/apply`,解析/序列化/校验工具库、原子写 + 时间戳备份、`docker compose up -d --force-recreate` 应用并通过 SSE 实时回传,前端 `ProjectEnvModal` 表格/Raw 双模 + 敏感变量脱敏 + `useEscapeKey`。
   - 三大高级运维功能(commit `a9081e5`):一键 AI 诊断(增强 `/ai/diagnose` 支持 rawLogs/failedCommand/exitCode/envKeys 脱敏,`AIDiagnosisModal` 流式展示 + 复制命令 + 跳转编辑器,入口在操作输出抽屉/日志页/操作中心);多节点管理(Local/TCP/SSH CRUD + 连通检测 + `DOCKER_HOST` 子进程切换,`HostSwitcher` 全局切换 + Settings 节点 Tab + Cmd+K `Switch Node` 指令,切换广播 `composeops:host-changed` 各页联动刷新);容器实时监控(`GET /projects/:id/stats/stream` SSE,`SparklineChart.vue` 轻量 SVG 双线,卡片展开行胶囊读数 + `/monitor` 表格趋势线,CPU≥85%/MEM≥90% 告警色)。
   - 四大高级运维功能(commit `a182fac`):镜像更新雷达(`backend/src/services/image-updater.js` Registry Digest 对比 + 1h TTL 缓存,`GET /projects/:id/updates` + `POST /updates/check-all`;平滑升级自动备份 compose/.env → pull → up -d → 15s 健康轮询 + 一键回滚;前端 `ProjectUpgradeModal` + 卡片 Update Available 徽章);Docker 磁盘可视化清理 Hub(`backend/src/services/docker-storage.js` `docker system df` 解析,`GET /ops/storage/df` + `POST /ops/storage/prune` safe/volumes/builder/all 深度清理需 PRUNE 确认;前端 `StoragePruneModal` 分段进度条 + Settings 维护 Tab 磁盘占用条);应用模板市场(`backend/src/data/blueprints.json` 17 个内置模板,`backend/src/services/app-blueprints.js` 渲染 Compose/Env + 部署直达 `/projects/<name>` 或 workspace 回退,`GET/POST /ops/blueprints` SSE 任务流;前端 `BlueprintsView` + `BlueprintDeployModal` 表单/预览,侧边栏「应用市场」+ Cmd+K `App Store:` 指令);多渠道宕机告警(`backend/src/services/health-alerter.js` 60s 巡检 exit/OOM/unhealthy/crashloop + 10min/容器防抖 + 8 行尾日志,Telegram/Bark/企微/邮件/Webhook,事件配置 `/ops/notifications/events` GET/PUT;前端 Settings 通知 Tab 触发事件勾选)。
+  - 五大极致体验功能(commit `4611c7a`)
+  - **AI 排障 3 步闭环(本次)**:① Log-Context Inspector(`AiView.vue` 右侧日志抽屉,等级过滤/关键字检索/复选框多选/一键全选异常行,选中的日志行注入 Prompt 并显示「已挂载 N 条异常日志堆栈」);② 容器只读探针(`POST /api/v1/ai/exec`,白名单只读命令 env/ps/netstat/curl/cat/tail/ls/df/free 等,非 TTY 一次性 exec,返回 stdout/exitCode/durationMs,输出截断 20KB;AI 回复中的 ```bash 代码块自动抽取为可执行卡片,结果回显并自动追加一轮 AI 分析);③ 联网检索 Grounding(`searchWeb` DuckDuckGo Instant Answer + HTML 回退,零 Key 8s 超时,`/chat` 与 `/diagnose` 支持 `webSearch`,done 后发送 `sources` 帧,前端渲染来源引用徽章)。另修复 `/ai/diagnose` 的 TDZ 顺序 bug(webSearch 分支引用未声明 logs),新增 `POST /api/v1/ai/logs`(复用 `readContainerLogs` demux 读取逻辑)供日志检查器拉取上下文。
   - 五大极致体验功能(commit `4611c7a`):WebUI 智能雷达(`backend/src/services/project-ports.js` 纯函数过滤数据端口 + 典型 Web 端口排序,`GET /api/v1/projects/:id/webui` 生成直达链接,前端 `WebUiLauncher.vue` 胶囊/多端口下拉);多容器聚合日志(`/ws/aggregated-logs` 按行分流打标,`LogLine.vue` 容器色泡/级别标记/JSON 折叠/错误高亮,`LogsView.vue` 容器多选、级别/正则过滤、向上滚暂停自动滚动胶囊);数据库一键 Dump(`backend/src/services/db-dumper.js` 自动探测 Postgres/MySQL/MariaDB/Redis/Mongo,从 `.env` 提取凭据,dockerode exec 流式 gzip 直下 + 本地留存 `data/backups/db/`,`DbDumpModal.vue`);可视化 Cron 调度器(自研轻量 5 段 cron 解析器 `cron-scheduler.js`,JSON 持久化 `data/cron-jobs.json`,预设备份/清理/镜像检查模板,失败走通知渠道告警,`CronTasksView.vue` 任务列表+历史+可视化周期选择);全局 Vim 键盘流(`useKeyboardNavigation.js`:j/k 移动、o/Enter 展开、l/e/c/r/w 动作,输入框/编辑器聚焦自动禁用;App.vue 全局监听 `?` 弹出 `CheatSheetModal.vue`)。
   - 视觉质感与性能专项(commit `66f0e9e`,本轮):SWR 秒开缓存(`frontend/src/api/client.js` 内存 SWR,GET 12s TTL 即时返回 + 后台 revalidate,写请求自动失效 `/projects /hosts /personal/ /ops/ /cron`,导出 `invalidateSwr`;`services`/`hosts` store 已有数据静默刷新不白屏);Shimmer 骨架屏(`Skeleton.vue` 新增 `cards`/`table` variant,`.skeleton-card` 边框内微光流动,ServicesView/MonitorView 首载占位防 CLS);大日志虚拟滚动(`LogsView.vue` 固定 24px 行高 + 30 行 overscan 窗口渲染,总行数撑滚动高度,`@scroll` 同步窗口,自动滚底/暂停恢复逻辑保持);视觉与微交互升阶(`style.css`:`.card`/`.modal`/`.drawer`/`.command-dialog`/`.event-panel`/`.host-dropdown` 加 `backdrop-blur` 与内嵌高光 `inset 0 1px 0 rgba(255,255,255,.05)`,`.btn`/`.icon-btn`/`.metric-tile` 加 `active:scale` 按压反馈,`.data-table td`/`.count-badge` 用 `font-mono tabular-nums`,`.modal` 改 `backdrop-blur-[2px]`)。
   - 新增路由:`/cron`(定时任务页,侧边栏「扩展」组);新增 API:`/api/v1/cron`(CRUD + run + history)、`/api/v1/projects/:id/webui`、`/api/v1/projects/:id/db-dump`(GET 列容器 / POST 流式下载)、`/ws/aggregated-logs`(多容器聚合日志流)。
   - UI 视觉质感升阶专项(commit 待定,本轮):全站去系统 Emoji,新增 `frontend/src/lib/blueprintIcons.js` 将 17 个应用模板 Emoji 映射为 Lucide 矢量图标(`blueprints.json` icon 字段同步改为 lucide 名称);Header 精简 Logo 与状态胶囊(`status-pill` 极暗微透质感 + `.status-ping` 2px 柔和呼吸光晕,HostSwitcher 同步);空状态重塑(AiView 无对话时居中 AI 引导面板 + 3 个预设胶囊 + `ai-composer` 悬浮底栏快捷键提示;ShellView 未连接时 macOS 三色点终端占位;CronTasksView 推荐预设卡片一键预填);监控指标卡(`StatCard` 内嵌 20 点 Sparkline 趋势与色调点)与容器表格灰度进度条/等宽数字;OperationsView 审计列表改为低干扰状态胶囊(`ops-status-ok/fail`)与项目/操作微高亮标签;统一 `.card`/`.panel-card`/`.table-wrap` 内嵌高光 `inset 0 1px 0 rgba(255,255,255,0.06)`、边框收敛 `surface-800/80`。
 - **开发中/刚刚完成的部分 (Recent)**:
-  - 本轮(UI/UX 专项)已实现并验证:SWR 缓存层 + store 静默刷新、卡片/表格骨架屏、LogsView 窗口化渲染、弹层模糊与按压微交互。
-  - 验证结果:`npx vitest run` 21/21 全绿;`npm run build` 零 Warning(monaco 2.3MB / xterm 291KB 独立 chunk,`chunkSizeWarningLimit: 3000`)。
-  - 最近提交:`4611c7a`(五大功能)、`66f0e9e`(UI/UX 与性能专项)、本轮 UI 视觉升阶 `style:` commit(即将提交);`9f69ed6`(日志页卡死修复)。
+  - 本轮(AI 排障 3 步闭环)已实现并验证:`AiView.vue` 全面重写(日志上下文检查器 + 只读探针卡片 + 联网检索开关/引用徽章),后端新增 `POST /api/v1/ai/exec`(只读命令白名单)与 `POST /api/v1/ai/logs`(复用 demux 日志读取),`/chat` 与 `/diagnose` 支持 `webSearch`(searchWeb 零 Key DuckDuckGo),并修复 `/ai/diagnose` 的 TDZ 顺序 bug。
+  - 验证结果:`npx vitest run` 21/21 全绿;`npm run build` 零 Warning;后端 `node --test` 42/42 全绿。
+  - 最近提交:`4611c7a`(五大功能)、`66f0e9e`(UI/UX 与性能专项)、UI 视觉升阶 `style:` commit、`f242243`(df 容错 + AI 模型列表)、`9f69ed6`(日志页卡死修复);本轮 AI 排障工作流 commit 即将提交。
 
 ## 3. 下一步任务清单 (Next Action Items)
-- [ ] **紧急/首要任务**:在容器/真机实测本轮优化:切换页面(服务列表↔日志↔监控)应 0ms 秒开无白屏(旧数据立即渲染 + 后台静默刷新);日志累加 5000+ 行后滚动仍流畅且 DOM 数量恒定(约 180 行窗口);按钮/卡片按压有 `scale` 反馈,弹层有模糊质感,骨架屏首载无高度突跳。
+- [ ] **紧急/首要任务**:在容器/真机实测 AI 排障 3 步闭环:① `/ai` 页选项目/容器后日志检查器能拉取上下文并勾选注入;② 开启「联网检索」后提问,回复底部出现来源引用徽章;③ AI 回复含 ```bash 只读命令时出现「在容器中执行」卡片,点击回显 Exit Code/耗时并可追问。同时回归既有 UI/UX 专项:页面切换 0ms 秒开、5000+ 行日志滚动流畅、弹层模糊与按压反馈。
 - [ ] **后续规划**:
   - [ ] 远程节点下 Compose 配置编辑/环境变量目前被 403 guard 拦截,可规划经 SSH 通道的远程文件读写。
   - [ ] 镜像更新检测缓存过期可加后台定时任务自动刷新;升级回滚支持多版本快照列表。

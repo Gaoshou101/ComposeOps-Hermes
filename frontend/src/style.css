@@ -323,3 +323,23 @@ body {
 .ops-status { @apply inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium; }
 .ops-status-ok { @apply border-emerald-500/20 bg-emerald-500/10 text-emerald-400; }
 .ops-status-fail { @apply border-rose-500/20 bg-rose-500/10 text-rose-400; }
+
+/* ===== AI 排障 3 步闭环:日志上下文 Inspector / 只读探针 / 检索引用 ===== */
+.log-inspector {
+  @apply flex w-80 shrink-0 flex-col overflow-hidden rounded-xl border border-surface-800 bg-surface-950/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)];
+  transition: width 0.2s ease, border-color 0.2s ease;
+}
+.log-inspector:not(.is-open) { width: 2.75rem; }
+.log-inspector:not(.is-open) .log-lines,
+.log-inspector:not(.is-open) > div:not(:first-child) { display: none; }
+.log-level-btn { @apply inline-flex items-center rounded-md border border-surface-800 bg-surface-950/60 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-surface-500 transition-colors hover:text-surface-200 active:scale-[0.98]; }
+.log-level-btn.is-active { @apply border-accent/50 bg-accent/15 text-accent; }
+.log-line-item { @apply flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-surface-800/50; }
+.log-line-item.is-selected { @apply bg-accent/10 ring-1 ring-inset ring-accent/30; }
+.log-line-item.is-error { border-left: 2px solid rgba(244, 63, 94, 0.6); }
+.mount-hint { @apply inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-950/40 px-2 py-0.5 text-[10px] font-medium text-emerald-300; }
+.probe-card { @apply rounded-lg border border-surface-700/60 bg-black/30 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]; }
+.probe-output { @apply mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md border border-surface-800 bg-black/40 px-2.5 py-2 font-mono text-[11px] leading-relaxed; }
+.source-badge { @apply inline-flex max-w-full items-center gap-1 truncate rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent transition-colors hover:bg-accent/20; }
+.web-search-toggle { @apply inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] text-surface-400 transition-colors hover:text-surface-200; }
+.web-search-toggle input { @apply sr-only; }

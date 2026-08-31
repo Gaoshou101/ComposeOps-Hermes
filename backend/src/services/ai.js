@@ -141,3 +141,54 @@ export {
   clearAiHistory,
   DEFAULT_SYSTEM_PROMPT,
 };
+
+/**
+ * 轻量联网检索(Grounding)。
+ * 优先 DuckDuckGo Instant Answer API(零 Key),失败/无结果时回退 HTML 摘要抽取。
+ * 任何异常都返回空数组,绝不阻断主对话流。
+ * @param {string} query
+ * @returns {Promise<Array<{title:string, url:string, snippet:string}>>}
+ */
+export async function searchWeb(query) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const results = [];
+  try {
+    const timeout = AbortSignal.timeout(8000);
+    const resp = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_html=1&skip_disambig=1`, {
+      headers: { Accept: 'application/json' },
+      signal: timeout,
+    });
+    if (resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      const abstract = String(data.AbstractText || '').trim();
+      if (abstract) {
+        results.push({ title: data.Heading || 'DuckDuckGo 摘要', url: data.AbstractURL || '', snippet: abstract });
+      }
+      const topics = Array.isArray(data.RelatedTopics) ? data.RelatedTopics : [];
+      for (const topic of topics.slice(0, 4)) {
+        const title = topic.Text?.split(' - ')[0] || '';
+        if (title) results.push({ title: title.slice(0, 120), url: topic.FirstURL || '', snippet: topic.Text || '' });
+      }
+    }
+  } catch {}
+  if (!results.length) {
+    // 回退:html.duckduckgo.com 摘要抽取
+    try {
+      const timeout = AbortSignal.timeout(8000);
+      const resp = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) ComposeOps-AI/1.0' },
+        signal: timeout,
+      });
+      if (resp.ok) {
+        const html = await resp.text();
+        const snippets = [...html.matchAll(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g)].slice(0, 5);
+        for (const m of snippets) {
+          const text = m[1].replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim();
+          if (text) results.push({ title: '', url: '', snippet: text.slice(0, 200) });
+        }
+      }
+    } catch {}
+  }
+  return results.slice(0, 5);
+}
