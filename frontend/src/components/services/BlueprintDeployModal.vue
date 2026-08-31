@@ -1,7 +1,7 @@
 <template>
   <div class="modal-backdrop z-[55]" @click.self="close">
     <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-2xl flex max-h-[90vh] flex-col">
-      <div class="modal-header shrink-0"><span>{{ blueprint.icon }} 部署 {{ blueprint.name }}</span><button class="icon-btn" title="关闭" @click="close"><X class="w-4 h-4" /></button></div>
+      <div class="modal-header shrink-0"><span class="flex items-center gap-2"><span class="grid h-7 w-7 place-items-center rounded-lg border border-surface-700 bg-surface-950/60"><component :is="iconFor" class="h-4 w-4 text-accent" /></span>部署 {{ blueprint.name }}</span><button class="icon-btn" title="关闭" @click="close"><X class="w-4 h-4" /></button></div>
       <div class="min-h-0 flex-1 overflow-y-auto p-4 space-y-3">
         <div class="form-grid">
           <label class="md:col-span-2">项目名称<input v-model="values.projectName" class="input" placeholder="如 my-uptime-kuma" /></label>
@@ -32,6 +32,7 @@ import { useEscapeKey } from '../../composables/useEscapeKey.js';
 import { api } from '../../api/client.js';
 import { useToastStore } from '../../stores/toast.js';
 import { X, Zap } from 'lucide-vue-next';
+import blueprintIcon from '../../lib/blueprintIcons.js';
 
 const props = defineProps({
   blueprint: { type: Object, required: true },
@@ -44,6 +45,7 @@ const error = ref('');
 const values = ref({});
 
 const active = computed(() => props.open);
+const iconFor = computed(() => blueprintIcon(props.blueprint.id));
 const previewCompose = computed(() => {
   let compose = props.blueprint.defaultCompose;
   for (const field of props.blueprint.envSchema || []) {

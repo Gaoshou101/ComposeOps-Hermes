@@ -17,7 +17,7 @@
     </div>
     <pre class="terminal-output flex-1">{{ text }}</pre>
     <div v-if="failed && !running && projectId" class="ai-diagnose-bar">
-      <button class="btn-primary" @click="$emit('diagnose')"><Sparkles class="w-4 h-4" />✨ 一键 AI 诊断</button>
+      <button class="btn-primary" @click="$emit('diagnose')"><Sparkles class="w-4 h-4" />一键 AI 诊断</button>
       <span class="text-xs text-muted">检测到执行失败,可交给 AI 分析根因与修复建议</span>
     </div>
   </div>

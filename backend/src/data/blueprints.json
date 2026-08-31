@@ -4,7 +4,7 @@
     "name": "Nginx Proxy Manager",
     "category": "Network",
     "description": "可视化反向代理 + 免费 SSL 证书管理面板,统一入口网关",
-    "icon": "🛡️",
+    "icon": "shield",
     "featured": true,
     "defaultCompose": "services:\n  app:\n    image: jc21/nginx-proxy-manager:latest\n    container_name: ${CONTAINER_NAME}\n    restart: unless-stopped\n    ports:\n      - \"${HTTP_PORT}:80\"\n      - \"${HTTPS_PORT}:443\"\n      - \"${ADMIN_PORT}:81\"\n    volumes:\n      - ${DATA_PATH}/data:/data\n      - ${DATA_PATH}/letsencrypt:/etc/letsencrypt",
     "envSchema": [
@@ -20,7 +20,7 @@
     "name": "Uptime Kuma",
     "category": "Tools",
     "description": "自托管监控面板,支持 HTTP/Ping/TCP 探测与多通道通知",
-    "icon": "📈",
+    "icon": "gauge",
     "featured": true,
     "defaultCompose": "services:\n  app:\n    image: louislam/uptime-kuma:1\n    container_name: ${CONTAINER_NAME}\n    restart: unless-stopped\n    ports:\n      - \"${PORT}:3001\"\n    volumes:\n      - ${DATA_PATH}:/app/data",
     "envSchema": [
@@ -34,7 +34,7 @@
     "name": "Ollama",
     "category": "AI",
     "description": "本地一键运行 Llama/Qwen 等大模型,OpenAI 兼容 API",
-    "icon": "🤖",
+    "icon": "brain-circuit",
     "featured": true,
     "defaultCompose": "services:\n  app:\n    image: ollama/ollama:latest\n    container_name: ${CONTAINER_NAME}\n    restart: unless-stopped\n    ports:\n      - \"${PORT}:11434\"\n    volumes:\n      - ${DATA_PATH}:/root/.ollama",
     "envSchema": [
@@ -48,7 +48,7 @@
     "name": "Vaultwarden",
     "category": "Tools",
     "description": "Bitwarden 兼容的轻量密码管理器服务端",
-    "icon": "🔐",
+    "icon": "key-round",
     "featured": true,
     "defaultCompose": "services:\n  app:\n    image: vaultwarden/server:latest\n    container_name: ${CONTAINER_NAME}\n    restart: unless-stopped\n    ports:\n      - \"${PORT}:80\"\n    volumes:\n      - ${DATA_PATH}:/data\n    environment:\n      - DOMAIN=${DOMAIN}",
     "envSchema": [
@@ -63,7 +63,7 @@
     "name": "Alist",
     "category": "Media",
     "description": "聚合网盘/对象存储的目录列表与直链工具",
-    "icon": "📁",
+    "icon": "folder-open",
     "defaultCompose": "services:\n  app:\n    image: xhofe/alist:latest\n    container_name: ${CONTAINER_NAME}\n    restart: unless-stopped\n    ports:\n      - \"${PORT}:5244\"\n    volumes:\n      - ${DATA_PATH}:/opt/alist/data",
     "envSchema": [
       { "key": "CONTAINER_NAME", "label": "容器名", "default": "alist" },
@@ -76,7 +76,7 @@
     "name": "Meilisearch",
     "category": "Database",
     "description": "极速全文搜索引擎,毫秒级体验与即开即用 API",
-    "icon": "🔎",
+    "icon": "search",
     "defaultCompose": "services:\n  app:\n    image: getmeili/meilisearch:v1.10\n    container_name: ${CONTAINER_NAME}\n    restart: unless-stopped\n    ports:\n      - \"${PORT}:7700\"\n    volumes:\n      - ${DATA_PATH}:/meili_data\n    environment:\n      - MEILI_MASTER_KEY=${MASTER_KEY}\n      - MEILI_NO_ANALYTICS=true",
     "envSchema": [
       { "key": "CONTAINER_NAME", "label": "容器名", "default": "meilisearch" },
@@ -90,7 +90,7 @@
     "name": "Dufs",
     "category": "Tools",
     "description": "即开即用的静态文件服务,支持上传下载与 WebDAV",
-    "icon": "📦",
+    "icon": "file-archive",
     "defaultCompose": "services:\n  app:\n    image: sigoden/dufs:latest\n    container_name: ${CONTAINER_NAME}\n    restart: unless-stopped\n    ports:\n      - \"${PORT}:5000\"\n    volumes:\n      - ${DATA_PATH}:/data\n    command: [\"/data\"]",
     "envSchema": [
       { "key": "CONTAINER_NAME", "label": "容器名", "default": "dufs" },
@@ -103,7 +103,7 @@
     "name": "RustDesk Server",
     "category": "Tools",
     "description": "开源远程桌面中继服务器,替代 TeamViewer",
-    "icon": "🖥️",
+    "icon": "monitor-down",
     "defaultCompose": "services:\n  hbbs:\n    image: rustdesk/rustdesk-server:latest\n    container_name: ${CONTAINER_NAME}-hbbs\n    restart: unless-stopped\n    ports:\n      - \"${RELAY_PORT}:21115\"\n      - \"21116:21116\"\n    command: hbbs -r ${HOST}:${RELAY_PORT}\n    volumes:\n      - ${DATA_PATH}:/root\n  hbbr:\n    image: rustdesk/rustdesk-server:latest\n    container_name: ${CONTAINER_NAME}-hbbr\n    restart: unless-stopped\n    ports:\n      - \"${RELAY_PORT}:21117\"\n    command: hbbr\n    volumes:\n      - ${DATA_PATH}:/root",
     "envSchema": [
       { "key": "CONTAINER_NAME", "label": "容器名前缀", "default": "rustdesk" },
@@ -117,7 +117,7 @@
     "name": "MinIO",
     "category": "Database",
     "description": "S3 兼容对象存储,单机部署高性能文件存储",
-    "icon": "🗄️",
+    "icon": "database",
     "featured": true,
     "defaultCompose": "services:\n  app:\n    image: minio/minio:latest\n    container_name: ${CONTAINER_NAME}\n    restart: unless-stopped\n    ports:\n      - \"${API_PORT}:9000\"\n      - \"${CONSOLE_PORT}:9001\"\n    command: server /data --console-address \":9001\"\n    environment:\n      - MINIO_ROOT_USER=${MINIO_USER}\n      - MINIO_ROOT_PASSWORD=${MINIO_PASSWORD}\n    volumes:\n      - ${DATA_PATH}:/data",
     "envSchema": [
@@ -134,7 +134,7 @@
     "name": "Grafana + Prometheus",
     "category": "Monitoring",
     "description": "经典可观测性组合:指标采集 + 可视化大盘",
-    "icon": "📊",
+    "icon": "chart-column",
     "featured": true,
     "defaultCompose": "services:\n  prometheus:\n    image: prom/prometheus:latest\n    container_name: ${CONTAINER_NAME}-prometheus\n    restart: unless-stopped\n    ports:\n      - \"${PROM_PORT}:9090\"\n    volumes:\n      - ${DATA_PATH}/prometheus:/etc/prometheus\n  grafana:\n    image: grafana/grafana:latest\n    container_name: ${CONTAINER_NAME}-grafana\n    restart: unless-stopped\n    ports:\n      - \"${GRAFANA_PORT}:3000\"\n    volumes:\n      - ${DATA_PATH}/grafana:/var/lib/grafana",
     "envSchema": [
@@ -149,7 +149,7 @@
     "name": "IT-Tools",
     "category": "Tools",
     "description": "开发者瑞士军刀:编码、格式化、加密、网络工具集",
-    "icon": "🧰",
+    "icon": "wrench",
     "defaultCompose": "services:\n  app:\n    image: corentinth/it-tools:latest\n    container_name: ${CONTAINER_NAME}\n    restart: unless-stopped\n    ports:\n      - \"${PORT}:80\"",
     "envSchema": [
       { "key": "CONTAINER_NAME", "label": "容器名", "default": "it-tools" },
@@ -161,7 +161,7 @@
     "name": "Whoogle Search",
     "category": "Tools",
     "description": "无广告、无追踪的 Google 搜索代理",
-    "icon": "🔍",
+    "icon": "search",
     "defaultCompose": "services:\n  app:\n    image: benbusby/whoogle-search:latest\n    container_name: ${CONTAINER_NAME}\n    restart: unless-stopped\n    ports:\n      - \"${PORT}:5000\"",
     "envSchema": [
       { "key": "CONTAINER_NAME", "label": "容器名", "default": "whoogle" },
@@ -173,7 +173,7 @@
     "name": "n8n",
     "category": "Tools",
     "description": "可视化工作流自动化平台,连接 400+ 服务",
-    "icon": "⚙️",
+    "icon": "workflow",
     "defaultCompose": "services:\n  app:\n    image: n8nio/n8n:latest\n    container_name: ${CONTAINER_NAME}\n    restart: unless-stopped\n    ports:\n      - \"${PORT}:5678\"\n    environment:\n      - N8N_BASIC_AUTH_ACTIVE=true\n      - N8N_BASIC_AUTH_USER=${USERNAME}\n      - N8N_BASIC_AUTH_PASSWORD=${PASSWORD}\n    volumes:\n      - ${DATA_PATH}:/home/node/.n8n",
     "envSchema": [
       { "key": "CONTAINER_NAME", "label": "容器名", "default": "n8n" },
@@ -188,7 +188,7 @@
     "name": "Gitea",
     "category": "Tools",
     "description": "轻量自托管 Git 服务,兼容 GitHub 工作流",
-    "icon": "🐙",
+    "icon": "code",
     "defaultCompose": "services:\n  app:\n    image: gitea/gitea:latest\n    container_name: ${CONTAINER_NAME}\n    restart: unless-stopped\n    ports:\n      - \"${PORT}:3000\"\n      - \"${SSH_PORT}:22\"\n    environment:\n      - GITEA__server__ROOT_URL=${DOMAIN}\n    volumes:\n      - ${DATA_PATH}:/data",
     "envSchema": [
       { "key": "CONTAINER_NAME", "label": "容器名", "default": "gitea" },
@@ -203,7 +203,7 @@
     "name": "Homepage",
     "category": "Media",
     "description": "极简美观的自托管导航首页,聚合服务书签与状态",
-    "icon": "🏠",
+    "icon": "home",
     "defaultCompose": "services:\n  app:\n    image: ghcr.io/gethomepage/homepage:latest\n    container_name: ${CONTAINER_NAME}\n    restart: unless-stopped\n    ports:\n      - \"${PORT}:3000\"\n    volumes:\n      - ${DATA_PATH}/config:/app/config\n      - ${DATA_PATH}/icons:/app/public/icons",
     "envSchema": [
       { "key": "CONTAINER_NAME", "label": "容器名", "default": "homepage" },
@@ -216,7 +216,7 @@
     "name": "AdGuard Home",
     "category": "Network",
     "description": "全网 DNS 广告拦截与隐私保护,局域网级过滤",
-    "icon": "🛰️",
+    "icon": "shield-check",
     "defaultCompose": "services:\n  app:\n    image: adguard/adguardhome:latest\n    container_name: ${CONTAINER_NAME}\n    restart: unless-stopped\n    ports:\n      - \"${DNS_PORT}:53:53/tcp\"\n      - \"${DNS_PORT}:53:53/udp\"\n      - \"${WEB_PORT}:80\"\n      - \"${WEB_PORT}:3000\"\n    volumes:\n      - ${DATA_PATH}/work:/opt/adguardhome/work\n      - ${DATA_PATH}/conf:/opt/adguardhome/conf",
     "envSchema": [
       { "key": "CONTAINER_NAME", "label": "容器名", "default": "adguard-home" },
@@ -230,7 +230,7 @@
     "name": "Calibre-Web",
     "category": "Media",
     "description": "电子书管理与在线阅读服务器,支持 OPDS",
-    "icon": "📚",
+    "icon": "book-open",
     "defaultCompose": "services:\n  app:\n    image: lscr.io/linuxserver/calibre-web:latest\n    container_name: ${CONTAINER_NAME}\n    restart: unless-stopped\n    ports:\n      - \"${PORT}:8083\"\n    volumes:\n      - ${DATA_PATH}/books:/books\n      - ${DATA_PATH}/config:/config\n    environment:\n      - PUID=1000\n      - PGID=1000\n      - TZ=Asia/Shanghai",
     "envSchema": [
       { "key": "CONTAINER_NAME", "label": "容器名", "default": "calibre-web" },

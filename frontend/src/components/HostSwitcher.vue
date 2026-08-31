@@ -1,10 +1,10 @@
 <template>
   <div class="relative">
     <button class="host-switch" title="切换 Docker 节点" aria-label="切换 Docker 节点" @click="toggle">
-      <span v-if="!active || active.status === 'online'" class="w-2 h-2 rounded-full bg-emerald-400 shadow-glow-emerald"></span>
-      <span v-else class="w-2 h-2 rounded-full bg-rose-400"></span>
+      <span v-if="!active || active.status === 'online'" class="status-ping bg-emerald-400"></span>
+      <span v-else class="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
       <span class="hidden lg:inline max-w-24 truncate">{{ active?.name || 'Local' }}</span>
-      <ChevronDown class="w-3.5 h-3.5 text-surface-500" />
+      <ChevronDown class="w-3 h-3 text-surface-500" />
     </button>
     <div v-if="open" class="fixed inset-0 z-[50]" @click="open = false"></div>
     <section v-if="open" class="host-dropdown z-[50]">

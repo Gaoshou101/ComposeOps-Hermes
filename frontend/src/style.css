@@ -29,10 +29,15 @@ body {
     linear-gradient(180deg, #181c23 0%, #151920 100%);
 }
 .brand-mark {
-  @apply grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent text-white;
-  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  @apply grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-surface-700/60 bg-gradient-to-b from-surface-800 to-surface-950 text-accent;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
-.status-pill { @apply inline-flex h-8 items-center gap-2 rounded-full border border-surface-800 bg-surface-950/60 px-2.5 text-xs; }
+.status-pill { @apply inline-flex h-8 items-center gap-2 rounded-full border border-surface-700/50 bg-surface-900/60 px-2.5 text-xs text-surface-300; }
+.status-ping { @apply inline-block h-1.5 w-1.5 shrink-0 rounded-full; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.4); animation: status-ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite; }
+@keyframes status-ping {
+  70% { box-shadow: 0 0 0 2px rgba(52, 211, 153, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+}
 .command-trigger { @apply inline-flex h-9 items-center gap-2 rounded-lg border border-surface-800 bg-surface-950/60 px-2.5 text-xs text-surface-400 transition-colors hover:border-surface-700 hover:bg-surface-800 hover:text-surface-100; }
 .command-backdrop { @apply fixed inset-0 z-[60] grid place-items-start bg-black/60 px-4 pt-[12vh] backdrop-blur-sm; }
 .command-dialog { @apply w-full max-w-xl overflow-hidden rounded-xl border border-surface-700 bg-surface-900/95 shadow-2xl backdrop-blur-md; }
@@ -154,7 +159,7 @@ body {
   /* 区块微眉标：分区分组的小写大写标签，不可选中 */
   .section-eyebrow { @apply text-[10px] font-semibold uppercase tracking-[0.14em] text-surface-400 select-none; }
   /* 通用面板卡片：卡片式内容容器 */
-  .panel-card { @apply bg-surface-900/60 border border-surface-800 rounded-xl p-4 transition-colors; }
+  .panel-card { @apply bg-surface-900/60 border border-surface-800/80 rounded-xl p-4 transition-colors; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06); }
   /* 页首：页面标题（H1）与副标题，斜对角布局由调用方控制 */
   .page-header { @apply flex w-full flex-col justify-between gap-4 border-b border-surface-800/70 pb-5 lg:flex-row lg:items-end; }
   .page-header h1 { @apply text-lg sm:text-xl font-bold tracking-tight text-surface-100; }
@@ -178,7 +183,7 @@ body {
   .search-field { @apply flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-surface-700 bg-surface-950/70 px-3 text-surface-500 transition-colors focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20; }
   .search-field input { @apply min-w-0 flex-1 bg-transparent py-2 text-sm text-surface-100 outline-none placeholder:text-surface-500; }
   .project-attention { @apply border-amber-900/60; }
-  .action-label { @apply inline-flex rounded-md bg-surface-800 px-2 py-1 text-xs font-medium text-surface-300; }
+  .action-label { @apply inline-flex rounded-md bg-surface-800/80 px-2 py-1 text-xs font-medium text-surface-300; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04); }
   .count-badge { @apply text-xs px-1.5 py-0.5 bg-surface-800 text-surface-400 rounded font-mono tabular-nums; }
   .status-dot { @apply w-2 h-2 rounded-full shrink-0; }
   .toggle-label { @apply inline-flex items-center gap-1.5 text-sm text-surface-400; }
@@ -187,7 +192,7 @@ body {
   .alert-warning { @apply text-sm text-amber-300 border border-amber-900/60 bg-amber-950/20 rounded px-3 py-2; }
   .alert-success { @apply text-sm text-emerald-300 border border-emerald-900/60 bg-emerald-950/20 rounded px-3 py-2; }
   .empty-state { @apply min-h-48 border border-dashed border-surface-700 rounded-xl grid place-content-center justify-items-center gap-3 text-sm text-surface-500 bg-surface-900/25; }
-  .table-wrap { @apply overflow-x-auto border border-surface-800 rounded-xl bg-surface-900/65 shadow-[0_12px_40px_rgba(0,0,0,0.06)]; }
+  .table-wrap { @apply overflow-x-auto border border-surface-800/80 rounded-xl bg-surface-900/65 shadow-[0_12px_40px_rgba(0,0,0,0.06)]; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.05); }
   .data-table { @apply w-full text-sm; }
   .data-table th { @apply h-11 text-left text-[11px] uppercase tracking-wider font-semibold text-surface-500 px-4 py-2 bg-surface-950/50; }
   .data-table td { @apply h-12 px-4 py-2.5 border-t border-surface-800/80 text-surface-300 font-mono tabular-nums text-[13px]; }
@@ -196,7 +201,7 @@ body {
   .modal { @apply w-full max-w-[calc(100vw-1.5rem)] sm:max-w-2xl bg-surface-900/95 border border-surface-700 rounded-xl shadow-2xl overflow-hidden backdrop-blur-md; box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05); }
   .modal-header { @apply h-11 flex items-center justify-between gap-3 px-3 border-b border-surface-800 text-sm font-medium; }
   .drawer { @apply fixed z-[51] bottom-0 right-0 w-full md:w-[720px] max-w-[calc(100vw-1rem)] h-[min(70vh,36rem)] bg-surface-900/95 border border-surface-700 flex flex-col shadow-2xl backdrop-blur-md; box-shadow: -18px 0 50px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05); }
-  .batch-task { @apply flex min-w-0 items-center gap-2 rounded-lg bg-surface-950/55 px-3 py-2; }
+  .batch-task { @apply flex min-w-0 items-center gap-2 rounded-lg bg-surface-950/55 px-3 py-2; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03); }
   .terminal-output { @apply overflow-auto p-3 bg-[#0b0d10] text-xs font-mono whitespace-pre-wrap break-words; }
   .log-line { @apply whitespace-pre-wrap break-words min-h-4; }
   .diff-pane { @apply bg-surface-950 p-4 text-xs font-mono whitespace-pre-wrap overflow-auto min-h-72; }
@@ -211,6 +216,8 @@ body {
   .form-grid label { @apply text-xs font-medium text-surface-400 flex flex-col gap-2; }
   .progress { @apply h-2 rounded bg-surface-800 overflow-hidden; }
   .progress span { @apply block h-full bg-accent; }
+  .progress-muted span { @apply bg-surface-600; }
+  .progress-muted span { transition: width 0.4s ease; }
 }
 
 /* ---- 状态徽标(StatusBadge)呼吸光晕 ---- */
@@ -257,7 +264,7 @@ body {
 .skeleton-fade-leave-active { transition: opacity 0.25s ease; }
 .skeleton-fade-enter-from,
 .skeleton-fade-leave-to { opacity: 0; }
-.host-switch { @apply inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-800 px-2.5 text-sm text-surface-200 hover:border-surface-600 hover:bg-surface-700 transition-colors; }
+.host-switch { @apply inline-flex min-h-8 items-center gap-1.5 rounded-full border border-surface-700/50 bg-surface-900/60 px-2.5 text-xs text-surface-300 hover:border-surface-600 hover:bg-surface-800/60 hover:text-surface-100 transition-colors; }
 .host-dropdown { @apply fixed right-3 top-[4.5rem] z-[50] w-72 overflow-hidden rounded-xl border border-surface-700 bg-surface-900/95 shadow-2xl backdrop-blur-md; }
 .host-item { @apply flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-surface-800; }
 .host-item.active { @apply bg-surface-800/70; }
@@ -269,7 +276,7 @@ body {
 .ai-diagnose-bar { @apply flex shrink-0 flex-wrap items-center gap-2 border-t border-surface-800 bg-surface-900/80 px-3 py-2.5; }
 .storage-bar { @apply flex h-3 w-full gap-px overflow-hidden rounded-full bg-surface-800; }
 .storage-seg { @apply h-full transition-all duration-300; }
-.blueprint-icon { @apply grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-surface-700 bg-surface-800 text-xl; }
+.blueprint-icon { @apply grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-surface-700/70 bg-surface-950/60 text-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]; }
 .update-badge { @apply inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-950/40 px-2 py-0.5 text-[10px] font-medium text-amber-300 transition-colors hover:bg-amber-900/50; }
 @keyframes update-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.35); } 50% { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0); } }
 .update-badge { animation: update-pulse 2.4s ease-in-out infinite; }
@@ -287,3 +294,22 @@ body {
 .json-toggle { @apply shrink-0 text-[10px] text-accent hover:underline; }
 .scroll-resume-chip { @apply fixed bottom-24 right-6 z-[60] rounded-full border border-accent/50 bg-surface-900 px-3 py-1.5 text-xs text-accent shadow-lg shadow-black/40 transition-colors hover:bg-surface-800; }
 .shortcut-key { @apply inline-flex min-w-[22px] items-center justify-center rounded border border-surface-600 bg-surface-800 px-1.5 py-0.5 font-mono text-[11px] leading-none text-surface-200 shadow-sm; }
+/* AI 助手底部悬浮输入栏(Linear 风格) */
+.ai-composer {
+  @apply flex shrink-0 items-end gap-2 rounded-2xl border border-surface-700/70 bg-surface-900/90 px-3 py-2 shadow-[0_-8px_30px_rgba(0,0,0,0.25),inset_0_1px_0_rgba(255,255,255,0.05)];
+  backdrop-filter: blur(12px);
+}
+.ai-composer:focus-within { border-color: var(--accent, #3b82f6); box-shadow: 0 -8px 30px rgba(0,0,0,0.25), 0 0 0 3px rgba(59,130,246,0.12), inset 0 1px 0 rgba(255,255,255,0.05); }
+/* AI 引导面板快捷预设胶囊 */
+.preset-chip {
+  @apply inline-flex items-center gap-1.5 rounded-full border border-surface-700/60 bg-surface-900/70 px-3 py-1.5 text-xs text-surface-300 transition-all duration-150 hover:border-accent/50 hover:bg-surface-800 hover:text-surface-100 active:scale-[0.98];
+}
+.cron-preset-card {
+  @apply flex items-center gap-3 rounded-xl border border-surface-700/60 bg-surface-900/60 p-3 text-left transition-all duration-150 hover:border-accent/40 hover:bg-surface-800/70 active:scale-[0.98] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)];
+}
+.ops-row { @apply transition-colors hover:bg-surface-800/25; }
+.ops-project { @apply inline-flex max-w-52 items-center truncate rounded-md bg-surface-800/60 px-2 py-1 text-xs font-medium text-surface-200; }
+.ops-action { @apply inline-flex rounded-md bg-accent/10 px-2 py-1 text-xs font-medium text-accent; }
+.ops-status { @apply inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium; }
+.ops-status-ok { @apply border-emerald-500/20 bg-emerald-500/10 text-emerald-400; }
+.ops-status-fail { @apply border-rose-500/20 bg-rose-500/10 text-rose-400; }

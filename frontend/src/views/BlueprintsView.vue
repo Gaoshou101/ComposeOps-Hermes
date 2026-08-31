@@ -14,7 +14,7 @@
     <div v-else-if="filtered.length" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       <article v-for="blueprint in filtered" :key="blueprint.id" class="card p-4 flex flex-col gap-3">
         <div class="flex items-start gap-3">
-          <span class="blueprint-icon">{{ blueprint.icon }}</span>
+          <span class="blueprint-icon"><component :is="iconFor(blueprint.id)" class="h-5 w-5 text-accent" /></span>
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
               <strong class="truncate text-sm text-surface-100">{{ blueprint.name }}</strong>
@@ -39,6 +39,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { Search, Zap } from 'lucide-vue-next';
 import { api } from '../api/client.js';
+import blueprintIcon from '../lib/blueprintIcons.js';
 import EmptyState from '../components/common/EmptyState.vue';
 import BlueprintDeployModal from '../components/services/BlueprintDeployModal.vue';
 import { useToastStore } from '../stores/toast.js';
@@ -60,6 +61,7 @@ const filtered = computed(() => {
 });
 
 function deploy(blueprint) { selected.value = blueprint; }
+function iconFor(id) { return blueprintIcon(id); }
 function handleDeployed(data) {
   selected.value = null;
   toast.success('部署完成,正在跳转服务列表');

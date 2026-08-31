@@ -10,7 +10,22 @@
     <p v-if="error" class="alert-error">{{ error }}</p>
     <p v-if="message" class="alert-success">{{ message }}</p>
 
-    <div v-if="!jobs.length && !loading" class="flex flex-1 items-center justify-center py-16"><EmptyState icon="Clock3" title="还没有定时任务" description="创建后可按 Cron 周期自动执行,失败时通过现有通知渠道告警" action-label="新建任务" @action="openCreate" /></div>
+    <div v-if="!jobs.length && !loading" class="flex flex-1 flex-col items-center justify-center gap-6 py-12">
+      <div class="space-y-1.5 text-center">
+        <h2 class="text-base font-semibold tracking-tight text-surface-100">还没有定时任务</h2>
+        <p class="text-muted">按 Cron 周期自动执行备份、清理与镜像检查,失败时通过现有通知渠道告警</p>
+      </div>
+      <div class="grid w-full max-w-2xl gap-3 sm:grid-cols-2">
+        <button v-for="preset in presets" :key="preset.name" class="cron-preset-card" @click="openCreate(preset)">
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-surface-700 bg-surface-950/60"><component :is="preset.icon" class="h-4 w-4 text-accent" /></span>
+          <span class="min-w-0 flex-1 text-left">
+            <strong class="block truncate text-sm font-medium text-surface-200">{{ preset.name }}</strong>
+            <small class="block truncate text-muted">{{ preset.description }}</small>
+          </span>
+          <Plus class="h-4 w-4 shrink-0 text-surface-500" />
+        </button>
+      </div>
+    </div>
 
     <div v-if="jobs.length" class="flex-1 space-y-2">
       <article v-for="job in jobs" :key="job.id" class="card p-3 flex flex-col sm:flex-row sm:items-center gap-3">
@@ -75,9 +90,8 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { Clock3, Play, RefreshCw, Save, Trash2, X } from 'lucide-vue-next';
+import { Clock3, DatabaseBackup, Play, Plus, RefreshCw, Save, Sparkles, Trash2, X } from 'lucide-vue-next';
 import { api } from '../api/client.js';
-import EmptyState from '../components/common/EmptyState.vue';
 import { useToastStore } from '../stores/toast.js';
 
 const toast = useToastStore();
@@ -92,6 +106,12 @@ const editor = ref(null);
 const editorError = ref('');
 const saving = ref(false);
 const manualCron = ref(false);
+
+const presets = [
+  { name: '每天 03:00 自动备份数据库', description: '对所有数据库容器执行 Dump 并留存本地', icon: DatabaseBackup, type: 'db-backup', cron: '0 3 * * *' },
+  { name: '每周日 04:00 清理 Docker 悬空镜像', description: '安全清理悬空镜像、退出容器与未使用缓存', icon: Sparkles, type: 'prune-safe', cron: '0 4 * * 0' },
+  { name: '每天 02:00 检查镜像更新', description: '全局检测纳管项目镜像是否有远程更新', icon: RefreshCw, type: 'images-check', cron: '0 2 * * *' },
+];
 
 function onCronTemplateChange() {
   if (!editor.value) return;
@@ -118,8 +138,10 @@ async function load() {
     loading.value = false;
   }
 }
-function openCreate() {
-  editor.value = { name: '', type: 'db-backup', cron: '0 3 * * *', enabled: true };
+function openCreate(preset) {
+  editor.value = preset
+    ? { name: preset.name, type: preset.type, cron: preset.cron, enabled: true }
+    : { name: '', type: 'db-backup', cron: '0 3 * * *', enabled: true };
   editorError.value = '';
 }
 function closeEditor() { if (!saving.value) { editor.value = null; editorError.value = ''; } }

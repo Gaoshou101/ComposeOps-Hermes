@@ -25,7 +25,7 @@
 
           <div class="rounded-xl border border-surface-800 p-3 space-y-3">
             <div class="flex items-center justify-between">
-              <div><strong class="text-sm text-surface-200">⚡ 一键极速安全清理</strong><p class="text-muted text-xs mt-0.5">清理悬空镜像、退出容器与未使用构建缓存</p></div>
+              <div class="flex items-center gap-2"><Zap class="h-4 w-4 text-amber-300" /><div><strong class="text-sm text-surface-200">一键极速安全清理</strong><p class="text-muted text-xs mt-0.5">清理悬空镜像、退出容器与未使用构建缓存</p></div></div>
               <button class="btn-primary" :disabled="pruning" @click="runPrune('safe')">{{ pruning ? '清理中…' : '立即清理' }}</button>
             </div>
             <div class="border-t border-surface-800 pt-3">
@@ -53,7 +53,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useEscapeKey } from '../../composables/useEscapeKey.js';
 import { api } from '../../api/client.js';
 import { useToastStore } from '../../stores/toast.js';
-import { Trash2, X } from 'lucide-vue-next';
+import { Trash2, X, Zap } from 'lucide-vue-next';
 
 const props = defineProps({ open: { type: Boolean, default: true } });
 const emit = defineEmits(['close', 'reclaimed']);

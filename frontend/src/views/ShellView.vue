@@ -14,6 +14,22 @@
     <div class="card relative flex-1 min-h-[420px] overflow-hidden terminal-host">
       <Skeleton v-if="!termReady" class="skeleton-workspace" rows="10" label="终端加载中" />
       <div ref="termEl" class="h-full w-full" :class="{ invisible: !termReady }"></div>
+      <div v-if="termReady && !connected" class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 bg-[#0b0d10]/95 px-6">
+        <div class="flex items-center gap-1.5">
+          <span class="h-3 w-3 rounded-full bg-[#ff5f57]"></span>
+          <span class="h-3 w-3 rounded-full bg-[#febc2e]"></span>
+          <span class="h-3 w-3 rounded-full bg-[#28c840]"></span>
+        </div>
+        <div class="space-y-1 text-center">
+          <p class="font-mono text-sm text-surface-300">终端未连接</p>
+          <p class="text-muted">请选择上方项目与容器后点击「连接」</p>
+        </div>
+        <div class="flex flex-wrap items-center justify-center gap-3 font-mono text-[11px] text-surface-600">
+          <span><kbd class="shortcut-key">Ctrl+C</kbd> 中断</span>
+          <span><kbd class="shortcut-key">Ctrl+L</kbd> 清屏</span>
+          <span><kbd class="shortcut-key">Ctrl+D</kbd> 退出 Shell</span>
+        </div>
+      </div>
     </div>
   </div>
 </template>

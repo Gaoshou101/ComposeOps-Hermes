@@ -32,10 +32,11 @@
         <table class="data-table">
           <thead><tr><th>时间</th><th>项目</th><th>操作</th><th>结果</th><th class="w-20">详情</th></tr></thead>
           <tbody>
-            <tr v-for="item in filteredOperations" :key="item.id">
-              <td class="whitespace-nowrap">{{ formatTime(item.createdAt) }}</td><td>{{ item.projectName || '系统' }}</td>
-              <td><span class="action-label">{{ actionLabel(item.action) }}</span><span class="ml-2 hidden font-mono text-xs text-surface-600 xl:inline">{{ item.action }}</span></td>
-              <td><StatusBadge :status="item.status" /></td>
+            <tr v-for="item in filteredOperations" :key="item.id" class="ops-row">
+              <td class="whitespace-nowrap font-mono tabular-nums">{{ formatTime(item.createdAt) }}</td>
+              <td><span class="ops-project">{{ item.projectName || '系统' }}</span></td>
+              <td><span class="ops-action">{{ actionLabel(item.action) }}</span><span class="ml-2 hidden font-mono text-[10px] text-surface-600 xl:inline">{{ item.action }}</span></td>
+              <td><span class="ops-status" :class="item.status === 'success' ? 'ops-status-ok' : 'ops-status-fail'"><span class="h-1.5 w-1.5 rounded-full" :class="item.status === 'success' ? 'bg-emerald-400' : 'bg-rose-400'"></span>{{ item.status === 'success' ? '成功' : '失败' }}</span></td>
               <td><button v-if="item.detail" class="icon-btn" title="查看输出" @click="selectedOperation = item"><Eye class="h-4 w-4" /></button></td>
             </tr>
             <tr v-if="!filteredOperations.length"><td colspan="5"><EmptyState compact :icon="operations.length ? 'Search' : 'History'" :title="operations.length ? '没有匹配的操作记录' : '暂无操作记录'" :description="operations.length ? '调整筛选条件后重试' : '执行 Compose 操作后会自动记录审计日志'" /></td></tr>

@@ -3,10 +3,7 @@
     <div class="flex min-w-0 items-center gap-3">
       <div class="brand-mark"><Boxes class="w-5 h-5" /></div>
       <div class="min-w-0">
-        <div class="flex items-center gap-2">
-          <span class="text-sm sm:text-base font-semibold tracking-tight">ComposeOps</span>
-          <span class="hidden sm:inline text-[10px] uppercase tracking-[0.16em] text-surface-500">Control Center</span>
-        </div>
+        <span class="text-sm sm:text-base font-semibold tracking-tight">ComposeOps</span>
         <p class="text-muted truncate">{{ currentPage }}</p>
       </div>
     </div>
@@ -16,7 +13,7 @@
         <span class="hidden md:inline">快速跳转</span>
       </button>
       <span v-if="backendOnline" class="status-pill text-emerald-300">
-        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-glow-emerald"></span><span class="hidden sm:inline">服务正常</span>
+        <span class="status-ping bg-emerald-400"></span><span class="hidden sm:inline">服务正常</span>
       </span>
       <span v-else class="status-pill text-rose-300">
         <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span><span class="hidden sm:inline">服务离线</span>
