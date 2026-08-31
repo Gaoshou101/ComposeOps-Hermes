@@ -6,14 +6,22 @@ export const useServicesStore = defineStore('services', () => {
   const projects = ref([]);
   const loading = ref(false);
   const error = ref('');
+  const lastLoadedAt = ref(0);
   let timer;
 
-  async function refresh() {
-    loading.value = true;
+  /**
+   * SWR 语义刷新:
+   * - 已有数据时静默拉新(不置 loading,避免切页回来白屏/高度跳动);
+   * - 首次加载(无数据)才显示 loading。
+   */
+  async function refresh(force = false) {
+    const hasData = projects.value.length > 0;
+    if (!hasData) loading.value = true;
     error.value = '';
     try {
-      const data = await api.getProjects();
+      const data = await api.getProjects(force);
       projects.value = data.projects || [];
+      lastLoadedAt.value = Date.now();
     } catch (e) {
       error.value = e.message;
     } finally {
@@ -23,13 +31,13 @@ export const useServicesStore = defineStore('services', () => {
 
   function startAutoRefresh(intervalMs = 5000) {
     if (timer) return;
-    refresh();
-    timer = setInterval(refresh, intervalMs);
+    void refresh(false);
+    timer = setInterval(() => void refresh(false), intervalMs);
   }
   function stopAutoRefresh() {
     if (timer) clearInterval(timer);
     timer = null;
   }
 
-  return { projects, loading, error, refresh, startAutoRefresh, stopAutoRefresh };
+  return { projects, loading, error, lastLoadedAt, refresh, startAutoRefresh, stopAutoRefresh };
 });

@@ -1,25 +1,82 @@
-// 统一 API 客户端，基于 fetch 封装
+// 统一 API 客户端,基于 fetch 封装
 const BASE = '/api/v1';
 
-async function request(path, opts = {}) {
-  const res = await fetch(`${BASE}${path}`, {
+/**
+ * SWR(Stale-While-Revalidate)内存缓存:
+ * - GET 命中有效缓存时立即返回旧数据(0ms 秒开),后台静默拉取最新数据;
+ * - 默认 TTL 12s;write 请求(POST/PUT/DELETE/PATCH)成功后自动失效相关缓存。
+ */
+const swrCache = new Map(); // key -> { data, ts, inflight }
+const SWR_TTL = 12000;
+const CACHEABLE_PATHS = ['/projects', '/hosts', '/personal/preferences', '/system/capabilities', '/ops/blueprints', '/cron'];
+
+function isGet(opts) {
+  return !opts?.method || opts.method === 'GET';
+}
+function cacheable(path, opts) {
+  return isGet(opts) && (CACHEABLE_PATHS.includes(path) || opts.cacheable);
+}
+function doFetch(path, opts = {}) {
+  return fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
     ...opts,
+  }).then(async (res) => {
+    if (!res.ok) {
+      let msg = res.statusText;
+      try {
+        const body = await res.json();
+        msg = body.message || body.error || JSON.stringify(body);
+      } catch {}
+      const err = new Error(msg);
+      err.status = res.status;
+      if (res.status === 401) window.dispatchEvent(new CustomEvent('composeops:unauthorized'));
+      throw err;
+    }
+    if (res.status === 204) return null;
+    const ct = res.headers.get('content-type') || '';
+    return ct.includes('application/json') ? res.json() : res.text();
   });
-  if (!res.ok) {
-    let msg = res.statusText;
-    try {
-      const body = await res.json();
-      msg = body.message || body.error || JSON.stringify(body);
-    } catch {}
-    const err = new Error(msg);
-    err.status = res.status;
-    if (res.status === 401) window.dispatchEvent(new CustomEvent('composeops:unauthorized'));
-    throw err;
+}
+function revalidate(key, path, opts) {
+  const entry = swrCache.get(key);
+  if (!entry || entry.inflight) return;
+  entry.inflight = true;
+  doFetch(path, opts)
+    .then((data) => swrCache.set(key, { data, ts: Date.now(), inflight: false }))
+    .catch(() => swrCache.set(key, { ...entry, inflight: false }));
+}
+async function request(path, opts = {}) {
+  if (!isGet(opts)) {
+    const data = await doFetch(path, opts);
+    invalidateSwr('/projects');
+    invalidateSwr('/hosts');
+    invalidateSwr('/personal/');
+    invalidateSwr('/ops/');
+    invalidateSwr('/cron');
+    return data;
   }
-  if (res.status === 204) return null;
-  const ct = res.headers.get('content-type') || '';
-  return ct.includes('application/json') ? res.json() : res.text();
+  const key = path + (opts.cacheKey || '');
+  const entry = swrCache.get(key);
+  // 命中新鲜缓存:立即返回,后台 revalidate
+  if (entry && !opts.force && Date.now() - entry.ts < SWR_TTL) {
+    revalidate(key, path, opts);
+    return entry.data;
+  }
+  // 命中过期缓存:先回旧值(秒开),后台刷新
+  if (entry && !opts.force) {
+    revalidate(key, path, opts);
+    return entry.data;
+  }
+  // 无缓存:真实拉取,可缓存项落缓存
+  const data = await doFetch(path, opts);
+  if (cacheable(path, opts) && !opts.force) swrCache.set(key, { data, ts: Date.now(), inflight: false });
+  return data;
+}
+/** 使某个路径前缀的 SWR 缓存失效(写操作后调用)。 */
+export function invalidateSwr(prefix) {
+  for (const key of [...swrCache.keys()]) {
+    if (key.startsWith(prefix)) swrCache.delete(key);
+  }
 }
 
 export const api = {
@@ -28,7 +85,7 @@ export const api = {
   login: (password) => request('/auth/login', { method: 'POST', body: JSON.stringify({ password }) }),
   logout: () => request('/auth/logout', { method: 'POST' }),
   changePassword: (payload) => request('/auth/password', { method: 'POST', body: JSON.stringify(payload) }),
-  getProjects: () => request('/projects'),
+  getProjects: (force = false) => request('/projects', { force }),
   getMountPlan: () => request('/projects/mount-plan'),
   saveProjectManagement: (projectIds, mountProjectIds = []) => request('/projects/management', { method: 'PUT', body: JSON.stringify({ projectIds, mountProjectIds }) }),
   saveProjectMounts: (projectIds) => request('/projects/mounts', { method: 'PUT', body: JSON.stringify({ projectIds }) }),
@@ -38,17 +95,17 @@ export const api = {
   getJob: (id) => request(`/jobs/${id}`),
   createProjectBatchJob: (projectIds, action) => request('/jobs', { method: 'POST', body: JSON.stringify({ projectIds, action }) }),
   saveProjectPreference: (id, payload) => request(`/projects/${id}/preferences`, { method: 'PATCH', body: JSON.stringify(payload) }),
-  getComposeFile: (projectId, fileIndex = 0) => request(`/projects/${projectId}/compose?fileIndex=${fileIndex}`),
+  getComposeFile: (projectId, fileIndex = 0, force = false) => request(`/projects/${projectId}/compose?fileIndex=${fileIndex}`, { force }),
   saveComposeFile: (projectId, fileIndex, content) =>
     request(`/projects/${projectId}/compose`, { method: 'PUT', body: JSON.stringify({ fileIndex, content }) }),
-  getProjectEnv: (projectId) => request(`/projects/${projectId}/env`),
+  getProjectEnv: (projectId, force = false) => request(`/projects/${projectId}/env`, { force }),
   saveProjectEnv: (projectId, payload) => request(`/projects/${projectId}/env`, { method: 'PUT', body: JSON.stringify(payload) }),
   streamApplyEnv: (projectId, onFrame) => streamComposeControl(projectId, null, onFrame, `/projects/${projectId}/env/apply`, { restart: true }),
   getBackups: (projectId) => request(`/projects/${projectId}/backups`),
   getBackup: (projectId, backupId) => request(`/projects/${projectId}/backups/${backupId}`),
   restoreBackup: (projectId, backupId) => request(`/projects/${projectId}/backups/${backupId}/restore`, { method: 'POST' }),
   // docker hosts
-  getHosts: () => request('/hosts'),
+  getHosts: (force = false) => request('/hosts', { force }),
   saveHost: (payload) => request('/hosts', { method: 'POST', body: JSON.stringify(payload) }),
   deleteHost: (id) => request(`/hosts/${id}`, { method: 'DELETE' }),
   pingHost: (id, probe) => request(`/hosts/${id}/ping`, { method: 'POST', body: JSON.stringify(probe ? { probe } : {}) }),
@@ -107,7 +164,7 @@ export const api = {
 };
 
 /**
- * 调用 compose 控制端点（SSE 流式）。逐行解析 data: {...} 帧。
+ * 调用 compose 控制端点(SSE 流式)。逐行解析 data: {...} 帧。
  * @param {object} body
  * @param {(frame:{type,data:string})=>void} onFrame
  * @returns {Promise<void>} resolve on stream end
@@ -120,9 +177,10 @@ export async function streamComposeControl(projectId, action, onFrame, path = nu
     body: body ? JSON.stringify(body) : JSON.stringify({ action }),
   });
   if (!res.ok || !res.body) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || body.error || '控制请求失败');
+    const payload = await res.json().catch(() => ({}));
+    throw new Error(payload.message || payload.error || '控制请求失败');
   }
+  invalidateSwr('/projects');
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buf = '';

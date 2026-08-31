@@ -11,22 +11,31 @@ export const useHostsStore = defineStore('hosts', () => {
 
   const active = computed(() => hosts.value.find((host) => host.id === activeHostId.value) || hosts.value[0] || null);
 
-  async function load() {
+  async function load(force = false) {
+    if (!force && hosts.value.length) {
+      // 已有数据:SWR 秒开,后台静默刷新
+      api.getHosts(true).then((data) => {
+        hosts.value = data.hosts || [];
+        syncActive(data.hosts);
+      }).catch((e) => { error.value = e.message; });
+      return;
+    }
     loading.value = true;
     error.value = '';
     try {
-      const data = await api.getHosts();
+      const data = await api.getHosts(force);
       hosts.value = data.hosts || [];
-      const activeItem = hosts.value.find((host) => host.active);
-      activeHostId.value = activeItem?.id || 'local';
-      hosts.value.forEach((host) => {
-        if (host.active) host.active = true;
-      });
+      syncActive(data.hosts);
     } catch (e) {
       error.value = e.message;
     } finally {
       loading.value = false;
     }
+  }
+  function syncActive(list) {
+    const activeItem = list.find((host) => host.active);
+    activeHostId.value = activeItem?.id || 'local';
+    list.forEach((host) => { host.active = host.id === activeHostId.value; });
   }
 
   async function ping(id) {
@@ -43,14 +52,14 @@ export const useHostsStore = defineStore('hosts', () => {
 
   async function addOrUpdate(payload) {
     const result = await api.saveHost(payload);
-    await load();
+    await load(true);
     return result.host;
   }
 
   async function remove(id) {
     await api.deleteHost(id);
     if (activeHostId.value === id) activeHostId.value = 'local';
-    await load();
+    await load(true);
   }
 
   async function switchHost(id) {

@@ -26,13 +26,18 @@
       <label class="toggle-label ml-auto"><input v-model="autoScroll" type="checkbox" />自动滚动</label>
     </div>
 
-    <div ref="boxEl" class="terminal-output card flex-1 min-h-[420px]" @wheel="onWheel">
-      <template v-if="aggregateMode">
-        <LogLine v-for="line in filtered" :key="line.id" :line="line" />
+    <div ref="boxEl" class="terminal-output card flex-1 min-h-[420px]" @scroll="onScroll" @wheel="onWheel">
+      <template v-if="filtered.length">
+        <div :style="{ height: scrollPadTop + 'px' }" aria-hidden="true"></div>
+        <template v-if="aggregateMode">
+          <LogLine v-for="line in visibleLines" :key="line.id" :line="line" />
+        </template>
+        <template v-else>
+          <div v-for="line in visibleLines" :key="line.id" class="aggregate-line" :class="line.type === 'stderr' || line.type === 'error' ? 'text-rose-400' : 'text-surface-200'" style="white-space: pre-wrap; word-break: break-all;">{{ line.data }}</div>
+        </template>
+        <div :style="{ height: scrollPadBottom + 'px' }" aria-hidden="true"></div>
       </template>
-      <template v-else>
-        <div v-for="line in filtered" :key="line.id" class="aggregate-line" :class="line.type === 'stderr' || line.type === 'error' ? 'text-rose-400' : 'text-surface-200'" style="white-space: pre-wrap; word-break: break-all;">{{ line.data }}</div>
-      </template>
+      <p v-else class="text-muted px-2 py-1">等待日志…</p>
     </div>
 
     <button v-if="connected && autoScrollPaused && !paused" class="scroll-resume-chip" @click="resumeScroll">已暂停自动滚动(向上) · 点击回到底部</button>
@@ -42,7 +47,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { Download, Layers, Pause, Play, Sparkles, Square, Trash2 } from 'lucide-vue-next';
 import { api, wsUrl } from '../api/client.js';
@@ -68,6 +73,11 @@ const error = ref('');
 const boxEl = ref(null);
 const diagnosis = ref(false);
 const sequence = ref(0);
+const LINE_H = 24;
+const OVERSCAN = 30;
+const viewStart = ref(0);
+const viewEnd = ref(0);
+const viewBoxH = ref(0);
 let ws;
 let wsSeg;
 
@@ -76,6 +86,10 @@ const projectName = computed(() => projects.value.find((p) => p.id === projectId
 const hasErrors = computed(() => lines.value.some((line) => /(fatal|error|crash|exception|failed)/i.test(line.data)));
 const recentErrorLogs = computed(() => lines.value.filter((line) => line.type === 'stderr' || line.type === 'error').map((line) => line.data).join('').slice(-50000));
 const canConnect = computed(() => projectId.value && (aggregateMode.value || containerId.value));
+const scrollPadTop = computed(() => viewStart.value * LINE_H);
+const scrollPadBottom = computed(() => Math.max(0, (filtered.value.length - viewEnd.value) * LINE_H));
+const visibleLines = computed(() => viewEnd.value > viewStart.value ? filtered.value.slice(viewStart.value, viewEnd.value) : []);
+watch(filtered, () => { nextTick(syncViewport); });
 
 const filtered = computed(() => {
   let result = lines.value;
@@ -95,6 +109,7 @@ const filtered = computed(() => {
 });
 
 onMounted(async () => {
+  viewEnd.value = 200;
   projects.value = (await api.getProjects()).projects.filter((project) => project.managed);
   const prefs = await api.getPreferences();
   tail.value = prefs.logTail;
@@ -162,17 +177,27 @@ function append(item) {
   lines.value.push(item);
   if (lines.value.length > 5000) lines.value.splice(0, lines.value.length - 5000);
   if (autoScroll.value && !autoScrollPaused.value) {
-    nextTick(() => { if (boxEl.value) boxEl.value.scrollTop = boxEl.value.scrollHeight; });
+    nextTick(() => { if (boxEl.value) boxEl.value.scrollTop = boxEl.value.scrollHeight; syncViewport(); });
   }
 }
+function syncViewport() {
+  if (!boxEl.value) return;
+  const height = boxEl.value.clientHeight || 420;
+  const scrollTop = boxEl.value.scrollTop;
+  viewBoxH.value = height;
+  viewStart.value = Math.max(0, Math.floor(scrollTop / LINE_H) - OVERSCAN);
+  viewEnd.value = Math.min(filtered.value.length, Math.ceil((scrollTop + height) / LINE_H) + OVERSCAN);
+  requestAnimationFrame(() => { if (boxEl.value && Math.abs(boxEl.value.scrollTop - scrollTop) > 1) { boxEl.value.scrollTop = scrollTop; } });
+}
+function onScroll() { syncViewport(); }
 function togglePause() { paused.value = !paused.value; if (!paused.value) flushPending(); }
 function onWheel(event) {
   if (!connected.value || !autoScroll.value) return;
   if (event.deltaY < 0) { autoScrollPaused.value = true; return; }
   autoScrollPaused.value = false;
-  nextTick(() => { if (boxEl.value) boxEl.value.scrollTop = boxEl.value.scrollHeight; });
+  nextTick(() => { if (boxEl.value) boxEl.value.scrollTop = boxEl.value.scrollHeight; syncViewport(); });
 }
-function resumeScroll() { autoScrollPaused.value = false; nextTick(() => { if (boxEl.value) boxEl.value.scrollTop = boxEl.value.scrollHeight; }); }
+function resumeScroll() { autoScrollPaused.value = false; nextTick(() => { if (boxEl.value) boxEl.value.scrollTop = boxEl.value.scrollHeight; syncViewport(); }); }
 function disconnect() {
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
   if (wsSeg) { wsSeg.onclose = null; wsSeg.close(); wsSeg = null; }

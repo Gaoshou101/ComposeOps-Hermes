@@ -23,7 +23,8 @@
       <span class="ml-auto whitespace-nowrap text-muted">显示 {{ visibleProjects.length }} / {{ store.projects.length }}</span>
     </div>
     <BatchOperationsBar v-if="selectedProjects.length" :selected-count="selectedProjects.length" :busy="busy" @run="runBatch" @clear="selectedIds = []" />
-    <EmptyState v-if="!store.projects.length && !store.loading" icon="Boxes" title="暂未发现 Compose 项目" description="Docker 中没有带 Compose 标签的项目,或尚未扫描" />
+    <Skeleton v-if="store.loading && !store.projects.length" variant="cards" :rows="4" label="服务列表加载中" class="flex-1" />
+    <EmptyState v-else-if="!store.projects.length" icon="Boxes" title="暂未发现 Compose 项目" description="Docker 中没有带 Compose 标签的项目,或尚未扫描" />
     <EmptyState v-else-if="!visibleProjects.length" icon="Search" title="没有匹配当前条件的项目" description="调整搜索关键词或筛选条件后重试" action-label="清除筛选" class="flex-1" @action="resetFilters" />
     <div v-else class="flex-1 space-y-3">
       <ServiceProjectCard
@@ -59,6 +60,7 @@ import DbDumpModal from '../components/services/DbDumpModal.vue';
 import BatchOperationsBar from '../components/services/BatchOperationsBar.vue';
 import OperationOutputDrawer from '../components/services/OperationOutputDrawer.vue';
 import EmptyState from '../components/common/EmptyState.vue';
+import Skeleton from '../components/common/Skeleton.vue';
 
 const store = useServicesStore();
 const route = useRoute();
