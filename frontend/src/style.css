@@ -302,11 +302,11 @@ body[data-density='compact'] .data-table td { @apply !py-1.5 !px-2; }
 .container-badge { @apply mt-0.5 inline-flex shrink-0 items-center rounded border px-1.5 py-px text-[10px] font-semibold whitespace-nowrap; }
 .line-ts { @apply shrink-0 text-[10px] text-surface-600 tabular-nums; }
 .level-badge { @apply mt-0.5 inline-flex shrink-0 items-center rounded border px-1 py-px text-[9px] font-bold leading-none whitespace-nowrap; }
-.line-data { @apply min-w-0 flex-1 whitespace-pre-wrap break-all; }
+.line-data { @apply min-w-0 flex-1 whitespace-nowrap overflow-x-auto; }
 .line-error { @apply -ml-px border-l-2 border-rose-500/70 bg-rose-950/20; }
 .log-mark { @apply bg-rose-500/20 text-rose-300 rounded-sm px-px; }
-.json-block { @apply min-w-0 flex-1 whitespace-pre-wrap break-all text-emerald-200; }
-.json-block.open { @apply text-emerald-100; }
+.json-block { @apply min-w-0 flex-1 whitespace-nowrap overflow-x-auto text-emerald-200; }
+.json-block.open { @apply text-emerald-100 whitespace-pre-wrap; }
 .json-toggle { @apply shrink-0 text-[10px] text-accent hover:underline; }
 .scroll-resume-chip { @apply fixed bottom-24 right-6 z-[60] rounded-full border border-accent/50 bg-surface-900 px-3 py-1.5 text-xs text-accent shadow-lg shadow-black/40 transition-colors hover:bg-surface-800; }
 .shortcut-key { @apply inline-flex min-w-[22px] items-center justify-center rounded border border-surface-600 bg-surface-800 px-1.5 py-0.5 font-mono text-[11px] leading-none text-surface-200 shadow-sm; }

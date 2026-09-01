@@ -36,7 +36,7 @@
           <LogLine v-for="line in visibleLines" :key="line.id" :line="line" />
         </template>
         <template v-else>
-          <div v-for="line in visibleLines" :key="line.id" class="aggregate-line" :class="line.type === 'stderr' || line.type === 'error' ? 'text-rose-400' : 'text-surface-200'" style="white-space: pre-wrap; word-break: break-all;">{{ line.data }}</div>
+          <div v-for="line in visibleLines" :key="line.id" class="aggregate-line" :class="line.type === 'stderr' || line.type === 'error' ? 'text-rose-400' : 'text-surface-200'" style="white-space: nowrap; overflow-x: auto;">{{ line.data }}</div>
         </template>
         <div :style="{ height: scrollPadBottom + 'px' }" aria-hidden="true"></div>
       </template>
