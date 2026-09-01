@@ -138,32 +138,59 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_agent_executions_plan ON agent_executions(plan_id);
 `);
 
-// 兼容已有数据库：新增项目纳管白名单，历史项目默认不自动获得操作权限。
-const projectPreferenceColumns = db.prepare('PRAGMA table_info(project_preferences)').all();
-if (!projectPreferenceColumns.some((column) => column.name === 'managed')) {
-  db.exec('ALTER TABLE project_preferences ADD COLUMN managed INTEGER NOT NULL DEFAULT 0');
+/**
+ * 迁移清单。序号即目标 user_version,必须单调递增且只追加,不要修改已发布的条目。
+ *
+ * 历史库在引入版本号之前就已经通过 PRAGMA table_info 探测补齐了这些列,
+ * 且它们的 user_version 仍是 0,因此每条迁移都必须保持幂等:
+ * 加列前先探测,已存在就跳过,重放时不会因重复列而失败。
+ */
+const MIGRATIONS = [
+  {
+    version: 1,
+    name: '项目纳管白名单与会话/告警/Agent 反馈列',
+    up(database) {
+      addColumn(database, 'project_preferences', 'managed', 'INTEGER NOT NULL DEFAULT 0');
+      addColumn(database, 'project_preferences', 'mount_enabled', 'INTEGER NOT NULL DEFAULT 0');
+      addColumn(database, 'ai_history', 'session_id', 'INTEGER NOT NULL DEFAULT 0');
+      addColumn(database, 'alert_events', 'logs', "TEXT NOT NULL DEFAULT ''");
+      addColumn(database, 'agent_plans', 'rating', 'INTEGER');
+      addColumn(database, 'agent_plans', 'feedback_text', "TEXT NOT NULL DEFAULT ''");
+      addColumn(database, 'agent_plans', 'feedback_at', 'TEXT');
+    },
+  },
+];
+
+/** 幂等加列:列已存在时直接返回 false,不抛错。 */
+export function addColumn(database, table, column, definition) {
+  const columns = database.prepare(`PRAGMA table_info(${table})`).all();
+  if (columns.some((item) => item.name === column)) return false;
+  database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  return true;
 }
-if (!projectPreferenceColumns.some((column) => column.name === 'mount_enabled')) {
-  db.exec('ALTER TABLE project_preferences ADD COLUMN mount_enabled INTEGER NOT NULL DEFAULT 0');
+
+/**
+ * 按 user_version 顺序执行未应用的迁移。每条迁移单独一个事务,
+ * 版本号与数据变更一起提交,中途失败不会留下"半应用"的版本号。
+ * @returns {number[]} 本次实际应用的版本号
+ */
+export function runMigrations(database = db, migrations = MIGRATIONS) {
+  const current = database.pragma('user_version', { simple: true });
+  const applied = [];
+  for (const migration of migrations) {
+    if (migration.version <= current) continue;
+    const apply = database.transaction(() => {
+      migration.up(database);
+      database.pragma(`user_version = ${migration.version}`);
+    });
+    apply();
+    applied.push(migration.version);
+    console.log(`[db] 已应用迁移 v${migration.version}: ${migration.name}`);
+  }
+  return applied;
 }
-const aiHistoryColumns = db.prepare('PRAGMA table_info(ai_history)').all();
-if (!aiHistoryColumns.some((column) => column.name === 'session_id')) {
-  db.exec('ALTER TABLE ai_history ADD COLUMN session_id INTEGER NOT NULL DEFAULT 0');
-}
-const alertEventColumns = db.prepare('PRAGMA table_info(alert_events)').all();
-if (!alertEventColumns.some((column) => column.name === 'logs')) {
-  db.exec("ALTER TABLE alert_events ADD COLUMN logs TEXT NOT NULL DEFAULT ''");
-}
-const agentPlanColumns = db.prepare('PRAGMA table_info(agent_plans)').all();
-if (!agentPlanColumns.some((column) => column.name === 'rating')) {
-  db.exec('ALTER TABLE agent_plans ADD COLUMN rating INTEGER');
-}
-if (!agentPlanColumns.some((column) => column.name === 'feedback_text')) {
-  db.exec("ALTER TABLE agent_plans ADD COLUMN feedback_text TEXT NOT NULL DEFAULT ''");
-}
-if (!agentPlanColumns.some((column) => column.name === 'feedback_at')) {
-  db.exec('ALTER TABLE agent_plans ADD COLUMN feedback_at TEXT');
-}
+
+runMigrations();
 
 export function getSetting(key, fallback = null) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
