@@ -9,7 +9,7 @@
         <select v-else v-model="selectedContainers" class="input" multiple size="1" title="聚合容器(按住 Ctrl 多选)"><option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option></select>
         <select v-model="levelFilter" class="input w-28" title="级别过滤"><option value="">全部</option><option value="error">ERROR{{ levelCounts.error ? ` (${levelCounts.error})` : '' }}</option><option value="warn">WARN{{ levelCounts.warn ? ` (${levelCounts.warn})` : '' }}</option></select>
         <input v-model="search" class="input w-40" placeholder="搜索或 /regex/" />
-        <button v-if="!connected" class="btn-primary" :disabled="!canConnect" @click="connect"><Play class="w-4 h-4" />连接</button>
+        <button v-if="!connected && !reconnecting" class="btn-primary" :disabled="!canConnect" @click="connect"><Play class="w-4 h-4" />连接</button>
         <button v-else class="btn-danger" @click="disconnect"><Square class="w-4 h-4" />断开</button>
         <button class="icon-btn" :title="paused ? '继续接收' : '暂停显示'" @click="togglePause"><Play v-if="paused" class="w-4 h-4" /><Pause v-else class="w-4 h-4" /></button>
         <button class="icon-btn" title="下载日志" :disabled="!filtered.length" @click="download"><Download class="w-4 h-4" /></button>
@@ -20,7 +20,7 @@
 
     <p v-if="error" class="alert-error">{{ error }}</p>
     <div class="flex items-center gap-3 text-muted">
-      <span :class="connected ? 'text-emerald-400' : ''"><span class="status-dot" :class="connected ? 'bg-emerald-400' : 'bg-surface-600'"></span>{{ connected ? '已连接' : '未连接' }}</span>
+      <span :class="connected ? 'text-emerald-400' : reconnecting ? 'text-amber-400' : ''"><span class="status-dot" :class="connected ? 'bg-emerald-400' : reconnecting ? 'bg-amber-400 animate-pulse' : 'bg-surface-600'"></span>{{ connected ? '已连接' : reconnecting ? '重连中…' : '未连接' }}</span>
       <span>{{ filtered.length }} 条</span>
       <span v-if="levelCounts.error" class="text-rose-400">ERROR {{ levelCounts.error }}</span>
       <span v-if="levelCounts.warn" class="text-amber-400">WARN {{ levelCounts.warn }}</span>
@@ -56,6 +56,7 @@ import { Download, Layers, Pause, Play, Sparkles, Square, Trash2 } from 'lucide-
 import { api, wsUrl } from '../api/client.js';
 import AIDiagnosisModal from '../components/services/AIDiagnosisModal.vue';
 import LogLine from '../components/logs/LogLine.vue';
+import { useWebSocket } from '../composables/useWebSocket.js';
 
 const route = useRoute();
 const projects = ref([]);
@@ -68,7 +69,6 @@ const tail = ref(200);
 const lines = ref([]);
 const pending = ref([]);
 const search = ref('');
-const connected = ref(false);
 const paused = ref(false);
 const autoScroll = ref(true);
 const autoScrollPaused = ref(false);
@@ -84,10 +84,32 @@ const LINE_H = 24;
 const OVERSCAN = 30;
 const viewStart = ref(0);
 const viewEnd = ref(0);
-let ws;
-let wsSeg;
 let followFrame = 0;
 let resizeObserver;
+
+/** 单容器与聚合两条流各自持有一个连接实例,URL 用 getter 读取最新筛选条件。 */
+const logSocket = useWebSocket(
+  () => wsUrl(`/ws/logs?projectId=${encodeURIComponent(projectId.value)}&containerId=${encodeURIComponent(containerId.value)}&tail=${tail.value}`),
+  {
+    onOpen: onStreamOpen,
+    onMessage: (event) => ingest(event, false),
+    onError: (err) => { error.value = err.message || '日志连接失败'; },
+  }
+);
+const aggSocket = useWebSocket(
+  () => {
+    const ids = selectedContainers.value.join(',');
+    return wsUrl(`/ws/aggregated-logs?projectId=${encodeURIComponent(projectId.value)}&containers=${ids ? encodeURIComponent(ids) : ''}`);
+  },
+  {
+    onOpen: onStreamOpen,
+    onMessage: (event) => ingest(event, true),
+    onError: (err) => { error.value = err.message || '聚合日志连接失败'; },
+  }
+);
+
+const connected = computed(() => logSocket.connected.value || aggSocket.connected.value);
+const reconnecting = computed(() => logSocket.reconnecting.value || aggSocket.reconnecting.value);
 
 const containers = computed(() => projects.value.find((p) => p.id === projectId.value)?.containers || []);
 const projectName = computed(() => projects.value.find((p) => p.id === projectId.value)?.projectName || '');
@@ -147,36 +169,30 @@ function toggleAggregate() {
 function connect() {
   disconnect();
   error.value = '';
-  if (aggregateMode.value) {
-    const ids = selectedContainers.value.join(',');
-    wsSeg = new WebSocket(wsUrl(`/ws/aggregated-logs?projectId=${encodeURIComponent(projectId.value)}&containers=${ids ? encodeURIComponent(ids) : ''}`));
-    wsSeg.onopen = () => connected.value = true;
-    wsSeg.onerror = () => error.value = '聚合日志连接失败';
-    wsSeg.onclose = () => connected.value = false;
-    wsSeg.onmessage = (event) => {
-      try {
-        const frame = JSON.parse(event.data);
-        if (frame.type === 'line') {
-          const item = { id: ++sequence.value, ...frame.data };
-          pending.value.push(item);
-          flushPending();
-        } else if (frame.type === 'error') error.value = frame.data;
-      } catch {}
-    };
-  } else {
-    ws = new WebSocket(wsUrl(`/ws/logs?projectId=${encodeURIComponent(projectId.value)}&containerId=${encodeURIComponent(containerId.value)}&tail=${tail.value}`));
-    ws.onopen = () => connected.value = true;
-    ws.onerror = () => error.value = '日志连接失败';
-    ws.onclose = () => connected.value = false;
-    ws.onmessage = (event) => {
-      try {
-        const frame = JSON.parse(event.data);
-        const item = { id: ++sequence.value, type: frame.type, data: frame.data };
-        if (paused.value) pending.value.push(item);
-        else append(item);
-      } catch {}
-    };
-  }
+  if (aggregateMode.value) aggSocket.connect();
+  else logSocket.connect();
+}
+
+/** 重连成功后插入分隔行,提示上方日志与下方日志之间可能存在缺口。 */
+function onStreamOpen({ resumed } = {}) {
+  if (!resumed) return;
+  error.value = '';
+  append({ id: ++sequence.value, type: 'stdout', level: 'warn', data: '—— 连接已恢复,期间日志可能有缺失 ——' });
+}
+
+function ingest(event, aggregate) {
+  try {
+    const frame = JSON.parse(event.data);
+    if (aggregate) {
+      if (frame.type === 'line') {
+        pending.value.push({ id: ++sequence.value, ...frame.data });
+        flushPending();
+      } else if (frame.type === 'error') error.value = frame.data;
+      return;
+    }
+    pending.value.push({ id: ++sequence.value, type: frame.type, data: frame.data });
+    flushPending();
+  } catch {}
 }
 function flushPending() {
   if (paused.value) return;
@@ -234,9 +250,8 @@ function onWheel(event) {
 }
 function resumeScroll() { autoScrollPaused.value = false; scheduleFollow(); }
 function disconnect() {
-  if (ws) { ws.onclose = null; ws.close(); ws = null; }
-  if (wsSeg) { wsSeg.onclose = null; wsSeg.close(); wsSeg = null; }
-  connected.value = false;
+  logSocket.close();
+  aggSocket.close();
 }
 function download() {
   const blob = new Blob([filtered.value.map((l) => `${l.containerName || ''}${l.ts ? ' ' + l.ts : ''} ${l.data}`).join('\n')], { type: 'text/plain' });

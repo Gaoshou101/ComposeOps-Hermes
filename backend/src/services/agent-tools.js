@@ -14,8 +14,8 @@ import { assertEnvAccess, readProjectEnv, saveProjectEnv, applyProjectEnv } from
 import { getNotificationConfig, sendNotification } from './notifications.js';
 import { createJob } from './cron-scheduler.js';
 
-/** 只读探测命令白名单,与 AI 排障探针保持一致。 */
-const READONLY_EXEC = /^(env|printenv|ps|top\s+-b\s+-n\s+1|netstat|ss|curl|wget|cat|head|tail|ls|df|du|free|uptime|uname|hostname|date|whoami|id|ip\s+addr|ping\s+-c\s+\d+)/;
+/** 只读探测命令白名单,与 AI 排障探针保持一致。curl/wget 已移除:可发起外部请求。 */
+const READONLY_EXEC = /^(env|printenv|ps|top\s+-b\s+-n\s+1|netstat|ss|cat|head|tail|ls|df|du|free|uptime|uname|hostname|date|whoami|id|ip\s+addr|ping\s+-c\s+\d+)/;
 
 async function execReadonly(container, cmdString) {
   const parts = String(cmdString || '').trim().split(/\s+/);
@@ -597,6 +597,16 @@ export function registerAgentTools(agent) {
         if (!context.container) throw new Error('容器不属于当前项目');
         const command = String(params.command || '').trim();
         if (!command) throw new Error('命令不能为空');
+
+        // 检查 ENABLE_SHELL 全局开关(与 Web Shell 一致的安全边界)
+        const enableShell = process.env.ENABLE_SHELL === '1';
+        if (!enableShell) {
+          throw Object.assign(
+            new Error('Shell 执行未启用,设置 ENABLE_SHELL=1 后重启'),
+            { statusCode: 403 }
+          );
+        }
+
         const docker = getActivityDocker();
         const container = docker.getContainer(context.container.id);
         const started = Date.now();
@@ -815,6 +825,30 @@ export function registerAgentTools(agent) {
         const target = String(params.target || '').trim();
         if (!service || !source || !target) throw new Error('service/source/target 不能为空');
         if (!doc.hasIn(['services', service])) throw Object.assign(new Error(`服务 ${service} 不存在`), { statusCode: 404 });
+
+        // 校验 source 路径安全性:必须位于项目目录内或已明确挂载的受控路径
+        const { safeProjectMountPath } = await import('../services/mount-plan.js');
+        const projectMount = safeProjectMountPath(context.project.workingDir);
+        if (!projectMount) {
+          throw Object.assign(
+            new Error('项目工作目录不在安全挂载范围内'),
+            { statusCode: 403 }
+          );
+        }
+        // source 必须是绝对路径且在项目目录下(防止挂载任意宿主机路径)
+        if (!source.startsWith('/')) {
+          throw Object.assign(
+            new Error('source 必须是绝对路径'),
+            { statusCode: 400 }
+          );
+        }
+        if (!source.startsWith(`${projectMount}/`)) {
+          throw Object.assign(
+            new Error(`source 必须位于项目目录 ${projectMount} 内`),
+            { statusCode: 403 }
+          );
+        }
+
         const mount = `${source}:${target}`;
         const existing = doc.getIn(['services', service, 'volumes']);
         const list = existing == null ? [] : Array.isArray(existing) ? [...existing] : [existing];

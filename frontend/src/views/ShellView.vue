@@ -40,24 +40,43 @@ import { Plug, Unplug } from 'lucide-vue-next';
 import Skeleton from '../components/common/Skeleton.vue';
 import { Terminal } from '@xterm/xterm'; import { FitAddon } from '@xterm/addon-fit'; import '@xterm/xterm/css/xterm.css';
 import { api, wsUrl } from '../api/client.js';
-const route = useRoute(); const projects = ref([]); const projectId = ref(route.query.projectId || ''); const containerId = ref(route.query.containerId || ''); const cmd = ref('sh'); const connected = ref(false); const termReady = ref(false); const error = ref(''); const capabilities = ref({ shellEnabled: false }); const termEl = ref(null); let term; let fit; let ws; let resizeObserver;
+import { useWebSocket } from '../composables/useWebSocket.js';
+const route = useRoute(); const projects = ref([]); const projectId = ref(route.query.projectId || ''); const containerId = ref(route.query.containerId || ''); const cmd = ref('sh'); const termReady = ref(false); const error = ref(''); const capabilities = ref({ shellEnabled: false }); const termEl = ref(null); let term; let fit; let resizeObserver;
+
+/**
+ * 终端不做自动重连:exec 会话无法续接,静默重连只会开出一个新 shell,
+ * 用户可能以为还在原会话里继续输入。断开后写入提示,由用户显式点「连接」。
+ */
+const socket = useWebSocket(
+  () => wsUrl(`/ws/exec?projectId=${encodeURIComponent(projectId.value)}&containerId=${encodeURIComponent(containerId.value)}&cmd=${cmd.value}`),
+  {
+    binaryType: 'arraybuffer',
+    maxReconnectAttempts: 0,
+    onOpen: () => { fit.fit(); socket.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows })); },
+    onMessage: (event) => {
+      if (typeof event.data !== 'string') { term.write(new Uint8Array(event.data)); return; }
+      try {
+        const frame = JSON.parse(event.data);
+        if (frame.type === 'error') error.value = frame.data;
+        else term.write(event.data);
+      } catch { term.write(event.data); }
+    },
+    onError: () => { error.value = '终端连接失败'; },
+    onClose: () => { term?.write('\r\n\x1b[33m—— 会话已结束,点击「连接」开启新终端 ——\x1b[0m\r\n'); },
+  }
+);
+const connected = socket.connected;
 const containers = computed(() => projects.value.find((p) => p.id === projectId.value)?.containers || []);
 onMounted(async () => {
   [projects.value, capabilities.value] = await Promise.all([api.getProjects().then((r) => r.projects.filter((project) => project.managed)), api.getCapabilities()]);
   window.addEventListener('composeops:host-changed', onHostChanged);
   term = new Terminal({ fontFamily: 'ui-monospace, Menlo, Monaco, Consolas, monospace', fontSize: 13, cursorBlink: true, theme: { background: '#0b0d10', foreground: '#e5e7eb' } }); fit = new FitAddon(); term.loadAddon(fit); term.open(termEl.value); nextTick(() => { fit.fit(); termReady.value = true; });
-  term.onData((data) => { if (ws?.readyState === WebSocket.OPEN) ws.send(data); }); term.onResize(({ cols, rows }) => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'resize', cols, rows })); });
+  term.onData((data) => socket.send(data)); term.onResize(({ cols, rows }) => socket.send(JSON.stringify({ type: 'resize', cols, rows })));
   resizeObserver = new ResizeObserver(() => fit.fit()); resizeObserver.observe(termEl.value);
   if (containerId.value && capabilities.value.shellEnabled && projects.value.some((project) => project.id === projectId.value)) connect();
 });
-function connect() {
-  disconnect(); error.value = ''; term.clear();
-  ws = new WebSocket(wsUrl(`/ws/exec?projectId=${encodeURIComponent(projectId.value)}&containerId=${encodeURIComponent(containerId.value)}&cmd=${cmd.value}`)); ws.binaryType = 'arraybuffer';
-  ws.onopen = () => { connected.value = true; fit.fit(); ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows })); };
-  ws.onmessage = async (event) => { if (typeof event.data === 'string') { try { const frame = JSON.parse(event.data); if (frame.type === 'error') error.value = frame.data; else term.write(event.data); } catch { term.write(event.data); } } else { term.write(new Uint8Array(event.data)); } };
-  ws.onerror = () => error.value = '终端连接失败'; ws.onclose = () => connected.value = false;
-}
-function disconnect() { if (ws) { ws.onclose = null; ws.close(); ws = null; } connected.value = false; }
+function connect() { disconnect(); error.value = ''; term.clear(); socket.connect(); }
+function disconnect() { socket.close(); }
 function onHostChanged() { disconnect(); projects.value = []; void api.getProjects().then((r) => { projects.value = r.projects.filter((project) => project.managed); }).catch(() => {}); }
 onBeforeUnmount(() => { disconnect(); resizeObserver?.disconnect(); term?.dispose(); window.removeEventListener('composeops:host-changed', onHostChanged); });
 </script>

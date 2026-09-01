@@ -42,6 +42,7 @@
 <script setup>
 import { computed, markRaw, onMounted, onUnmounted, ref } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
+import { useWebSocket } from '../composables/useWebSocket.js';
 import { AlertTriangle, Bell, Check, ChevronRight, CircleCheckBig, CircleX, RefreshCw, RefreshCwOff, VolumeX } from 'lucide-vue-next';
 import { api, wsUrl } from '../api/client.js';
 import EmptyState from './common/EmptyState.vue';
@@ -55,7 +56,22 @@ const jobs = ref([]);
 const alertEvents = ref([]);
 const expandedLogEventId = ref(null);
 let timer;
-let eventWs;
+
+/** 事件推送为后台常驻流,断开后持续重连(退避到 30s),不打扰前台交互。 */
+const eventStream = useWebSocket(() => wsUrl('/ws/events'), {
+  maxReconnectAttempts: 10,
+  maxReconnectDelay: 30000,
+  onMessage: (event) => {
+    try {
+      const frame = JSON.parse(event.data);
+      if (frame.type === 'event' && frame.data) {
+        alertEvents.value = [frame.data, ...alertEvents.value.filter((item) => item.id !== frame.data.id)].slice(0, 60);
+      }
+    } catch {}
+  },
+  // 重连成功后补拉一次,填补断线期间漏掉的事件
+  onOpen: ({ resumed }) => { if (resumed) void load(); },
+});
 
 const derivedEvents = computed(() => {
   const result = [];
@@ -165,18 +181,7 @@ async function load() {
   finally { loading.value = false; }
 }
 function connectEventStream() {
-  try {
-    eventWs = new WebSocket(wsUrl('/ws/events'));
-    eventWs.onmessage = (event) => {
-      try {
-        const frame = JSON.parse(event.data);
-        if (frame.type === 'event' && frame.data) {
-          alertEvents.value = [frame.data, ...alertEvents.value.filter((item) => item.id !== frame.data.id)].slice(0, 60);
-        }
-      } catch {}
-    };
-    eventWs.onclose = () => { eventWs = null; };
-  } catch {}
+  eventStream.connect();
 }
 async function markRead(eventItem) {
   if (!eventItem.id) return;
@@ -201,9 +206,9 @@ async function pruneAll() {
 function toggleLogs(eventItem) {
   expandedLogEventId.value = expandedLogEventId.value === eventItem.id ? null : eventItem.id;
 }
-function toggle() { open.value = !open.value; if (open.value) { load(); connectEventStream(); } else if (eventWs) { try { eventWs.close(); } catch {} eventWs = null; } }
+function toggle() { open.value = !open.value; if (open.value) { load(); connectEventStream(); } else eventStream.close(); }
 useEscapeKey({ active: open, onClose: () => { open.value = false; }, layer: 'event' });
 
 onMounted(() => { load(); timer = setInterval(load, 30000); });
-onUnmounted(() => { clearInterval(timer); if (eventWs) { try { eventWs.close(); } catch {} eventWs = null; } });
+onUnmounted(() => { clearInterval(timer); eventStream.close(); });
 </script>

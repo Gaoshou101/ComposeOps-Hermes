@@ -24,9 +24,10 @@ export default async function personalRoutes(fastify) {
   });
   fastify.post('/notifications/test', async (request, reply) => {
     try {
-      const config = saveNotificationConfig(request.body);
-      await sendNotification('ComposeOps 测试通知', '通知渠道配置成功。', getNotificationConfig(false));
-      return { ok: true, config };
+      // 测试通知不应持久化配置,只验证渠道可达性
+      const testConfig = request.body;
+      await sendNotification('ComposeOps 测试通知', '通知渠道配置成功。', testConfig);
+      return { ok: true };
     } catch (error) {
       return reply.code(502).send({ error: 'notification_failed', message: error.message });
     }

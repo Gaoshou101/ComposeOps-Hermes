@@ -220,12 +220,25 @@ export class OperationsAgent {
     for (const step of steps) {
       const toolName = step.tool;
       const params = step.params || {};
+
+      // 强制确认检查:关键工具必须经过确认流程
+      const tool = this.getTool(toolName);
+      if (!tool) {
+        results.push({ tool: toolName, status: 'not_found', error: '未注册的工具' });
+        this.addThought('validating', `工具 ${toolName} 未注册`, {});
+        break;
+      }
+      if (tool.confirmationRequired && !step.confirmed) {
+        results.push({ tool: toolName, status: 'requires_confirmation', error: '该工具需要用户确认后才能执行' });
+        this.addThought('validating', `${toolName} 需要确认`, {});
+        updateAgentPlan(planId, { status: 'pending_confirmation', resultJson: { results }, executedAt: new Date().toISOString() });
+        return { success: false, status: 'pending_confirmation', results, awaitingConfirmation: true };
+      }
+
       const execId = recordAgentExecution(planId, toolName, params, 'executing');
       this.addThought('executing', `执行 ${toolName}`, { execId, params });
       const started = Date.now();
       try {
-        const tool = this.getTool(toolName);
-        if (!tool) throw Object.assign(new Error(`未注册的工具:${toolName}`), { statusCode: 404 });
         const resolved = await resolveToolContext(params);
         await assertPermission(tool, resolved);
         validateParams(tool.parameters, params);
@@ -393,19 +406,33 @@ export async function resolveToolContext(params = {}) {
 /** 权限门:managed / editable / readonly / admin 四档。 */
 export async function assertPermission(tool, context) {
   const { project } = context || {};
-  if (tool.requiredPermission === 'admin') return;
-  if (!project) {
-    if (tool.requiredPermission === 'readonly') return;
-    if (tool.requiresProject) {
-      throw Object.assign(new Error('该工具需要指定 projectId'), { statusCode: 400 });
-    }
-    return;
+
+  // 检查项目必需性
+  if (tool.requiresProject && !project) {
+    throw Object.assign(new Error('该工具需要指定 projectId'), { statusCode: 400 });
   }
-  if (!project.managed) {
+
+  // admin 工具不受项目权限约束(仅用于全局维护操作)
+  if (tool.requiredPermission === 'admin') return;
+
+  // readonly 工具在无项目时允许执行(全局只读查询)
+  if (!project && tool.requiredPermission === 'readonly') return;
+
+  // 其他工具需要项目且必须已纳管
+  if (project && !project.managed) {
     throw Object.assign(new Error('项目尚未加入管理,无法执行此工具'), { statusCode: 403 });
   }
-  if (tool.requiredPermission === 'editable' && !project.editable) {
+
+  // editable 工具额外检查 Compose 目录权限
+  if (tool.requiredPermission === 'editable' && project && !project.editable) {
     throw Object.assign(new Error('项目未启用可编辑的 Compose 目录能力'), { statusCode: 403 });
+  }
+
+  // 默认拒绝:工具声明了需要的权限但上下文不满足
+  if (tool.requiredPermission && !['admin', 'readonly'].includes(tool.requiredPermission)) {
+    if (!project) {
+      throw Object.assign(new Error('工具需要项目上下文'), { statusCode: 403 });
+    }
   }
 }
 
