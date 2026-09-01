@@ -104,7 +104,7 @@ function makeKey(containerId, event, projectId) {
 async function poll() {
   const config = getNotificationConfig(false);
   if (!config.enabled) return;
-  let projects = [];
+  let projects;
   try { projects = await scanProjects(); } catch { return; }
   const managedProjects = projects.filter((item) => item.managed);
   const managedIds = new Set(managedProjects.flatMap((project) => project.containers.map((item) => item.id)));

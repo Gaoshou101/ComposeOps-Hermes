@@ -134,10 +134,11 @@ export default async function systemRoutes(fastify) {
     const host = readHostMetrics();
     const disk = readDiskStats();
     const net = readNetStats(prevNet);
-    let containers = [];
+    let containers;
     try {
       containers = await readContainerStats();
-    } catch (e) {
+    } catch (error) {
+      console.error('[system] 读取容器指标失败:', error.message);
       containers = [];
     }
     return { host, disk, network: net, containers };

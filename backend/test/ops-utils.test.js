@@ -8,7 +8,7 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'composeops-ops-test-'));
 process.env.DB_PATH = path.join(tempDir, 'test.db');
 
 const { parseImageRef, extractImageRefs } = await import('../src/services/image-updater.js');
-const { parseDockerDf, parseDockerDfOutput, parseDockerDfTextTable } = await import('../src/services/docker-storage.js');
+const { parseDockerDf, parseDockerDfOutput } = await import('../src/services/docker-storage.js');
 const { renderBlueprintCompose, renderBlueprintEnv, getBlueprint, listBlueprints } = await import('../src/services/app-blueprints.js');
 const { evaluateContainer, buildTitle, buildBody, stripDockerMultiplex } = await import('../src/services/health-alerter.js');
 

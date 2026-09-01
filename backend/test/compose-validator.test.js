@@ -63,13 +63,6 @@ test('compose-preview: 区分新增/变更/移除服务', () => {
       { name: 'app-db-1', state: 'running', image: 'postgres' },
     ],
   };
-  const oldContent = `
-services:
-  web:
-    image: nginx
-  db:
-    image: postgres
-`;
   const newContent = `
 services:
   web:

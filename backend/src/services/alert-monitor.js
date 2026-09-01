@@ -206,6 +206,7 @@ async function poll() {
       await checkImageUpdates().catch(() => {});
     }
   } finally {
+    // eslint-disable-next-line require-atomic-updates -- 单线程事件循环下的互斥标志
     running = false;
   }
 }

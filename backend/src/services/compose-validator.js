@@ -106,7 +106,6 @@ export function previewComposeChange(newContent, project) {
   }
   const newServices = doc && doc.services && typeof doc.services === 'object' ? doc.services : {};
   const newNames = new Set(Object.keys(newServices));
-  const current = new Map((project.containers || []).map((container) => [container.name, container]));
 
   const currentNames = new Set();
   for (const container of project.containers || []) {

@@ -8,6 +8,8 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "test": "node --test test/*.test.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "rebuild": "cd node_modules/better-sqlite3 && npx --yes prebuild-install"
   },
   "dependencies": {
@@ -19,5 +21,10 @@
     "nodemailer": "^7.0.13",
     "tar-stream": "^2.2.0",
     "yaml": "^2.5.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.9.1",
+    "globals": "^17.12.0"
   }
 }

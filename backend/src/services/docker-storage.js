@@ -32,6 +32,7 @@ export function parseDockerDfOutput(raw) {
   // 2) NDJSON 逐行解析(每行可能是独立对象或数组)
   const lines = text
     .split(/\r?\n/)
+    // eslint-disable-next-line no-control-regex -- 有意匹配 ANSI 转义序列
     .map((line) => line.replace(/\x1b\[[0-9;]*m/g, '').trim())
     .filter((line) => line && !/^WARNING/i.test(line) && !/^[=\s]*$/.test(line));
   if (lines.length) {
@@ -112,6 +113,7 @@ function assignDfItem(merged, item) {
  */
 export function parseDockerDfTextTable(text) {
   const lines = String(text || '').split(/\r?\n/)
+    // eslint-disable-next-line no-control-regex -- 有意匹配 ANSI 转义序列
     .map((line) => line.replace(/\x1b\[[0-9;]*m/g, '').trim())
     .filter((line) => line && !/^WARNING/i.test(line));
   const headerIdx = lines.findIndex((line) => /TYPE.*TOTAL.*ACTIVE.*SIZE.*RECLAIMABLE/i.test(line));
@@ -189,7 +191,7 @@ function sum(items, key) {
 
 /** GET /api/system/storage/df:调用 docker system df --format json。 */
 export async function getSystemStorageDf() {
-  let parsed = emptyDf();
+  let parsed;
   try {
     const { stdout } = await new Promise((resolve, reject) => {
       execFile('docker', ['system', 'df', '--format', 'json'], { timeout: 20000, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
@@ -228,7 +230,9 @@ export async function getSystemStorageDf() {
       });
     });
     disk = { mount: '/', total: df.total, used: df.used, free: df.free };
-  } catch {}
+  } catch (error) {
+    console.debug('[docker-storage] df 读取失败:', error.message);
+  }
   return { ...parsed, disk, checkedAt: Date.now() };
 }
 

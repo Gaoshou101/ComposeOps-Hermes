@@ -1,4 +1,3 @@
-import docker from '../services/docker.js';
 import { findProject, scanProjects } from '../services/scanner.js';
 import { buildMountPlan } from '../services/mount-plan.js';
 import { readCompose, saveCompose } from '../services/compose-runner.js';
@@ -8,6 +7,8 @@ import { readProjectEnv, saveProjectEnv, applyProjectEnv, assertEnvAccess } from
 import { getProjectUpdates, upgradeProject, rollbackProject } from '../services/image-updater.js';
 import { readContainerStat } from '../services/stats.js';
 import { validateComposeSemantics, previewComposeChange } from '../services/compose-validator.js';
+import { listProjectDbContainers, runDbDump } from '../services/db-dumper.js';
+import { scanProjectWebPorts, buildWebUiLinks } from '../services/project-ports.js';
 import {
   addOperation,
   getComposeBackup,
@@ -433,7 +434,6 @@ export default async function projectRoutes(fastify) {
     const send = (type, data) => {
       if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
     };
-    let output = '';
     let finished = false;
     const finish = (payload) => {
       if (finished) return;
@@ -443,7 +443,7 @@ export default async function projectRoutes(fastify) {
     };
     let child;
     rollbackProject(project, {
-      onOutput: (type, text) => { output += text; send(type, text); },
+      onOutput: (type, text) => { send(type, text); },
       onChild: (process) => { child = process; },
     }).then((result) => {
       send('exit', { code: result.code });

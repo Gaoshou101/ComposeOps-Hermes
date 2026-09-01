@@ -252,7 +252,7 @@ export function registerAgentTools(agent) {
         type: 'object',
         properties: { projectId: { type: 'string', description: '项目 ID(可选,缺省返回全部纳管项目)' } },
       },
-      execute: async (params, context) => {
+      execute: async (params, _context) => {
         const projects = await scanProjects();
         const managed = projects.filter((project) => project.managed);
         const scoped = params.projectId ? managed.filter((project) => project.id === params.projectId) : managed;

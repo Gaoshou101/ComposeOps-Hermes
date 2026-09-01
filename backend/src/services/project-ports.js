@@ -56,7 +56,7 @@ export function scanProjectWebPorts(project = {}) {
  */
 export function buildWebUiLinks(hostHeader = '', entries = []) {
   const host = String(hostHeader || '').trim().replace(/^https?:\/\//i, '').replace(/[/?#].*$/, '').split(':')[0];
-  const safeHost = host && !/[\s\/\\]/.test(host) ? host : 'localhost';
+  const safeHost = host && !/[\s/\\]/.test(host) ? host : 'localhost';
   return entries.map((entry) => ({
     containerId: entry.containerId,
     containerName: entry.containerName,

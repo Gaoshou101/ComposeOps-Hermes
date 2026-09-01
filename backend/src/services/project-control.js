@@ -1,4 +1,3 @@
-import docker from './docker.js';
 import { getActivityDocker } from './docker-hosts.js';
 
 export const CONTAINER_ACTIONS = new Set(['up', 'restart', 'stop', 'ps']);

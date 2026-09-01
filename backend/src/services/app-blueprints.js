@@ -1,7 +1,7 @@
 import { readFile } from 'fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'url';
-import { getSetting, setSetting, addOperation, setProjectPreference } from '../lib/db.js';
+import { setSetting, addOperation, setProjectPreference } from '../lib/db.js';
 import { getActivityDocker } from './docker-hosts.js';
 import { spawnComposeCommand } from './compose-runner.js';
 import { withRunner, putArchiveFile } from './compose-workspace.js';
@@ -132,7 +132,7 @@ export async function deployBlueprint(blueprintId, values = {}, { onOutput = () 
   // 注册 compose 项目缓存标记(非容器标签,仅供扫描器经 DOCKER 标签识别;实际以容器标签为准)
   setSetting(`blueprint.${safeName}.deployed`, String(Date.now()));
 
-  let code = 0;
+  let code;
   try {
     const project = {
       id: safeName,

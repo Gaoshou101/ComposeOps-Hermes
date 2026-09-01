@@ -1,5 +1,4 @@
 import { ACTIONS, resolveProjectFile, spawnCompose } from './compose-runner.js';
-import { getActiveHostType } from './docker-hosts.js';
 import { runWorkspaceCompose } from './compose-workspace.js';
 import { runContainerAction, supportsContainerAction } from './project-control.js';
 

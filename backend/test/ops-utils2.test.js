@@ -9,7 +9,7 @@ process.env.DB_PATH = path.join(tempDir, 'test.db');
 
 const { classifyPorts, pickWebPorts, scanProjectWebPorts, buildWebUiLinks } = await import('../src/services/project-ports.js');
 const { detectDbType, envToDbConfig, buildDumpCommand } = await import('../src/services/db-dumper.js');
-const { parseField, parseCron, validateCron, nextRunTime } = await import('../src/services/cron-scheduler.js');
+const { parseField, validateCron, nextRunTime } = await import('../src/services/cron-scheduler.js');
 
 test('project-ports: 过滤数据端口并优先 Web 典型端口', () => {
   const { candidates } = classifyPorts({ ports: [

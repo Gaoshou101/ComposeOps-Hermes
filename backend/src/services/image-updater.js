@@ -1,10 +1,10 @@
-import { readFile, writeFile, rename, unlink, copyFile } from 'fs/promises';
+import { readFile, writeFile, copyFile } from 'fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { getSetting, setSetting, addComposeBackup, addOperation } from '../lib/db.js';
+import { setSetting, addComposeBackup, addOperation } from '../lib/db.js';
 import { readCompose } from './compose-runner.js';
 import { getActivityDocker } from './docker-hosts.js';
-import { withRunner, readArchiveFile, putArchiveFile, execInRunner } from './compose-workspace.js';
+import { withRunner, readArchiveFile, putArchiveFile } from './compose-workspace.js';
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1h,避免 Registry Rate Limit
 const cache = new Map(); // projectId -> { ts, data }
@@ -210,7 +210,7 @@ export async function upgradeProject(project, { onOutput = () => {}, onChild = (
   const backups = await writeUpgradeBackups(project);
   const { spawnComposeCommand } = await import('./compose-runner.js');
   const { runWorkspaceComposeArgs } = await import('./compose-workspace.js');
-  let code = 0;
+  let code;
   if (project.mounted) {
     code = await runStep(spawnComposeCommand(project, ['pull']), onOutput, onChild);
     if (code !== 0) return { code, upgraded: false, degraded: true, rollbackAvailable: backups.length > 0, backups };

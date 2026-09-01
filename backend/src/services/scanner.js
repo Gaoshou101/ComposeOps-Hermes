@@ -1,7 +1,6 @@
 import { access } from 'fs/promises';
 import { createHash } from 'crypto';
 import path from 'node:path';
-import docker from './docker.js';
 import { getActiveHostType, getActivityDocker } from './docker-hosts.js';
 import { getProjectMountEnabled, getProjectPreference } from '../lib/db.js';
 import { safeProjectMountPath } from './mount-plan.js';

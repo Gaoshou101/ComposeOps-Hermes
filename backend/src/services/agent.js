@@ -72,7 +72,6 @@ export class OperationsAgent {
     this.tools.set(name, {
       requiredPermission: 'managed',
       confirmationRequired: false,
-      risk: 'low',
       category: 'maintenance',
       requiresProject: false,
       parameters: { type: 'object', properties: {} },
@@ -193,7 +192,7 @@ export class OperationsAgent {
   }
 
   /** 执行单个工具(用于快速调用与 /agent/confirm)。 */
-  async executeTool(toolName, params = {}, context = {}) {
+  async executeTool(toolName, params = {}, _context = {}) {
     const tool = this.getTool(toolName);
     if (!tool) throw Object.assign(new Error(`未注册的工具:${toolName}`), { statusCode: 404 });
     const resolved = await resolveToolContext(params);
@@ -213,7 +212,7 @@ export class OperationsAgent {
    * 执行多步工作流,逐步记录执行结果与思维链。
    * 任何一步失败即停止后续步骤(避免级联误操作),不自动回滚有副作用操作。
    */
-  async executeWorkflow(planId, steps, context = {}) {
+  async executeWorkflow(planId, steps, _context = {}) {
     this.thoughts = [];
     const results = [];
     this.addThought('planning', '开始执行工作流', { steps: steps.length });
@@ -356,7 +355,7 @@ export function parsePlanJson(text) {
 }
 
 /** 确定性回退规划:基于关键词把意图映射到工具,保证无 AI Key 时也可用。 */
-export function defaultPlan(agent, message, context = {}) {
+export function defaultPlan(agent, message, _context = {}) {
   const text = String(message || '');
   const rules = [
     [/重启|restart/, 'compose.restart'],

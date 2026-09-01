@@ -2,7 +2,6 @@ import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'url';
 import { randomBytes } from 'node:crypto';
-import { getActivityDocker } from './docker-hosts.js';
 import { pruneStorage } from './docker-storage.js';
 import { checkAllUpdates } from './image-updater.js';
 import { listProjectDbContainers, runDbDump } from './db-dumper.js';
@@ -19,8 +18,6 @@ const JOB_TYPES = {
   'images-check': { label: '镜像更新检查', description: '全局检测纳管项目镜像是否有远程更新(写入雷达缓存)' },
   'pull-images': { label: '定时拉取镜像', description: '对所有可编辑项目执行 docker compose pull' },
 };
-
-const WEEKDAY = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
 /** 解析单个 cron 字段 → 匹配函数(纯函数,便于单测)。 */
 export function parseField(value, min, max) {
@@ -327,8 +324,6 @@ export async function runJobNow(id) {
     const summary = await executeJob(job);
     await recordRun(job, 'success', '', Date.now() - started);
     return { ok: true, summary };
-  } catch (error) {
-    throw error;
   } finally {
     running.delete(job.id);
   }
