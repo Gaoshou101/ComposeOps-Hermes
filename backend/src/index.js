@@ -93,8 +93,26 @@ await fastify.register(
 // WebSocket 路由前缀（不经过 /api/v1，便于代理区分）
 await fastify.register(wsRoutes, { prefix: '/ws' });
 
-// 健康检查
-fastify.get('/health', async () => ({ status: 'ok', ts: Date.now() }));
+// 健康检查:探测 Docker socket 连通性,失败返回 503 便于编排层重启/摘流。
+fastify.get('/health', async (request, reply) => {
+  const started = Date.now();
+  try {
+    await Promise.race([
+      docker.ping(),
+      new Promise((_, rejectPing) => setTimeout(() => rejectPing(new Error('docker ping 超时')), 3000).unref()),
+    ]);
+    return { status: 'ok', docker: 'ok', latencyMs: Date.now() - started, ts: Date.now() };
+  } catch (err) {
+    fastify.log.warn({ err: err.message }, 'health check: docker unreachable');
+    return reply.code(503).send({
+      status: 'degraded',
+      docker: 'unreachable',
+      error: err.message,
+      latencyMs: Date.now() - started,
+      ts: Date.now(),
+    });
+  }
+});
 
 // 生产环境静态托管前端 dist。
 if (process.env.SERVE_FRONTEND === '1') {
