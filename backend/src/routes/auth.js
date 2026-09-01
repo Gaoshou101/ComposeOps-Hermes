@@ -8,6 +8,16 @@ import {
   verifyPassword,
 } from '../lib/auth.js';
 
+/**
+ * 口令类字段只做类型与长度上限校验,不搬业务规则(如至少 10 位):
+ * 1. setPassword/changePassword 已给出更友好的中文报错与 invalid_password 等机器码,
+ *    若在 schema 里重复约束会把它们降级成通用的 validation_failed;
+ * 2. /login 的失败计数依赖请求走到处理函数,提前 400 会让失败尝试不被计入限流。
+ * maxLength 是必要的:scryptSync 对超长输入代价高,未登录接口需要防放大攻击。
+ */
+const PASSWORD_MAX = 200;
+const passwordField = { type: 'string', maxLength: PASSWORD_MAX };
+
 export default async function authRoutes(fastify) {
   const attempts = new Map();
   fastify.get('/status', async (request) => ({
@@ -15,7 +25,15 @@ export default async function authRoutes(fastify) {
     authenticated: isAuthenticated(request),
   }));
 
-  fastify.post('/setup', async (request, reply) => {
+  fastify.post('/setup', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { password: passwordField },
+      },
+    },
+  }, async (request, reply) => {
     if (isConfigured()) return reply.code(409).send({ error: 'already_configured' });
     try {
       setPassword(request.body?.password);
@@ -26,7 +44,15 @@ export default async function authRoutes(fastify) {
     }
   });
 
-  fastify.post('/login', async (request, reply) => {
+  fastify.post('/login', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { password: passwordField },
+      },
+    },
+  }, async (request, reply) => {
     if (!isConfigured()) return reply.code(409).send({ error: 'setup_required' });
     const key = request.ip;
     const entry = attempts.get(key) || { count: 0, resetAt: Date.now() + 15 * 60 * 1000 };
@@ -47,7 +73,15 @@ export default async function authRoutes(fastify) {
     return { ok: true };
   });
 
-  fastify.post('/password', async (request, reply) => {
+  fastify.post('/password', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { currentPassword: passwordField, nextPassword: passwordField },
+      },
+    },
+  }, async (request, reply) => {
     try {
       changePassword(request.body?.currentPassword, request.body?.nextPassword);
       issueSession(reply, request.protocol === 'https');

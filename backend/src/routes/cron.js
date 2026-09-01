@@ -9,10 +9,36 @@ import {
 } from '../services/cron-scheduler.js';
 import { addOperation } from '../lib/db.js';
 
+/**
+ * 字段约束与 cron-scheduler.js 的校验保持一致:
+ * 名称超长由服务端 slice(0, 60) 截断而非拒绝,故这里只设宽松上限兜底,不改变既有语义。
+ */
+const jobFields = {
+  name: { type: 'string', minLength: 1, maxLength: 200 },
+  cron: { type: 'string', minLength: 1, maxLength: 120 },
+  type: { type: 'string', enum: Object.keys(JOB_TYPES) },
+  enabled: { type: 'boolean' },
+};
+
+const idParams = {
+  type: 'object',
+  required: ['id'],
+  properties: { id: { type: 'string', minLength: 1, maxLength: 64 } },
+};
+
 export default async function cronRoutes(fastify) {
   fastify.get('/', async () => ({ jobs: await listJobs(), types: JOB_TYPES }));
 
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['name', 'cron', 'type'],
+        additionalProperties: false,
+        properties: jobFields,
+      },
+    },
+  }, async (request, reply) => {
     try {
       const job = await createJob(request.body || {});
       addOperation({ action: 'cron.create', status: 'success', detail: `${job.name} (${job.cron})` });
@@ -22,7 +48,17 @@ export default async function cronRoutes(fastify) {
     }
   });
 
-  fastify.put('/:id', async (request, reply) => {
+  // PUT 是补丁语义:前端存在只发 { enabled } 的开关调用,故所有字段可选、不设 required。
+  fastify.put('/:id', {
+    schema: {
+      params: idParams,
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: jobFields,
+      },
+    },
+  }, async (request, reply) => {
     try {
       const job = await updateJob(request.params.id, request.body || {});
       addOperation({ action: 'cron.update', status: 'success', detail: job.name });
@@ -32,7 +68,7 @@ export default async function cronRoutes(fastify) {
     }
   });
 
-  fastify.delete('/:id', async (request, reply) => {
+  fastify.delete('/:id', { schema: { params: idParams } }, async (request, reply) => {
     try {
       const result = await deleteJob(request.params.id);
       addOperation({ action: 'cron.delete', status: 'success', detail: request.params.id });
@@ -42,7 +78,7 @@ export default async function cronRoutes(fastify) {
     }
   });
 
-  fastify.post('/:id/run', async (request, reply) => {
+  fastify.post('/:id/run', { schema: { params: idParams } }, async (request, reply) => {
     try {
       const result = await runJobNow(request.params.id);
       addOperation({ action: 'cron.run', status: 'success', detail: result.summary || '' });
@@ -53,5 +89,12 @@ export default async function cronRoutes(fastify) {
     }
   });
 
-  fastify.get('/history', async (request) => ({ history: await listHistory(request.query.limit) }));
+  fastify.get('/history', {
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: { limit: { type: 'integer', minimum: 1, maximum: 200 } },
+      },
+    },
+  }, async (request) => ({ history: await listHistory(request.query.limit) }));
 }

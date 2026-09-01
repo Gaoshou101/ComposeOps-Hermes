@@ -5,6 +5,22 @@ import { getNotificationConfig, saveNotificationConfig, sendNotification } from 
 import { getAlertEventConfig } from '../services/health-alerter.js';
 import { addOperation } from '../lib/db.js';
 import { listAlertEvents, updateAlertEvent, pruneAlertEvents } from '../services/events.js';
+import { notificationConfigBody } from '../lib/schemas.js';
+
+/**
+ * 本文件的 schema 一律不收紧服务端已有的归一化语义:
+ * 1. mode/confirm 不设 enum/const —— 处理函数把未知 mode 归一为 safe,并自己返回
+ *    confirmation_required 机器码,schema 抢先拦下会改变语义或降级错误码;
+ * 2. days/limit 只挡非数值,越界由 db.js 的 clamp 兜住;
+ * 3. blueprints/deploy 的 values 是蓝图自带的模板变量表(键由蓝图定义,无法枚举),
+ *    故整个 body 保持开放 —— 声明 additionalProperties: false 会被 removeAdditional
+ *    静默剥掉所有变量,部署出一份缺变量的 compose。
+ */
+const alertEventBody = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { read: { type: 'boolean' }, muted: { type: 'boolean' } },
+};
 
 export default async function opsRoutes(fastify) {
   // ---- 镜像更新雷达:全局检测 ----
@@ -27,7 +43,18 @@ export default async function opsRoutes(fastify) {
     }
   });
 
-  fastify.post('/storage/prune', async (request, reply) => {
+  fastify.post('/storage/prune', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          mode: { type: 'string', maxLength: 16 },
+          confirm: { type: 'string', maxLength: 32 },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const mode = ['safe', 'volumes', 'builder', 'all'].includes(request.body?.mode) ? request.body.mode : 'safe';
     if ((mode === 'volumes' || mode === 'all') && request.body?.confirm !== 'PRUNE') {
       return reply.code(400).send({ error: 'confirmation_required', message: '深度清理需要二次确认(输入 PRUNE)' });
@@ -44,7 +71,19 @@ export default async function opsRoutes(fastify) {
   // ---- 应用模板市场 ----
   fastify.get('/blueprints', async () => ({ blueprints: listBlueprints() }));
 
-  fastify.post('/blueprints/deploy', async (request, reply) => {
+  // values 刻意不声明子属性:蓝图变量名由蓝图自己定义,一旦收紧就会被剥空。
+  // blueprintId 缺失仍由处理函数返回 missing_blueprint_id,故这里不设 required。
+  fastify.post('/blueprints/deploy', {
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          blueprintId: { type: 'string', maxLength: 200 },
+          values: { type: 'object' },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { blueprintId, values } = request.body || {};
     if (!blueprintId) return reply.code(400).send({ error: 'missing_blueprint_id' });
     reply.raw.writeHead(200, {
@@ -88,12 +127,21 @@ export default async function opsRoutes(fastify) {
     return { events: config.events || getAlertEventConfig().events };
   });
 
-  fastify.put('/notifications/events', async (request) => {
+  fastify.put('/notifications/events', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { events: notificationConfigBody.properties.events },
+      },
+    },
+  }, async (request) => {
     const config = saveNotificationConfig({ events: request.body?.events });
     return { events: config.events || [] };
   });
 
-  fastify.post('/notifications/test', async (request, reply) => {
+  // 与 personal.js 的 /notifications 共用同一份键集:此处会真的落库,漏键即存不上。
+  fastify.post('/notifications/test', { schema: { body: notificationConfigBody } }, async (request, reply) => {
     try {
       const config = saveNotificationConfig(request.body || {});
       await sendNotification('ComposeOps 测试通知', '多渠道告警配置成功。', getNotificationConfig(false));
@@ -104,11 +152,24 @@ export default async function opsRoutes(fastify) {
   });
 
   // ---- 告警事件(EventCenter 数据源) ----
-  fastify.get('/alert-events', async (request) => {
+  fastify.get('/alert-events', {
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: { limit: { type: 'integer', minimum: 1, maximum: 200 } },
+      },
+    },
+  }, async (request) => {
     return { events: listAlertEvents(request.query?.limit) };
   });
 
-  fastify.patch('/alert-events/:id', async (request, reply) => {
+  // id 不声明为 integer:处理函数自己 Number.isInteger 校验并返回 invalid_event_id。
+  fastify.patch('/alert-events/:id', {
+    schema: {
+      params: { type: 'object', required: ['id'], properties: { id: { type: 'string', maxLength: 32 } } },
+      body: alertEventBody,
+    },
+  }, async (request, reply) => {
     const id = Number(request.params?.id);
     if (!Number.isInteger(id) || id <= 0) return reply.code(400).send({ error: 'invalid_event_id' });
     const { read, muted } = request.body || {};
@@ -117,7 +178,16 @@ export default async function opsRoutes(fastify) {
     return { event };
   });
 
-  fastify.post('/alert-events/prune', async (request) => {
+  // days 越界由处理函数 clamp 到 1..90,schema 只挡非数值类型。
+  fastify.post('/alert-events/prune', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { days: { type: 'number' } },
+      },
+    },
+  }, async (request) => {
     const days = Math.max(1, Math.min(Number(request.body?.days) || 7, 90));
     const result = pruneAlertEvents(days);
     return { ok: true, removed: result.changes };

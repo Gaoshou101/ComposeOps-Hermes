@@ -45,12 +45,63 @@ function requireEditable(project, reply) {
   return true;
 }
 
+/**
+ * 本文件的 schema 一律不接管服务端已有的语义,几处必须留手:
+ * 1. projectIds/mountProjectIds 的数组元素刻意不声明 items.type —— coerceTypes 会把
+ *    [123] 悄悄转成 ['123'],让处理函数的 `typeof id !== 'string'` 检查形同虚设,
+ *    invalid_project_ids 也就永远返回不了;这里只收数组本身与长度上限(与处理函数的
+ *    1000 对齐),元素类型仍由处理函数判定;
+ * 2. content/favorite/note/containerId 都不设 required —— 处理函数各自返回
+ *    invalid_content / invalid_favorite / invalid_note / missing_container 机器码;
+ * 3. action 不设 enum:compose-runner 的 ACTIONS 是唯一事实来源,
+ *    未知 action 由 assertProjectActionAllowed 抛出 unsupported_action;
+ *    抄一份 enum 进 schema 只会多出一处必然漂移的规则;
+ * 4. force 收 string —— 处理函数按 `=== '1'` 比较,声明成数字会让判断永远为假;
+ * 5. interval/limit/fileIndex 越界由处理函数与 db.js 的 clamp 兜住,schema 只挡非数值。
+ *
+ * env 的 raw/entries 承载 .env 明文(可能含密钥),故本文件不声明任何 response schema,
+ * 这些字段只走请求体。
+ */
+const idParams = {
+  type: 'object',
+  required: ['id'],
+  properties: { id: { type: 'string', minLength: 1, maxLength: 128 } },
+};
+
+// backupId 收 string 而非 integer:处理函数 Number() 后交给 getComposeBackup,
+// 查不到即 404 backup_not_found;声明成 integer 会把畸形 id 提前降级成 validation_failed。
+const backupParams = {
+  type: 'object',
+  required: ['id', 'backupId'],
+  properties: {
+    id: { type: 'string', minLength: 1, maxLength: 128 },
+    backupId: { type: 'string', maxLength: 32 },
+  },
+};
+
+// 元素类型交给处理函数:见文件头第 1 条。
+const projectIdList = { type: 'array', maxItems: 1000 };
+
+// YAML 正文与 .env 明文都可能很大,上限只用于挡住畸形巨包。
+const CONTENT_MAX = 1048576;
+
+// 只挡非数值:越界与缺省由处理函数的 `Number(x) || 0` 与下游读取器兜住(见文件头第 5 条)。
+const fileIndexField = { type: 'number' };
+
 export default async function projectRoutes(fastify) {
   fastify.get('/', async () => ({ projects: await scanProjects() }));
 
   fastify.get('/mount-plan', async () => buildMountPlan(await scanProjects()));
 
-  fastify.put('/management', async (request, reply) => {
+  fastify.put('/management', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { projectIds: projectIdList, mountProjectIds: projectIdList },
+      },
+    },
+  }, async (request, reply) => {
     const projectIds = request.body?.projectIds;
     const mountProjectIds = request.body?.mountProjectIds ?? [];
     if (!Array.isArray(projectIds) || projectIds.length > 1000 ||
@@ -78,7 +129,11 @@ export default async function projectRoutes(fastify) {
   });
 
   // 目录能力是纳管权限的子集。保留独立端点，便于设置页只调整挂载选择。
-  fastify.put('/mounts', async (request, reply) => {
+  fastify.put('/mounts', {
+    schema: {
+      body: { type: 'object', additionalProperties: false, properties: { projectIds: projectIdList } },
+    },
+  }, async (request, reply) => {
     const mountProjectIds = request.body?.projectIds;
     if (!Array.isArray(mountProjectIds) || mountProjectIds.length > 1000 ||
         mountProjectIds.some((id) => typeof id !== 'string')) {
@@ -98,12 +153,17 @@ export default async function projectRoutes(fastify) {
     return result;
   });
 
-  fastify.get('/:id', async (request, reply) => {
+  fastify.get('/:id', { schema: { params: idParams } }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (project) return project;
   });
 
-  fastify.get('/:id/activity', async (request, reply) => {
+  fastify.get('/:id/activity', {
+    schema: {
+      params: idParams,
+      querystring: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 200 } } },
+    },
+  }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     if (!requireManaged(project, reply)) return;
@@ -114,7 +174,14 @@ export default async function projectRoutes(fastify) {
     };
   });
 
-  fastify.patch('/:id/preferences', async (request, reply) => {
+  // favorite/note 的类型由处理函数判定并返回 invalid_favorite / invalid_note,
+  // 故这里只声明键名占位(不写 type),否则 coerceTypes 会把非法值转成合法值放行。
+  fastify.patch('/:id/preferences', {
+    schema: {
+      params: idParams,
+      body: { type: 'object', additionalProperties: false, properties: { favorite: {}, note: {} } },
+    },
+  }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     const { favorite, note } = request.body || {};
@@ -127,7 +194,12 @@ export default async function projectRoutes(fastify) {
     return setProjectPreference(project.id, { favorite, note });
   });
 
-  fastify.get('/:id/compose', async (request, reply) => {
+  fastify.get('/:id/compose', {
+    schema: {
+      params: idParams,
+      querystring: { type: 'object', properties: { fileIndex: fileIndexField } },
+    },
+  }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     if (!requireEditable(project, reply)) return;
@@ -140,7 +212,17 @@ export default async function projectRoutes(fastify) {
     }
   });
 
-  fastify.post('/:id/compose/validate', async (request, reply) => {
+  // content 不设 required/type:处理函数自己 typeof 判定并返回 invalid_content。
+  fastify.post('/:id/compose/validate', {
+    schema: {
+      params: idParams,
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { content: { type: 'string', maxLength: CONTENT_MAX }, fileIndex: fileIndexField },
+      },
+    },
+  }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     if (!requireEditable(project, reply)) return;
@@ -151,7 +233,16 @@ export default async function projectRoutes(fastify) {
     return { issues: validateComposeSemantics(content), fileIndex: Number(fileIndex) || 0 };
   });
 
-  fastify.post('/:id/compose/preview', async (request, reply) => {
+  fastify.post('/:id/compose/preview', {
+    schema: {
+      params: idParams,
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { content: { type: 'string', maxLength: CONTENT_MAX } },
+      },
+    },
+  }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     if (!requireEditable(project, reply)) return;
@@ -162,7 +253,18 @@ export default async function projectRoutes(fastify) {
     return { preview: previewComposeChange(content, project) };
   });
 
-  fastify.put('/:id/compose', async (request, reply) => {
+  // content 不设 required:缺失时 saveCompose 自己抛错并归到 compose_save_failed,
+  // 抢先拦下会把 YAML_PARSE_ERROR 的 422 与行列号一起换成 validation_failed。
+  fastify.put('/:id/compose', {
+    schema: {
+      params: idParams,
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { content: { type: 'string', maxLength: CONTENT_MAX }, fileIndex: fileIndexField },
+      },
+    },
+  }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     if (!requireEditable(project, reply)) return;
@@ -179,14 +281,14 @@ export default async function projectRoutes(fastify) {
     }
   });
 
-  fastify.get('/:id/backups', async (request, reply) => {
+  fastify.get('/:id/backups', { schema: { params: idParams } }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     if (!requireManaged(project, reply)) return;
     return { backups: listComposeBackups(project.id) };
   });
 
-  fastify.get('/:id/backups/:backupId', async (request, reply) => {
+  fastify.get('/:id/backups/:backupId', { schema: { params: backupParams } }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     if (!requireManaged(project, reply)) return;
@@ -195,7 +297,7 @@ export default async function projectRoutes(fastify) {
     return backup;
   });
 
-  fastify.post('/:id/backups/:backupId/restore', async (request, reply) => {
+  fastify.post('/:id/backups/:backupId/restore', { schema: { params: backupParams } }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     if (!requireEditable(project, reply)) return;
@@ -214,7 +316,7 @@ export default async function projectRoutes(fastify) {
   });
 
   // ---- 环境变量(.env)读取 / 保存 / 应用 ----
-  fastify.get('/:id/env', async (request, reply) => {
+  fastify.get('/:id/env', { schema: { params: idParams } }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     try {
@@ -225,7 +327,34 @@ export default async function projectRoutes(fastify) {
     }
   });
 
-  fastify.put('/:id/env', async (request, reply) => {
+  // raw 刻意不给 default:saveProjectEnv 按 `raw != null` 二选一,
+  // 补上默认值会让 entries 分支永远走不到。
+  // entries 元素不封闭:parseDotenv 会附带 isSecret 等展示字段回传前端,
+  // 封闭后 removeAdditional 会静默剥掉它们。
+  fastify.put('/:id/env', {
+    schema: {
+      params: idParams,
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          raw: { type: 'string', maxLength: CONTENT_MAX },
+          entries: {
+            type: 'array',
+            maxItems: 2000,
+            items: {
+              type: 'object',
+              properties: {
+                key: { type: 'string', maxLength: 256 },
+                value: { type: 'string', maxLength: 8192 },
+                comment: { type: 'string', maxLength: 1024 },
+              },
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     try {
@@ -239,7 +368,14 @@ export default async function projectRoutes(fastify) {
     }
   });
 
-  fastify.post('/:id/env/apply', async (request, reply) => {
+  // restart 不给 default:处理函数按 `!== false` 判定,缺省即视为重启,
+  // 声明 default: true 只是把同一语义写第二遍。
+  fastify.post('/:id/env/apply', {
+    schema: {
+      params: idParams,
+      body: { type: 'object', additionalProperties: false, properties: { restart: { type: 'boolean' } } },
+    },
+  }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     try {
@@ -284,7 +420,12 @@ export default async function projectRoutes(fastify) {
   });
 
   // ---- 项目容器实时资源指标流(SSE,2.5s 周期,客户端断开自动销毁) ----
-  fastify.get('/:id/stats/stream', async (request, reply) => {
+  fastify.get('/:id/stats/stream', {
+    schema: {
+      params: idParams,
+      querystring: { type: 'object', properties: { interval: { type: 'number' } } },
+    },
+  }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     if (!requireManaged(project, reply)) return;
@@ -333,7 +474,13 @@ export default async function projectRoutes(fastify) {
     });
   });
 
-  fastify.post('/:id/actions', async (request, reply) => {
+  // action 不设 enum:见文件头第 3 条,唯一事实来源是 compose-runner 的 ACTIONS。
+  fastify.post('/:id/actions', {
+    schema: {
+      params: idParams,
+      body: { type: 'object', additionalProperties: false, properties: { action: { type: 'string', maxLength: 32 } } },
+    },
+  }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     const action = request.body?.action;
@@ -374,7 +521,13 @@ export default async function projectRoutes(fastify) {
     });
   });
   // ---- 镜像更新雷达 ----
-  fastify.get('/:id/updates', async (request, reply) => {
+  // force 收 string:处理函数按 `=== '1'` 比较,见文件头第 4 条。
+  fastify.get('/:id/updates', {
+    schema: {
+      params: idParams,
+      querystring: { type: 'object', properties: { force: { type: 'string', maxLength: 8 } } },
+    },
+  }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     try {
@@ -384,7 +537,7 @@ export default async function projectRoutes(fastify) {
     }
   });
 
-  fastify.post('/:id/upgrade', async (request, reply) => {
+  fastify.post('/:id/upgrade', { schema: { params: idParams } }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     reply.raw.writeHead(200, {
@@ -422,7 +575,7 @@ export default async function projectRoutes(fastify) {
     });
   });
 
-  fastify.post('/:id/rollback', async (request, reply) => {
+  fastify.post('/:id/rollback', { schema: { params: idParams } }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     reply.raw.writeHead(200, {
@@ -457,13 +610,26 @@ export default async function projectRoutes(fastify) {
   });
 
   // ---- 数据库一键 Dump ----
-  fastify.get('/:id/db-dump', async (request, reply) => {
+  fastify.get('/:id/db-dump', { schema: { params: idParams } }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     return { containers: await listProjectDbContainers(project) };
   });
 
-  fastify.post('/:id/db-dump', async (request, reply) => {
+  // containerId 不设 required:处理函数自己返回 missing_container。
+  fastify.post('/:id/db-dump', {
+    schema: {
+      params: idParams,
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          containerId: { type: 'string', maxLength: 128 },
+          dbName: { type: 'string', maxLength: 128 },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     const { containerId, dbName } = request.body || {};
@@ -483,7 +649,7 @@ export default async function projectRoutes(fastify) {
   });
 
   // ---- WebUI 智能雷达 ----
-  fastify.get('/:id/webui', async (request, reply) => {
+  fastify.get('/:id/webui', { schema: { params: idParams } }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     const entries = scanProjectWebPorts(project);

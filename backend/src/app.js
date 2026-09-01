@@ -74,6 +74,31 @@ export async function buildApp({ logger = { level: process.env.LOG_LEVEL || 'inf
     }
   });
 
+  // Fastify 默认把校验失败渲染成 { error: 'Bad Request' },丢掉了全站统一的机器可读 code。
+  // 这里统一收敛成 { error, message },前端 client.js 读 message || error 才能拿到有效提示。
+  fastify.setErrorHandler((error, request, reply) => {
+    if (error.validation) {
+      const context = error.validationContext || 'body';
+      const first = error.validation[0] || {};
+      const field = String(first.instancePath || '').replace(/^\//, '').replace(/\//g, '.');
+      const detail = field ? `${field} ${first.message}` : first.message || error.message;
+      return reply.code(400).send({
+        error: 'validation_failed',
+        message: `请求参数校验失败(${context}):${detail}`,
+      });
+    }
+    const statusCode = Number(error.statusCode) >= 400 ? Number(error.statusCode) : 500;
+    if (statusCode >= 500) {
+      // 未捕获异常的原文只进日志,响应里不外泄内部细节。
+      fastify.log.error({ err: error.message, stack: error.stack, url: request.url }, 'unhandled route error');
+      return reply.code(statusCode).send({ error: 'internal_error', message: '服务器内部错误,请查看后端日志' });
+    }
+    return reply.code(statusCode).send({
+      error: error.code ? String(error.code).toLowerCase() : 'request_failed',
+      message: error.message || '请求处理失败',
+    });
+  });
+
   // REST API 前缀：/api/v1
   await fastify.register(
     async (api) => {

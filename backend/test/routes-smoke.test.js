@@ -88,6 +88,21 @@ test('routes: /health 无需登录,按 Docker 可用性返回 200 或 503', asyn
   }
 });
 
+test('routes: schema 校验失败沿用全站 { error, message } 契约', async () => {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/setup',
+    headers: { origin: 'http://localhost:3001', host: 'localhost:3001' },
+    // 超长口令必须在进入 scryptSync 之前被 schema 拦下(未登录接口的放大攻击面)。
+    payload: { password: 'x'.repeat(500) },
+  });
+  assert.equal(response.statusCode, 400);
+  const body = response.json();
+  // 前端 client.js 读 message || error,故两者都必须是可用的非空字符串。
+  assert.equal(body.error, 'validation_failed');
+  assert.match(body.message, /校验失败/);
+});
+
 test('routes: 未注册路径返回 404 而不是 401', async () => {
   const response = await app.inject({ method: 'GET', url: '/definitely-not-a-route' });
   assert.equal(response.statusCode, 404);

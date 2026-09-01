@@ -84,6 +84,38 @@ async function readContainerLogs(container, tail = 200) {
   }
 }
 
+/**
+ * 本文件的 schema 只挡"类型错/体积离谱"的载荷,不接管服务端已有语义:
+ * 1. 长度上限一律取服务端 slice 值的数倍(apiKey slice 1000 → 上限 4096 等)——
+ *    若把上限压到 slice 值,超长输入的行为就会从"截断保存"变成 400,
+ *    而截断一把 API Key 只会得到一把静默失效的密钥,报错反而更好;此处只挡畸形巨包;
+ * 2. role 不设 enum —— agent.js 把未知 role 归一为 planner;
+ * 3. planId/sessionId 收 anyOf(整数|字符串):处理函数自己 Number() 并返回
+ *    missing_plan_id / plan_not_found,schema 抢先拦下会降级成 validation_failed;
+ * 4. rating/tail/limit 只挡非数值,越界由 db.js 与处理函数的 clamp 兜住;
+ * 5. params(单工具参数表)与 steps[].params 是按工具定义的自由键表,必须保持开放 ——
+ *    声明 additionalProperties: false 会被 removeAdditional 静默剥空,
+ *    工具随即拿着空参数执行。
+ *
+ * apiKey 只出现在请求体:GET /config 会把它掩成 '••••'+后四位,
+ * 且本文件不声明任何 response schema,密钥无从被 schema 带出。
+ */
+const idField = { type: 'string', maxLength: 128 };
+// 处理函数一律 Number() 转换,故整数与字符串都放行。
+const numericId = { anyOf: [{ type: 'integer' }, { type: 'string', maxLength: 32 }] };
+const limitField = (maximum) => ({ type: 'integer', minimum: 1, maximum });
+
+// tool/params/confirmed 之外的键刻意不封:计划步骤由 AI 规划产出并经前端回传,
+// 可能携带 description 等展示字段,封死会被剥掉。
+const agentStep = {
+  type: 'object',
+  properties: {
+    tool: { type: 'string', maxLength: 64 },
+    params: { type: 'object' },
+    confirmed: { type: 'boolean' },
+  },
+};
+
 export default async function aiRoutes(fastify) {
   // GET /api/v1/ai/config
   fastify.get('/config', async () => {
@@ -92,7 +124,22 @@ export default async function aiRoutes(fastify) {
   });
 
   // POST /api/v1/ai/config  body: { baseUrl, apiKey, model, systemPrompt }
-  fastify.post('/config', async (request, reply) => {
+  // baseUrl 的协议校验留给 setAiConfig(它 new URL 后返回 invalid_ai_config),
+  // schema 不加 format: 'uri',否则错误码会变成 validation_failed。
+  fastify.post('/config', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          baseUrl: { type: 'string', maxLength: 2048 },
+          apiKey: { type: 'string', maxLength: 4096 },
+          model: { type: 'string', maxLength: 512 },
+          systemPrompt: { type: 'string', maxLength: 40000 },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { baseUrl, apiKey, model, systemPrompt } = request.body || {};
     try {
       setAiConfig({ baseUrl, apiKey, model, systemPrompt });
@@ -103,7 +150,19 @@ export default async function aiRoutes(fastify) {
   });
 
   // POST /api/v1/ai/fetch-models  body: { baseUrl?, apiKey? } —— 拉取远程可用模型列表
-  fastify.post('/fetch-models', async (request, reply) => {
+  // 两者都可省:fetchAiModels 缺参时回落到已保存配置。
+  fastify.post('/fetch-models', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          baseUrl: { type: 'string', maxLength: 2048 },
+          apiKey: { type: 'string', maxLength: 4096 },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { baseUrl, apiKey } = request.body || {};
     try {
       const models = await fetchAiModels({ baseUrl, apiKey });
@@ -114,7 +173,21 @@ export default async function aiRoutes(fastify) {
   });
 
   // POST /api/v1/ai/exec  body: { projectId, containerId, command } —— AI 排障只读探针
-  fastify.post('/exec', async (request, reply) => {
+  // 不设 required:处理函数自己返回 missing_params。命令白名单归 execReadonly,
+  // schema 只挡超长载荷 —— 白名单写进 schema 就会有两份规则、且必然漂移。
+  fastify.post('/exec', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          projectId: idField,
+          containerId: idField,
+          command: { type: 'string', maxLength: 1024 },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { projectId, containerId, command } = request.body || {};
     if (!projectId || !containerId || !String(command || '').trim()) {
       return reply.code(400).send({ error: 'missing_params', message: '缺少 projectId / containerId / command' });
@@ -137,7 +210,20 @@ export default async function aiRoutes(fastify) {
   });
 
   // POST /api/v1/ai/logs  body: { projectId, containerId, tail? } —— AI 排障使用的容器日志上下文
-  fastify.post('/logs', async (request, reply) => {
+  // tail 越界由处理函数 clamp 到 20..2000,schema 只挡非数值。
+  fastify.post('/logs', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          projectId: idField,
+          containerId: idField,
+          tail: { type: 'number' },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { projectId, containerId, tail } = request.body || {};
     if (!projectId || !containerId) return reply.code(400).send({ error: 'missing_params', message: '缺少 projectId / containerId' });
     const match = await findProjectContainer(projectId, containerId);
@@ -153,7 +239,14 @@ export default async function aiRoutes(fastify) {
   });
 
   // GET /api/v1/ai/history?sessionId=<id>&limit=100 —— 会话消息(留空取全部)
-  fastify.get('/history', async (request) => {
+  fastify.get('/history', {
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: { sessionId: numericId, limit: limitField(200) },
+      },
+    },
+  }, async (request) => {
     const sessionId = request.query?.sessionId;
     const limit = Math.max(1, Math.min(Number(request.query?.limit) || 100, 200));
     const messages = sessionId ? getAiHistory(limit, Number(sessionId)) : getAiHistory(limit);
@@ -161,12 +254,26 @@ export default async function aiRoutes(fastify) {
   });
 
   // GET /api/v1/ai/sessions —— 会话列表(标题/时间/消息数)
-  fastify.get('/sessions', async (request) => {
+  fastify.get('/sessions', {
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: { limit: limitField(100) },
+      },
+    },
+  }, async (request) => {
     return { sessions: listAiSessions(request.query?.limit) };
   });
 
   // DELETE /api/v1/ai/history?sessionId=<id> —— 删除指定会话;不带参数清空全部
-  fastify.delete('/history', async (request) => {
+  fastify.delete('/history', {
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: { sessionId: numericId },
+      },
+    },
+  }, async (request) => {
     const sessionId = request.query?.sessionId;
     if (sessionId) {
       clearAiSession(Number(sessionId));
@@ -178,7 +285,20 @@ export default async function aiRoutes(fastify) {
 
   // POST /api/v1/ai/chat
   // body: { message, stream?:true } —— 通用对话，SSE 流式返回
-  fastify.post('/chat', async (request, reply) => {
+  // message 不设 required/minLength:处理函数自己返回 missing message。
+  fastify.post('/chat', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          message: { type: 'string', maxLength: 32768 },
+          webSearch: { type: 'boolean' },
+          sessionId: numericId,
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { message, webSearch, sessionId } = request.body || {};
     if (!message) return reply.code(400).send({ error: 'missing message' });
     let sources = [];
@@ -240,7 +360,39 @@ export default async function aiRoutes(fastify) {
   // POST /api/v1/ai/diagnose
   // body: { containerId, composeContent } —— 一键日志排错
   // 自动组装：系统 Prompt + 最近 100 行容器日志 + compose 文件内容
-  fastify.post('/diagnose', async (request, reply) => {
+  // 注意:处理函数分两处读 request.body(第 1 处取 projectId/containerId/sessionId,
+  // 第 2 处取 rawLogs/failedCommand/exitCode/envKeys/webSearch),八个键必须全部声明 ——
+  // 漏一个就会被 removeAdditional 剥掉,诊断证据里静默少一段。
+  // rawLogs 上限取服务端 slice(-50000) 的数倍,超出部分本就只保留尾部。
+  fastify.post('/diagnose', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          projectId: idField,
+          containerId: idField,
+          sessionId: numericId,
+          rawLogs: { type: 'string', maxLength: 200000 },
+          failedCommand: { type: 'string', maxLength: 2048 },
+          exitCode: { type: 'number' },
+          envKeys: {
+            type: 'array',
+            maxItems: 500,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                key: { type: 'string', maxLength: 256 },
+                value: { type: 'string', maxLength: 4096 },
+              },
+            },
+          },
+          webSearch: { type: 'boolean' },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { projectId, containerId, sessionId } = request.body || {};
     if (!projectId || !containerId) return reply.code(400).send({ error: 'missing projectId or containerId' });
     const cfg = getAiConfig();
@@ -348,7 +500,22 @@ ${evidence}`;
   fastify.get('/agent/roles', async () => ({ roles: getAgent().listRoles() }));
 
   // POST /api/v1/ai/agent/plan —— 规划(不执行),返回思维链与执行计划
-  fastify.post('/agent/plan', async (request, reply) => {
+  // role 不设 enum:agent.js 把未知 role 归一为 planner,拒绝会改变既有语义。
+  fastify.post('/agent/plan', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          message: { type: 'string', maxLength: 32768 },
+          projectId: idField,
+          containerId: idField,
+          sessionId: numericId,
+          role: { type: 'string', maxLength: 32 },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { message, projectId, containerId, sessionId, role } = request.body || {};
     if (!message || !String(message).trim()) {
       return reply.code(400).send({ error: 'missing_message', message: '缺少 message' });
@@ -360,7 +527,20 @@ ${evidence}`;
   });
 
   // POST /api/v1/ai/agent/execute —— 执行已规划或自定义步骤
-  fastify.post('/agent/execute', async (request, reply) => {
+  // steps 不设 minItems:处理函数自己 Array.isArray && length 校验并返回 missing_steps。
+  fastify.post('/agent/execute', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          planId: numericId,
+          steps: { type: 'array', maxItems: 100, items: agentStep },
+          sessionId: numericId,
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { planId, steps, sessionId } = request.body || {};
     const agent = getAgent();
     if (!planId) {
@@ -377,7 +557,21 @@ ${evidence}`;
   });
 
   // POST /api/v1/ai/agent/confirm —— 单工具确认后直接执行(快速操作)
-  fastify.post('/agent/confirm', async (request, reply) => {
+  // params 保持开放:键由工具自己的 parameters 定义,executeTool 内部 validateParams 校验。
+  // tool 不设 required:未注册的工具由 executeTool 抛 404,先于它拦下会降级成 validation_failed。
+  fastify.post('/agent/confirm', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          tool: { type: 'string', maxLength: 64 },
+          params: { type: 'object' },
+          confirmed: { type: 'boolean' },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { tool, params, confirmed } = request.body || {};
     if (!confirmed) {
       return reply.code(400).send({ error: 'not_confirmed', message: '用户未确认该操作' });
@@ -388,7 +582,16 @@ ${evidence}`;
   });
 
   // GET /api/v1/ai/agent/executions —— 执行历史
-  fastify.get('/agent/executions', async (request) => {
+  // 同一个 limit 同时喂 listAgentPlans(上限 100)与 listAgentExecutions(上限 500),
+  // 故按更宽的 500 收 —— 取 100 会把执行历史的可取范围凭空砍掉八成。
+  fastify.get('/agent/executions', {
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: { planId: numericId, limit: limitField(500) },
+      },
+    },
+  }, async (request) => {
     const planId = request.query?.planId;
     if (planId) {
       return { plan: getAgentPlan(planId), executions: listAgentExecutions(planId, request.query?.limit) };
@@ -397,10 +600,26 @@ ${evidence}`;
   });
 
   // GET /api/v1/ai/agent/feedback —— 用户反馈列表(反馈循环)
-  fastify.get('/agent/feedback', async (request) => ({ feedback: listAgentFeedback(request.query?.limit) }));
+  fastify.get('/agent/feedback', {
+    schema: { querystring: { type: 'object', properties: { limit: limitField(200) } } },
+  }, async (request) => ({ feedback: listAgentFeedback(request.query?.limit) }));
 
   // POST /api/v1/ai/agent/feedback —— 记录计划评分/反馈
-  fastify.post('/agent/feedback', async (request, reply) => {
+  // rating 越界与 feedbackText 超长都由 db.js 的 recordAgentFeedback 兜住
+  // (clamp 1..5、slice 2000),schema 只挡非数值与畸形巨包。
+  fastify.post('/agent/feedback', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          planId: numericId,
+          rating: { type: 'number' },
+          feedbackText: { type: 'string', maxLength: 8000 },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { planId, rating, feedbackText } = request.body || {};
     if (!planId) return reply.code(400).send({ error: 'missing_plan_id', message: '缺少 planId' });
     const updated = recordAgentFeedback(planId, rating, feedbackText);
@@ -409,7 +628,11 @@ ${evidence}`;
   });
 
   // GET /api/v1/ai/agent/export —— 审计/可观测性数据导出
-  fastify.get('/agent/export', async (request) => ({
+  // 一个 limit 喂四个不同上限(plans 100 / executions 500 / feedback 200 / baselines 100),
+  // 只能按最宽的 500 收;各自的上限由 db.js 各自 clamp。
+  fastify.get('/agent/export', {
+    schema: { querystring: { type: 'object', properties: { limit: limitField(500) } } },
+  }, async (request) => ({
     exportedAt: new Date().toISOString(),
     plans: listAgentPlans(request.query?.limit || 100),
     executions: listAgentExecutions(null, request.query?.limit || 500),
