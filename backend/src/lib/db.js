@@ -101,6 +101,41 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_background_job_items_job ON background_job_items(job_id, id);
+
+  CREATE TABLE IF NOT EXISTS agent_plans (
+    id TEXT PRIMARY KEY,
+    session_id INTEGER NOT NULL DEFAULT 0,
+    user_message TEXT NOT NULL,
+    plan_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    result_json TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    executed_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS agent_executions (
+    id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL REFERENCES agent_plans(id) ON DELETE CASCADE,
+    tool_name TEXT NOT NULL,
+    parameters TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'pending',
+    result TEXT,
+    error TEXT,
+    duration_ms INTEGER,
+    confirmed_by TEXT,
+    confirmed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS performance_baselines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL DEFAULT '',
+    snapshot TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_agent_plans_session ON agent_plans(session_id);
+  CREATE INDEX IF NOT EXISTS idx_agent_executions_plan ON agent_executions(plan_id);
 `);
 
 // 兼容已有数据库：新增项目纳管白名单，历史项目默认不自动获得操作权限。
@@ -118,6 +153,16 @@ if (!aiHistoryColumns.some((column) => column.name === 'session_id')) {
 const alertEventColumns = db.prepare('PRAGMA table_info(alert_events)').all();
 if (!alertEventColumns.some((column) => column.name === 'logs')) {
   db.exec("ALTER TABLE alert_events ADD COLUMN logs TEXT NOT NULL DEFAULT ''");
+}
+const agentPlanColumns = db.prepare('PRAGMA table_info(agent_plans)').all();
+if (!agentPlanColumns.some((column) => column.name === 'rating')) {
+  db.exec('ALTER TABLE agent_plans ADD COLUMN rating INTEGER');
+}
+if (!agentPlanColumns.some((column) => column.name === 'feedback_text')) {
+  db.exec("ALTER TABLE agent_plans ADD COLUMN feedback_text TEXT NOT NULL DEFAULT ''");
+}
+if (!agentPlanColumns.some((column) => column.name === 'feedback_at')) {
+  db.exec('ALTER TABLE agent_plans ADD COLUMN feedback_at TEXT');
 }
 
 export function getSetting(key, fallback = null) {
@@ -173,6 +218,108 @@ export function clearAiSession(sessionId) {
 
 export function clearAiHistory() {
   db.prepare('DELETE FROM ai_history').run();
+}
+
+/** 创建 Agent 执行计划,返回 planId。 */
+export function createAgentPlan(sessionId, userMessage, planJson) {
+  const planId = `plan-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  db.prepare(
+    'INSERT INTO agent_plans(id, session_id, user_message, plan_json, status) VALUES(?, ?, ?, ?, ?)'
+  ).run(planId, sessionId == null ? 0 : Number(sessionId), String(userMessage || ''), JSON.stringify(planJson || {}), 'pending');
+  return planId;
+}
+
+export function getAgentPlan(planId) {
+  return db.prepare('SELECT * FROM agent_plans WHERE id = ?').get(planId) || null;
+}
+
+export function updateAgentPlan(planId, patch = {}) {
+  const current = getAgentPlan(planId);
+  if (!current) return null;
+  const status = patch.status !== undefined ? String(patch.status) : current.status;
+  const resultJson = patch.resultJson !== undefined ? JSON.stringify(patch.resultJson) : current.result_json;
+  const executedAt = patch.executedAt !== undefined ? patch.executedAt : current.executed_at;
+  db.prepare(`
+    UPDATE agent_plans
+    SET status = ?, result_json = ?, executed_at = ?
+    WHERE id = ?
+  `).run(status, resultJson, executedAt, planId);
+  return getAgentPlan(planId);
+}
+
+export function listAgentPlans(limit = 30) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 30, 100));
+  return db.prepare('SELECT * FROM agent_plans ORDER BY id DESC LIMIT ?').all(safeLimit);
+}
+
+export function recordAgentExecution(planId, toolName, params, status = 'pending') {
+  const execId = `exec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  db.prepare(
+    'INSERT INTO agent_executions(id, plan_id, tool_name, parameters, status) VALUES(?, ?, ?, ?, ?)'
+  ).run(execId, planId, String(toolName || ''), JSON.stringify(params || {}), String(status || 'pending'));
+  return execId;
+}
+
+export function updateAgentExecution(execId, { status, result, error, durationMs, confirmedBy, confirmedAt } = {}) {
+  const current = db.prepare('SELECT * FROM agent_executions WHERE id = ?').get(execId);
+  if (!current) return null;
+  const nextStatus = status !== undefined ? String(status) : current.status;
+  const nextResult = result !== undefined ? JSON.stringify(result) : current.result;
+  const nextError = error !== undefined ? String(error) : current.error;
+  const nextDuration = durationMs !== undefined ? Number(durationMs) : current.duration_ms;
+  const nextConfirmedBy = confirmedBy !== undefined ? confirmedBy : current.confirmed_by;
+  const nextConfirmedAt = confirmedAt !== undefined ? confirmedAt : current.confirmed_at;
+  db.prepare(`
+    UPDATE agent_executions
+    SET status = ?, result = ?, error = ?, duration_ms = ?, confirmed_by = ?, confirmed_at = ?
+    WHERE id = ?
+  `).run(nextStatus, nextResult, nextError, nextDuration, nextConfirmedBy, nextConfirmedAt, execId);
+  return db.prepare('SELECT * FROM agent_executions WHERE id = ?').get(execId);
+}
+
+export function listAgentExecutions(planId, limit = 100) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 500));
+  if (planId) {
+    return db.prepare('SELECT * FROM agent_executions WHERE plan_id = ? ORDER BY id ASC LIMIT ?').all(planId, safeLimit);
+  }
+  return db.prepare('SELECT * FROM agent_executions ORDER BY id DESC LIMIT ?').all(safeLimit);
+}
+
+/** 记录用户对某次执行计划的评分与反馈。 */
+export function recordAgentFeedback(planId, rating, feedbackText = '') {
+  const current = getAgentPlan(planId);
+  if (!current) return null;
+  const safeRating = rating == null ? null : Math.max(1, Math.min(Number(rating) || 5, 5));
+  db.prepare(`
+    UPDATE agent_plans
+    SET rating = ?, feedback_text = ?, feedback_at = ?
+    WHERE id = ?
+  `).run(safeRating, String(feedbackText || '').slice(0, 2000), new Date().toISOString(), planId);
+  return getAgentPlan(planId);
+}
+
+/** 带反馈的计划列表,供反馈循环 UI 使用。 */
+export function listAgentFeedback(limit = 50) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 200));
+  return db.prepare(`
+    SELECT id, user_message AS userMessage, status, rating, feedback_text AS feedbackText,
+           feedback_at AS feedbackAt, created_at AS createdAt
+    FROM agent_plans
+    WHERE feedback_text <> '' OR rating IS NOT NULL
+    ORDER BY id DESC LIMIT ?
+  `).all(safeLimit);
+}
+
+export function addPerformanceBaseline(label, snapshot) {
+  const result = db.prepare(
+    'INSERT INTO performance_baselines(label, snapshot) VALUES(?, ?)'
+  ).run(String(label || ''), JSON.stringify(snapshot || {}));
+  return Number(result.lastInsertRowid);
+}
+
+export function listPerformanceBaselines(limit = 20) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
+  return db.prepare('SELECT * FROM performance_baselines ORDER BY id DESC LIMIT ?').all(safeLimit);
 }
 
 export function addAlertEvent({ key, title, detail, priority = 'warning', to = null, logs = '' }) {

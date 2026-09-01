@@ -4,9 +4,13 @@ import { scanProjects } from './scanner.js';
 import { getNotificationConfig, sendNotification } from './notifications.js';
 import { checkImageUpdates, getDockerUsage } from './maintenance.js';
 import { recordAlertEventAndNotify } from './events.js';
+import { parseContainerStat } from './stats.js';
+import { spawnComposeCommand } from './compose-runner.js';
+import { runWorkspaceComposeArgs } from './compose-workspace.js';
 
 const previousStates = new Map();
 const cooldowns = new Map();
+const agentCooldowns = new Map();
 let timer;
 let running = false;
 
@@ -15,6 +19,103 @@ function canAlert(key, hours = 6) {
   if (Date.now() - last < hours * 3600000) return false;
   cooldowns.set(key, Date.now());
   return true;
+}
+
+/** 读取 AI Agent 创建的告警规则(与 agent-tools.js 的存储键保持一致)。 */
+export function readAgentAlertRules() {
+  try {
+    const parsed = JSON.parse(getSetting('agent.alert_rules', '[]'));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function agentRuleKey(rule, containerId) {
+  return `${rule.id}:${containerId}`;
+}
+
+function canTriggerAgentRule(rule, containerId, cooldownMs = 10 * 60 * 1000) {
+  const key = agentRuleKey(rule, containerId);
+  const last = agentCooldowns.get(key) || 0;
+  if (Date.now() - last < cooldownMs) return false;
+  agentCooldowns.set(key, Date.now());
+  return true;
+}
+
+/** 读取服务名归一化(支持容器名前缀匹配)。 */
+function containerMatchesService(container, service) {
+  const name = String(container.name || '').toLowerCase();
+  const wanted = String(service || '').toLowerCase();
+  return name === wanted || name.startsWith(`${wanted}.`) || name.startsWith(`${wanted}-`) || name.includes(wanted);
+}
+
+async function applyAgentAlertAction(rule, project, container, current) {
+  const title = `ComposeOps:Agent 告警 · ${project.projectName} / ${container.name}`;
+  const body = [
+    `项目:${project.projectName}`,
+    `容器:${container.name}`,
+    `指标:${rule.metric}`,
+    `当前:${current}`,
+    `阈值:${rule.threshold}`,
+  ].join('\n');
+  recordAlertEventAndNotify({
+    key: `${container.id}:agent:${rule.metric}`,
+    title,
+    detail: `${project.projectName} / ${container.name} · ${rule.metric}=${current} (阈值 ${rule.threshold})`,
+    priority: 'warning',
+    to: `/services?focus=${project.id}`,
+  });
+  await sendNotification(title, body).catch(() => {});
+
+  if (rule.action === 'auto_restart') {
+    await docker.getContainer(container.id).restart().catch(() => {});
+  } else if (rule.action === 'scale') {
+    await scaleServiceByOne(project, rule.service).catch(() => {});
+  }
+}
+
+/** scale 动作:在该服务副本数基础上 +1(受 Compose 目录能力约束)。 */
+async function scaleServiceByOne(project, service) {
+  if (!project?.editable) throw new Error('项目未启用 Compose 目录能力,无法自动扩容');
+  const running = (project.containers || []).filter((item) => item.state === 'running' && containerMatchesService(item, service)).length;
+  const target = Math.max(2, running + 1);
+  const args = ['up', '-d', '--scale', `${service}=${target}`];
+  if (project.mounted) {
+    await new Promise((resolve, reject) => {
+      const child = spawnComposeCommand(project, args);
+      child.stdout.on('data', () => {});
+      child.stderr.on('data', () => {});
+      child.on('error', reject);
+      child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`compose scale 退出码 ${code}`))));
+    });
+  } else {
+    const code = await runWorkspaceComposeArgs(project, args, () => {});
+    if (code !== 0) throw new Error(`compose scale 退出码 ${code}`);
+  }
+}
+
+/** 评估 AI Agent 创建的阈值规则:CPU/内存/重启次数,超限触发 notify/auto_restart/scale。 */
+async function evaluateAgentRules(project, container, stats) {
+  const rules = readAgentAlertRules().filter((rule) => rule.projectId === project.id);
+  if (!rules.length) return;
+  const parsed = parseContainerStat(stats);
+  let restartCount = 0;
+  try {
+    const inspected = await docker.getContainer(container.id).inspect();
+    restartCount = Number(inspected?.RestartCount) || 0;
+  } catch {}
+
+  for (const rule of rules) {
+    if (!containerMatchesService(container, rule.service)) continue;
+    let current = null;
+    if (rule.metric === 'cpu') current = parsed.cpuPercent;
+    else if (rule.metric === 'memory') current = parsed.memPercent;
+    else if (rule.metric === 'restart_count') current = restartCount;
+    if (current == null || current < Number(rule.threshold)) continue;
+    if (!canTriggerAgentRule(rule, container.id)) continue;
+    await applyAgentAlertAction(rule, project, container, Math.round(current * 10) / 10);
+  }
 }
 
 async function poll() {
@@ -50,6 +151,7 @@ async function poll() {
               const usage = stats.memory_stats?.usage || 0;
               const limit = stats.memory_stats?.limit || 0;
               const percent = limit ? usage / limit * 100 : 0;
+              await evaluateAgentRules(project, item, stats);
               if (percent >= config.memoryThreshold && canAlert(`memory:${item.id}`)) {
                 recordAlertEventAndNotify({
                   key: `${item.id}:memory`,
@@ -76,6 +178,17 @@ async function poll() {
         });
         await sendNotification('ComposeOps：Docker 空间告警', `镜像与构建缓存占用 ${(usage.total / 1024 ** 3).toFixed(1)} GB`)
           .catch(() => {});
+      }
+    } else {
+      // 通知渠道未启用时,仍评估带自动处置的 Agent 规则(auto_restart / scale)。
+      for (const project of managedProjects) {
+        for (const item of project.containers) {
+          if (item.state !== 'running') continue;
+          try {
+            const stats = await docker.getContainer(item.id).stats({ stream: false });
+            await evaluateAgentRules(project, item, stats);
+          } catch {}
+        }
       }
     }
 

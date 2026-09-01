@@ -1,9 +1,19 @@
 import { getAiConfig, setAiConfig, callOpenAI, addAiMessage, getAiHistory, clearAiHistory, fetchAiModels } from '../services/ai.js';
-import { clearAiSession, listAiSessions } from '../lib/db.js';
+import {
+  clearAiSession,
+  listAiSessions,
+  getAgentPlan,
+  listAgentExecutions,
+  listAgentPlans,
+  listAgentFeedback,
+  listPerformanceBaselines,
+  recordAgentFeedback,
+} from '../lib/db.js';
 import { getActivityDocker } from '../services/docker-hosts.js';
 import { findProjectContainer } from '../services/scanner.js';
 import { readCompose } from '../services/compose-runner.js';
 import { readWorkspaceCompose } from '../services/compose-workspace.js';
+import { getAgent } from '../services/agent.js';
 
 /** 只读探测命令白名单:仅允许不带副作用的信息类命令。 */
 const READONLY_EXEC = /^(env|printenv|ps|top\s+-b\s+-n\s+1|netstat|ss|curl|wget|cat|head|tail|ls|df|du|free|uptime|uname|hostname|date|whoami|id|ip\s+addr|ping\s+-c\s+\d+)/;
@@ -300,4 +310,82 @@ ${logs.slice(-50000)}
       reply.raw.end();
     }
   });
+
+  // ===== Agent 编排端点 =====
+
+  // GET /api/v1/ai/agent/tools —— 可用工具元数据
+  fastify.get('/agent/tools', async () => ({ tools: getAgent().listTools() }));
+
+  // GET /api/v1/ai/agent/roles —— 多角色 Agent 元数据
+  fastify.get('/agent/roles', async () => ({ roles: getAgent().listRoles() }));
+
+  // POST /api/v1/ai/agent/plan —— 规划(不执行),返回思维链与执行计划
+  fastify.post('/agent/plan', async (request, reply) => {
+    const { message, projectId, containerId, sessionId, role } = request.body || {};
+    if (!message || !String(message).trim()) {
+      return reply.code(400).send({ error: 'missing_message', message: '缺少 message' });
+    }
+    const agent = getAgent();
+    const plan = await agent.plan(message, { projectId, containerId, sessionId, role });
+    const planId = agent.persistPlan(sessionId, message, plan);
+    return { planId, plan, thoughts: agent.thoughts };
+  });
+
+  // POST /api/v1/ai/agent/execute —— 执行已规划或自定义步骤
+  fastify.post('/agent/execute', async (request, reply) => {
+    const { planId, steps, sessionId } = request.body || {};
+    const agent = getAgent();
+    if (!planId) {
+      return reply.code(400).send({ error: 'missing_plan_id', message: '缺少 planId' });
+    }
+    if (!getAgentPlan(planId)) {
+      return reply.code(404).send({ error: 'plan_not_found', message: '执行计划不存在' });
+    }
+    if (!Array.isArray(steps) || !steps.length) {
+      return reply.code(400).send({ error: 'missing_steps', message: '缺少执行步骤' });
+    }
+    const result = await agent.executeWorkflow(planId, steps, { sessionId });
+    return { ...result, thoughts: agent.thoughts };
+  });
+
+  // POST /api/v1/ai/agent/confirm —— 单工具确认后直接执行(快速操作)
+  fastify.post('/agent/confirm', async (request, reply) => {
+    const { tool, params, confirmed } = request.body || {};
+    if (!confirmed) {
+      return reply.code(400).send({ error: 'not_confirmed', message: '用户未确认该操作' });
+    }
+    const agent = getAgent();
+    const result = await agent.executeTool(tool, params || {}, {});
+    return { ...result, thoughts: agent.thoughts };
+  });
+
+  // GET /api/v1/ai/agent/executions —— 执行历史
+  fastify.get('/agent/executions', async (request) => {
+    const planId = request.query?.planId;
+    if (planId) {
+      return { plan: getAgentPlan(planId), executions: listAgentExecutions(planId, request.query?.limit) };
+    }
+    return { plans: listAgentPlans(request.query?.limit), executions: listAgentExecutions(null, request.query?.limit) };
+  });
+
+  // GET /api/v1/ai/agent/feedback —— 用户反馈列表(反馈循环)
+  fastify.get('/agent/feedback', async (request) => ({ feedback: listAgentFeedback(request.query?.limit) }));
+
+  // POST /api/v1/ai/agent/feedback —— 记录计划评分/反馈
+  fastify.post('/agent/feedback', async (request, reply) => {
+    const { planId, rating, feedbackText } = request.body || {};
+    if (!planId) return reply.code(400).send({ error: 'missing_plan_id', message: '缺少 planId' });
+    const updated = recordAgentFeedback(planId, rating, feedbackText);
+    if (!updated) return reply.code(404).send({ error: 'plan_not_found', message: '执行计划不存在' });
+    return updated;
+  });
+
+  // GET /api/v1/ai/agent/export —— 审计/可观测性数据导出
+  fastify.get('/agent/export', async (request) => ({
+    exportedAt: new Date().toISOString(),
+    plans: listAgentPlans(request.query?.limit || 100),
+    executions: listAgentExecutions(null, request.query?.limit || 500),
+    feedback: listAgentFeedback(request.query?.limit || 200),
+    baselines: listPerformanceBaselines(request.query?.limit || 100),
+  }));
 }

@@ -152,6 +152,16 @@ export const api = {
   getAiHistory: (sessionId) => request(`/ai/history${sessionId ? `?sessionId=${sessionId}` : ''}`),
   getAiSessions: (limit = 30) => request(`/ai/sessions?limit=${limit}`),
   clearAiHistory: (sessionId) => request(`/ai/history${sessionId ? `?sessionId=${sessionId}` : ''}`, { method: 'DELETE' }),
+  // ai agent
+  getAgentTools: () => request('/ai/agent/tools'),
+  agentPlan: (payload) => request('/ai/agent/plan', { method: 'POST', body: JSON.stringify(payload) }),
+  agentExecute: (payload) => request('/ai/agent/execute', { method: 'POST', body: JSON.stringify(payload) }),
+  agentConfirm: (payload) => request('/ai/agent/confirm', { method: 'POST', body: JSON.stringify(payload) }),
+  getAgentExecutions: (planId = '') => request(`/ai/agent/executions${planId ? `?planId=${encodeURIComponent(planId)}` : ''}`),
+  getAgentRoles: () => request('/ai/agent/roles'),
+  getAgentFeedback: () => request('/ai/agent/feedback'),
+  agentFeedback: (payload) => request('/ai/agent/feedback', { method: 'POST', body: JSON.stringify(payload) }),
+  exportAgent: (limit = '') => request(`/ai/agent/export${limit ? `?limit=${encodeURIComponent(limit)}` : ''}`),
   // compose 语义校验 / 变更预览
   validateCompose: (projectId, fileIndex, content) => request(`/projects/${projectId}/compose/validate`, { method: 'POST', body: JSON.stringify({ fileIndex, content }) }),
   previewCompose: (projectId, content) => request(`/projects/${projectId}/compose/preview`, { method: 'POST', body: JSON.stringify({ content }) }),

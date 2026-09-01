@@ -110,9 +110,11 @@ const commandInput = ref(null);
 const projectSwitcherOpen = ref(false);
 const density = ref(localStorage.getItem('composeops:density') || 'comfortable');
 function toggleDensity() { density.value = density.value === 'compact' ? 'comfortable' : 'compact'; document.body.dataset.density = density.value; localStorage.setItem('composeops:density', density.value); }
+/** 归一化 API 返回值,避免非数组形态触发 `.slice`/`.filter` 报错。 */
+function asArray(value) { return Array.isArray(value) ? value : []; }
 const allProjects = ref([]);
-const quickProjects = computed(() => allProjects.value.slice(0, 12));
-const pageNames = { services: '服务总览', compose: 'Compose 配置', logs: '实时日志', shell: '容器终端', ai: 'AI 运维助手', monitor: '资源监控', operations: '操作记录', settings: '系统设置' };
+const quickProjects = computed(() => asArray(allProjects.value).slice(0, 12));
+const pageNames = { services: '服务总览', compose: 'Compose 配置', logs: '实时日志', shell: '容器终端', ai: 'AI 运维助手', agent: 'AI 智能 Agent', monitor: '资源监控', operations: '操作记录', settings: '系统设置' };
 const currentPage = computed(() => pageNames[route.name] || '运维控制台');
 const envProjects = ref([]);
 const appBlueprints = ref([]);
@@ -122,6 +124,7 @@ const baseCommands = [
   { to: '/logs', label: '实时日志', description: '连接容器输出并搜索、暂停或导出', icon: ScrollText, keywords: 'stdout stderr search 日志' },
   { to: '/shell', label: '容器终端', description: '打开受限的交互式 Shell', icon: TerminalSquare, keywords: 'terminal bash sh 终端' },
   { to: '/ai', label: 'AI 运维助手', description: '结合配置和日志进行故障诊断', icon: Bot, keywords: 'diagnose chat 诊断' },
+  { to: '/agent', label: 'AI 智能 Agent', description: '自然语言规划并执行 Compose 运维操作', icon: Bot, keywords: 'agent workflow 编排 执行 工具 运维' },
   { to: '/monitor', label: '资源监控', description: '检查 CPU、内存、网络和存储用量', icon: ChartNoAxesCombined, keywords: 'metrics cpu memory 监控' },
   { to: '/operations', label: '操作记录', description: '审计 Compose、配置和维护操作', icon: History, keywords: 'history audit 记录 审计' },
   { to: '/settings', label: '系统设置', description: '配置通知、更新、AI 与项目纳管', icon: Settings, keywords: 'notification maintenance mounts 设置' },
@@ -140,7 +143,7 @@ const commands = computed(() => {
       icon: Layers,
       keywords: `switch node host docker 节点 切换 ${host.name}`,
     }));
-  const envCommands = envProjects.value
+  const envCommands = asArray(envProjects.value)
     .filter((project) => project.editable)
     .map((project) => ({
       to: `/services?env=${project.id}`,
@@ -149,7 +152,7 @@ const commands = computed(() => {
       icon: KeyRound,
       keywords: `env environment variable 环境变量 ${project.projectName}`,
     }));
-  const blueprintCommands = appBlueprints.value
+  const blueprintCommands = asArray(appBlueprints.value)
     .slice(0, 12)
     .map((blueprint) => ({
       to: '/blueprints',
@@ -158,7 +161,7 @@ const commands = computed(() => {
       icon: Store,
       keywords: `app store blueprint deploy 部署 应用市场 ${blueprint.name}`,
     }));
-  const actionCommands = allProjects.value
+  const actionCommands = asArray(allProjects.value)
     .filter((project) => project.managed)
     .slice(0, 8)
     .flatMap((project) => ([
@@ -221,9 +224,9 @@ useEscapeKey({ active: commandOpen, onClose: closeCommand, layer: 'command' });
 watch(filteredCommands, () => { selectedCommand.value = 0; });
 onMounted(() => {
   if (!hostsStore.hosts.length) void hostsStore.load();
-  void api.getProjects().then((data) => { envProjects.value = data.projects || []; }).catch(() => {});
-  void api.getProjects(true).then((data) => { allProjects.value = data.projects || []; }).catch(() => {});
-  void api.getBlueprints().then((data) => { appBlueprints.value = data.blueprints || []; }).catch(() => {});
+  void api.getProjects().then((data) => { envProjects.value = asArray(data?.projects); }).catch(() => {});
+  void api.getProjects(true).then((data) => { allProjects.value = asArray(data?.projects); }).catch(() => {});
+  void api.getBlueprints().then((data) => { appBlueprints.value = asArray(data?.blueprints); }).catch(() => {});
   ping();
   currentTime.value = new Date().toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   pingTimer = setInterval(ping, 5000);
