@@ -4,6 +4,7 @@ import { checkAllUpdates } from '../services/image-updater.js';
 import { getNotificationConfig, saveNotificationConfig, sendNotification } from '../services/notifications.js';
 import { getAlertEventConfig } from '../services/health-alerter.js';
 import { addOperation } from '../lib/db.js';
+import { listAlertEvents, updateAlertEvent, pruneAlertEvents } from '../services/events.js';
 
 export default async function opsRoutes(fastify) {
   // ---- 镜像更新雷达:全局检测 ----
@@ -100,5 +101,25 @@ export default async function opsRoutes(fastify) {
     } catch (error) {
       return reply.code(502).send({ error: 'notification_failed', message: error.message });
     }
+  });
+
+  // ---- 告警事件(EventCenter 数据源) ----
+  fastify.get('/alert-events', async (request) => {
+    return { events: listAlertEvents(request.query?.limit) };
+  });
+
+  fastify.patch('/alert-events/:id', async (request, reply) => {
+    const id = Number(request.params?.id);
+    if (!Number.isInteger(id) || id <= 0) return reply.code(400).send({ error: 'invalid_event_id' });
+    const { read, muted } = request.body || {};
+    const event = updateAlertEvent(id, { read, muted });
+    if (!event) return reply.code(404).send({ error: 'event_not_found' });
+    return { event };
+  });
+
+  fastify.post('/alert-events/prune', async (request) => {
+    const days = Math.max(1, Math.min(Number(request.body?.days) || 7, 90));
+    const result = pruneAlertEvents(days);
+    return { ok: true, removed: result.changes };
   });
 }

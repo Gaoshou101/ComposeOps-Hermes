@@ -7,6 +7,7 @@ import { prepareProjectAction } from '../services/project-action-runner.js';
 import { readProjectEnv, saveProjectEnv, applyProjectEnv, assertEnvAccess } from '../services/project-env.js';
 import { getProjectUpdates, upgradeProject, rollbackProject } from '../services/image-updater.js';
 import { readContainerStat } from '../services/stats.js';
+import { validateComposeSemantics, previewComposeChange } from '../services/compose-validator.js';
 import {
   addOperation,
   getComposeBackup,
@@ -136,6 +137,28 @@ export default async function projectRoutes(fastify) {
     } catch (error) {
       return reply.code(error.statusCode || 500).send({ error: 'compose_read_failed', message: error.message });
     }
+  });
+
+  fastify.post('/:id/compose/validate', async (request, reply) => {
+    const project = await projectOr404(request.params.id, reply);
+    if (!project) return;
+    if (!requireEditable(project, reply)) return;
+    const { content, fileIndex } = request.body || {};
+    if (typeof content !== 'string') {
+      return reply.code(400).send({ error: 'invalid_content', message: '缺少校验内容' });
+    }
+    return { issues: validateComposeSemantics(content), fileIndex: Number(fileIndex) || 0 };
+  });
+
+  fastify.post('/:id/compose/preview', async (request, reply) => {
+    const project = await projectOr404(request.params.id, reply);
+    if (!project) return;
+    if (!requireEditable(project, reply)) return;
+    const { content } = request.body || {};
+    if (typeof content !== 'string') {
+      return reply.code(400).send({ error: 'invalid_content', message: '缺少预览内容' });
+    }
+    return { preview: previewComposeChange(content, project) };
   });
 
   fastify.put('/:id/compose', async (request, reply) => {

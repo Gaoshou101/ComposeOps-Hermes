@@ -1,6 +1,6 @@
 # 📌 ComposeOps - PROJECT_CONTEXT.md
-> **上次更新时间**:2026-08-31 20:05 (Asia/Shanghai)
-> **当前版本/阶段**:v0.8 - AI 排障 3 步闭环(日志上下文联动 / 容器只读探针 / 联网检索 Grounding)已交付
+> **上次更新时间**:2026-09-01 (Asia/Shanghai)
+> **当前版本/阶段**:v0.9 - 体验全面升阶(日志级别化 / 事件中心持久化 / AI 会话化 / Compose 语义校验与变更预览 / 服务卡片信息增强)已交付
 
 ## 1. 核心概述 (Executive Summary)
 - **项目目标**:单用户 Docker Compose 运维控制台(工作区名 `ComposeOps`,镜像/容器沿用旧名 `OpsDash`)。通过 Docker Socket 自动发现带 `com.docker.compose.project` 标签的 Compose 项目,以"先发现、后显式纳管"的权限模型提供项目启停、Compose 配置编辑、环境变量管理、实时日志、容器终端、AI 排错、批量任务、多 Docker 节点纳管与资源监控等能力。
@@ -25,6 +25,9 @@
   - 本轮(AI 排障 3 步闭环)已实现并验证:`AiView.vue` 全面重写(日志上下文检查器 + 只读探针卡片 + 联网检索开关/引用徽章),后端新增 `POST /api/v1/ai/exec`(只读命令白名单)与 `POST /api/v1/ai/logs`(复用 demux 日志读取),`/chat` 与 `/diagnose` 支持 `webSearch`(searchWeb 零 Key DuckDuckGo),并修复 `/ai/diagnose` 的 TDZ 顺序 bug。
   - 验证结果:`npx vitest run` 21/21 全绿;`npm run build` 零 Warning;后端 `node --test` 42/42 全绿。
   - 最近提交:`4611c7a`(五大功能)、`66f0e9e`(UI/UX 与性能专项)、UI 视觉升阶 `style:` commit、`f242243`(df 容错 + AI 模型列表)、`9f69ed6`(日志页卡死修复);本轮 AI 排障工作流 commit 即将提交。
+
+- **体验全面升阶专项(本轮)**:日志级别结构化(后端 `classifyLogLevel` 输出 error/warn/info,前端级别过滤/计数/徽标高亮,聚合流同样打标);事件中心持久化(`alert_events` 表,优先级 danger/warning、已读/静默、WS `/ws/events` 实时推送、异常退出日志留存展开、清空 7 天前);AI 会话化(`ai_history.session_id` 列,`/ai/sessions` 会话列表、按会话载入/删除、chat/diagnose 携带 sessionId);Compose 语义校验(`compose-validator.js`:depends_on/links 引用、端口冲突、缺 image/build、environment 重复)+ 保存前变更预览(新增/变更/重启/移除)+ 行级 diff(`lib/diff.js` LCS)+ 常用模板插入(`lib/composeTemplates.js`);服务卡片状态变更时间戳(scanner 输出 startedAt/stoppedAt)、依赖展示、脱敏环境变量预览、总览健康分数;监控趋势 localStorage 持久化(96 点)+ 告警阈值线 + 超阈值提示;快速项目切换器(Header 下拉)、Cmd+K 操作命令(启动/重启/停止/日志)、视图密度切换(compact/comfortable)、全局错误边界(App.vue `onErrorCaptured` + runtime-error 事件)、操作提交 toast 反馈。
+- **本轮验证**:后端 `node --test` 56/56 全绿(新增 compose-validator / ai-sessions / alert-events 测试);前端 `vitest run` 25/25 全绿(新增 diff.spec);`npm run build` 零 Warning;后端启动冒烟:setup → alert-events / ai-sessions / prune 端点均 200;dotenv 双端字节一致。
 
 ## 3. 下一步任务清单 (Next Action Items)
 - [ ] **紧急/首要任务**:在容器/真机实测 AI 排障 3 步闭环:① `/ai` 页选项目/容器后日志检查器能拉取上下文并勾选注入;② 开启「联网检索」后提问,回复底部出现来源引用徽章;③ AI 回复含 ```bash 只读命令时出现「在容器中执行」卡片,点击回显 Exit Code/耗时并可追问。同时回归既有 UI/UX 专项:页面切换 0ms 秒开、5000+ 行日志滚动流畅、弹层模糊与按压反馈。

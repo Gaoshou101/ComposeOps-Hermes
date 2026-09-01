@@ -5,9 +5,14 @@
       <div class="page-actions">
         <select v-model="projectId" class="input" @change="onProjectChange"><option value="">选择项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
         <select v-model="containerId" class="input" @change="onContainerChange"><option value="">选择容器</option><option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option></select>
+        <select v-model="activeSessionId" class="input max-w-44" title="诊断会话" @change="onSessionChange">
+          <option value="">新对话(独立会话)</option>
+          <option v-for="session in store.sessions" :key="session.sessionId" :value="session.sessionId">{{ session.title }}</option>
+        </select>
         <button class="btn-secondary" :disabled="streaming || !containerId" @click="diagnose"><Stethoscope class="w-4 h-4" />诊断</button>
         <button class="icon-btn" title="重新载入历史" @click="loadHistory"><History class="w-4 h-4" /></button>
-        <button class="icon-btn" title="清空历史" @click="clearHistory"><Trash2 class="w-4 h-4" /></button>
+        <button v-if="activeSessionId" class="icon-btn" title="删除当前会话" @click="deleteSession(activeSessionId)"><Trash2 class="w-4 h-4" /></button>
+        <button class="icon-btn" title="清空全部历史" @click="clearHistory"><History class="w-4 h-4" /></button>
       </div>
     </div>
 
@@ -125,6 +130,7 @@ import { Bot, Check, ChevronLeft, ChevronRight, Globe, History, LoaderCircle, Re
 import { useAiStore } from '../stores/ai.js'; import { api, streamSse } from '../api/client.js';
 const route = useRoute(); const store = useAiStore(); const projects = ref([]); const projectId = ref(route.query.projectId || ''); const containerId = ref(route.query.containerId || ''); const messages = ref([]); const input = ref(''); const streaming = ref(false); const buffer = ref(''); const boxEl = ref(null); const inputEl = ref(null); let controller; let nextId = 0;
 const webSearch = ref(false);
+const activeSessionId = ref('');
 const inspectorOpen = ref(true);
 const logLines = ref([]);
 const logLoading = ref(false);
@@ -180,25 +186,32 @@ function selectAllErrors() {
 }
 
 onMounted(async () => {
-  await Promise.all([store.loadConfig(), loadHistory(), api.getProjects().then((r) => projects.value = r.projects.filter((project) => project.managed))]);
+  await Promise.all([store.loadConfig(), loadHistory(), store.loadSessions(), api.getProjects().then((r) => projects.value = r.projects.filter((project) => project.managed))]);
   if (containerId.value && projects.value.some((project) => project.id === projectId.value)) await loadLogs();
   if (route.query.diagnose === '1' && containerId.value && projects.value.some((project) => project.id === projectId.value)) diagnose();
 });
-async function loadHistory() { await store.loadHistory(); messages.value = store.history.map((m) => ({ id: m.id || ++nextId, role: m.role, content: m.content, sources: m.sources, probes: m.probes })); scroll(); }
-async function clearHistory() { if (!confirm('确认清空 AI 对话历史?')) return; await store.clearHistory(); messages.value = []; }
+async function loadHistory() { await store.loadHistory(activeSessionId.value || null); messages.value = store.history.map((m) => ({ id: m.id || ++nextId, role: m.role, content: m.content, sources: m.sources, probes: m.probes })); scroll(); }
+async function onSessionChange() { messages.value = []; await loadHistory(); }
+async function deleteSession(sessionId) {
+  if (!confirm('删除该诊断会话?')) return;
+  await api.clearAiHistory(sessionId);
+  if (activeSessionId.value === sessionId) activeSessionId.value = '';
+  await store.loadSessions(); await loadHistory();
+}
+async function clearHistory() { if (!confirm('确认清空全部 AI 对话历史?')) return; await store.clearHistory(); messages.value = []; activeSessionId.value = ''; await store.loadSessions(); }
 async function send() {
   const text = input.value.trim(); if (!text || streaming.value) return;
   const mount = selectedLogLines.value.map((log) => log.data).join('\n');
   input.value = '';
   const userMsg = { id: ++nextId, role: 'user', content: mount ? `${text}\n\n--- 已挂载日志上下文 ---\n${mount}` : text };
   messages.value.push(userMsg);
-  await chat('/ai/chat', { message: text, webSearch: webSearch.value, rawLogs: mount || undefined, failedCommand: text, exitCode: null });
+  await chat('/ai/chat', { message: text, webSearch: webSearch.value, rawLogs: mount || undefined, failedCommand: text, exitCode: null, sessionId: activeSessionId.value || undefined });
 }
 async function diagnose() {
   const name = containers.value.find((c) => c.id === containerId.value)?.name || containerId.value;
   const mount = selectedLogLines.value.map((log) => log.data).join('\n');
   messages.value.push({ id: ++nextId, role: 'user', content: `诊断容器 ${name}${mount ? `\n\n--- 已挂载日志上下文 ---\n${mount}` : ''}` });
-  await chat('/ai/diagnose', { projectId: projectId.value, containerId: containerId.value, rawLogs: mount || undefined, webSearch: webSearch.value });
+  await chat('/ai/diagnose', { projectId: projectId.value, containerId: containerId.value, rawLogs: mount || undefined, webSearch: webSearch.value, sessionId: activeSessionId.value || undefined });
 }
 async function chat(path, body) {
   streaming.value = true; buffer.value = ''; controller = new AbortController(); scroll();
@@ -248,7 +261,7 @@ async function runProbe(msg, probe) {
     // 自动追加一轮 AI 分析(探针结果回填)
     if (msg && typeof msg.content === 'string' && msg.content.trim()) {
       messages.value.push({ id: ++nextId, role: 'user', content: `探针命令 ${probe.command} 执行结果(Exit ${result.exitCode}):\n${String(result.stdout || '').slice(0, 4000)}` });
-      void chat('/ai/chat', { message: `请基于上面的探针执行结果继续分析容器问题`, webSearch: webSearch.value, rawLogs: String(result.stdout || '').slice(0, 4000) });
+      void chat('/ai/chat', { message: `请基于上面的探针执行结果继续分析容器问题`, webSearch: webSearch.value, rawLogs: String(result.stdout || '').slice(0, 4000), sessionId: activeSessionId.value || undefined });
     }
   } catch (e) {
     probe.result = { stdout: `执行失败:${e.message}`, exitCode: -1, durationMs: 0 };

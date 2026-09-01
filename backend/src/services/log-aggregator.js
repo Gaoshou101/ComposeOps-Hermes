@@ -36,7 +36,15 @@ export async function aggregateProjectLogs({ project, containerIds = [], onLine 
           let ts = null;
           const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))\s?(.*)$/.exec(rawLine);
           if (match) { ts = match[1]; data = match[2]; }
-          onLine({ containerId: container.id, containerName: container.name, type, ts, data });
+          onLine({
+            containerId: container.id,
+            containerName: container.name,
+            type,
+            ts,
+            data,
+            level: /(error|exception|fatal|panic|crash|failed)/i.test(data) ? 'error'
+              : /(warn|deprecat)/i.test(data) ? 'warn' : 'info',
+          });
         }
       };
       demux.stdout.on('data', (chunk) => emit('stdout', chunk));

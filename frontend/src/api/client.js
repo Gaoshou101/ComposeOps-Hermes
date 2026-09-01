@@ -140,14 +140,21 @@ export const api = {
   // alert events
   getNotificationEvents: () => request('/ops/notifications/events'),
   saveNotificationEvents: (events) => request('/ops/notifications/events', { method: 'PUT', body: JSON.stringify({ events }) }),
+  getAlertEvents: (limit = 50) => request(`/ops/alert-events?limit=${limit}`),
+  updateAlertEvent: (id, patch) => request(`/ops/alert-events/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  pruneAlertEvents: (days = 7) => request('/ops/alert-events/prune', { method: 'POST', body: JSON.stringify({ days }) }),
   // ai
   getAiConfig: () => request('/ai/config'),
   saveAiConfig: (payload) => request('/ai/config', { method: 'POST', body: JSON.stringify(payload) }),
   fetchAiModels: (payload = {}) => request('/ai/fetch-models', { method: 'POST', body: JSON.stringify(payload) }),
   execContainer: (payload) => request('/ai/exec', { method: 'POST', body: JSON.stringify(payload) }),
   getProjectLogs: (projectId, containerId, tail = 200) => request('/ai/logs', { method: 'POST', body: JSON.stringify({ projectId, containerId, tail }) }),
-  getAiHistory: () => request('/ai/history'),
-  clearAiHistory: () => request('/ai/history', { method: 'DELETE' }),
+  getAiHistory: (sessionId) => request(`/ai/history${sessionId ? `?sessionId=${sessionId}` : ''}`),
+  getAiSessions: (limit = 30) => request(`/ai/sessions?limit=${limit}`),
+  clearAiHistory: (sessionId) => request(`/ai/history${sessionId ? `?sessionId=${sessionId}` : ''}`, { method: 'DELETE' }),
+  // compose 语义校验 / 变更预览
+  validateCompose: (projectId, fileIndex, content) => request(`/projects/${projectId}/compose/validate`, { method: 'POST', body: JSON.stringify({ fileIndex, content }) }),
+  previewCompose: (projectId, content) => request(`/projects/${projectId}/compose/preview`, { method: 'POST', body: JSON.stringify({ content }) }),
   // system
   getMetrics: () => request('/system/metrics'),
   getCapabilities: () => request('/system/capabilities'),

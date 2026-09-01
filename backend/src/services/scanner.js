@@ -97,6 +97,9 @@ export async function scanProjects() {
     }
 
     const project = projects.get(key);
+    const started = Number(c.Created || 0) * 1000;
+    const statusMatch = /\((\d+) days?\)/.exec(c.Status || '');
+    const stopped = statusMatch ? Date.now() - Number(statusMatch[1]) * 86400000 : null;
     project.containers.push({
       id: c.Id,
       name: (c.Names[0] || '').replace(/^\//, ''),
@@ -105,6 +108,8 @@ export async function scanProjects() {
       image: c.Image,
       imageId: c.ImageID || '',
       created: c.Created,
+      startedAt: started || null,
+      stoppedAt: stopped,
       health: /\((healthy|unhealthy|starting)\)/.exec(c.Status || '')?.[1] || null,
       ports: (c.Ports || []).filter((port) => port.PublicPort).map((port) => ({
         private: port.PrivatePort,

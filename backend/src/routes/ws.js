@@ -4,6 +4,7 @@ import { getBackgroundJob } from '../lib/db.js';
 import { subscribeJobEvents } from '../services/job-events.js';
 import { getActivityDocker } from '../services/docker-hosts.js';
 import { aggregateProjectLogs } from '../services/log-aggregator.js';
+import { subscribeEvents } from '../services/events.js';
 
 /**
  * WebSocket 路由：实时日志流与容器 Web Shell。
@@ -16,6 +17,14 @@ import { aggregateProjectLogs } from '../services/log-aggregator.js';
  * 这些路由挂在 /ws 前缀（不经过 /api/v1），方便 nginx 反代区分。
  */
 export default async function wsRoutes(fastify) {
+  // ---- 告警事件实时流 ----
+  fastify.get('/events', { websocket: true }, async (socket) => {
+    const unsubscribe = subscribeEvents((event) => {
+      safeSend(socket, { type: 'event', data: event });
+    });
+    socket.on('close', unsubscribe);
+  });
+
   // ---- 批量任务进度推送 ----
   fastify.get('/jobs', { websocket: true }, async (socket, request) => {
     const { jobId } = request.query;
@@ -71,14 +80,24 @@ export default async function wsRoutes(fastify) {
 
     // Docker log stream 是 multiplexed（stdout/stderr 8 字节头），用 demuxStream 拆分。
     const inspection = await container.inspect().catch(() => null);
+    const emitLine = (type, text) => {
+      for (const rawLine of text.split('\n')) {
+        if (!rawLine.trim()) continue;
+        let data = rawLine;
+        let ts = null;
+        const m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))\s?(.*)$/.exec(rawLine);
+        if (m) { ts = m[1]; data = m[2]; }
+        safeSend(socket, { type, data, ts, level: classifyLogLevel(data) });
+      }
+    };
     if (inspection?.Config?.Tty) {
-      logStream.on('data', (b) => safeSend(socket, { type: 'stdout', data: b.toString('utf8') }));
+      logStream.on('data', (b) => emitLine('stdout', b.toString('utf8')));
     } else {
       const { demuxStream } = await import('../lib/docker-streams.js');
       const demux = demuxStream();
       logStream.pipe(demux);
-      demux.stdout.on('data', (b) => safeSend(socket, { type: 'stdout', data: b.toString('utf8') }));
-      demux.stderr.on('data', (b) => safeSend(socket, { type: 'stderr', data: b.toString('utf8') }));
+      demux.stdout.on('data', (b) => emitLine('stdout', b.toString('utf8')));
+      demux.stderr.on('data', (b) => emitLine('stderr', b.toString('utf8')));
     }
 
     logStream.on('error', (e) => safeSend(socket, { type: 'error', data: e.message }));
@@ -221,4 +240,12 @@ function safeSend(socket, payload) {
       socket.send(JSON.stringify(payload));
     }
   } catch {}
+}
+
+/** 日志行级别分类:error / warn / info,供前端过滤与高亮。 */
+function classifyLogLevel(text = '') {
+  const t = String(text);
+  if (/(error|exception|fatal|panic|crash|failed)/i.test(t)) return 'error';
+  if (/(warn|deprecat)/i.test(t)) return 'warn';
+  return 'info';
 }

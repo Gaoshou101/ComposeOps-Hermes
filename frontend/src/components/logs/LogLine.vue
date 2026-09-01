@@ -6,7 +6,10 @@
       <pre class="json-block" :class="{ open: jsonOpen }">{{ jsonText }}</pre>
       <button class="json-toggle" @click="jsonOpen = !jsonOpen">{{ jsonOpen ? '折叠' : '展开' }}</button>
     </template>
-    <span v-else class="line-data" :class="levelClass" v-html="highlighted"></span>
+    <template v-else>
+      <span v-if="levelBadge" class="level-badge" :class="levelBadgeClass">{{ levelBadge }}</span>
+      <span class="line-data" :class="levelClass" v-html="highlighted"></span>
+    </template>
   </div>
 </template>
 
@@ -32,12 +35,15 @@ function hashColor(name = '') {
 const badgeClass = computed(() => hashColor(props.line.containerName));
 
 const text = computed(() => String(props.line.data || ''));
-const isError = computed(() => /(error|exception|fatal|crash|panic|failed)/i.test(text.value));
+const level = computed(() => props.line.level || (/(error|exception|fatal|crash|panic|failed)/i.test(text.value) ? 'error' : /(warn|deprecat)/i.test(text.value) ? 'warn' : 'info'));
+const isError = computed(() => level.value === 'error');
 const levelClass = computed(() => {
-  if (props.line.type === 'stderr' || isError.value) return 'text-rose-300';
-  if (/warn|deprecat/i.test(text.value)) return 'text-amber-200';
+  if (props.line.type === 'stderr' || level.value === 'error') return 'text-rose-300';
+  if (level.value === 'warn') return 'text-amber-200';
   return 'text-surface-200';
 });
+const levelBadge = computed(() => level.value === 'error' ? 'ERROR' : level.value === 'warn' ? 'WARN' : '');
+const levelBadgeClass = computed(() => level.value === 'error' ? 'bg-rose-950/60 text-rose-300 border-rose-500/40' : 'bg-amber-950/60 text-amber-300 border-amber-500/40');
 const ts = computed(() => props.line.ts || null);
 const shortTs = computed(() => {
   if (!ts.value) return '';

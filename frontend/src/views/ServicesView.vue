@@ -14,6 +14,7 @@
       <button class="metric-tile" :class="{ active: filter === 'running' }" @click="filter = filter === 'running' ? 'all' : 'running'"><span class="metric-icon text-emerald-300"><CircleCheckBig class="h-5 w-5" /></span><span><strong>{{ healthyCount }}</strong><small>健康运行</small></span><span class="metric-meta">项目状态正常</span></button>
       <button class="metric-tile" :class="{ active: filter === 'attention' }" @click="filter = filter === 'attention' ? 'all' : 'attention'"><span class="metric-icon text-amber-300"><AlertTriangle class="h-5 w-5" /></span><span><strong>{{ attentionCount }}</strong><small>需要关注</small></span><span class="metric-meta">停止、部分异常或不健康</span></button>
       <button class="metric-tile" :class="{ active: filter === 'stopped' }" @click="filter = filter === 'stopped' ? 'all' : 'stopped'"><span class="metric-icon text-surface-300"><Container class="h-5 w-5" /></span><span><strong>{{ runningContainerCount }} / {{ containerCount }}</strong><small>运行中容器</small></span><span class="metric-meta">{{ stoppedContainerCount }} 个未运行</span></button>
+      <button class="metric-tile"><span class="metric-icon" :class="healthTone"><Gauge class="h-5 w-5" /></span><span><strong class="font-mono tabular-nums" :class="healthTone">{{ healthScore }}</strong><small>健康分数</small></span><span class="metric-meta">综合项目与容器状态</span></button>
     </div>
     <div v-if="store.projects.length" class="toolbar-panel">
       <label class="search-field"><Search class="h-4 w-4" /><input v-model="searchQuery" placeholder="搜索项目、容器、镜像或路径" /></label>
@@ -46,7 +47,7 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { AlertTriangle, Boxes, CircleCheckBig, Container, Keyboard, RefreshCw, Search } from 'lucide-vue-next';
+import { AlertTriangle, Boxes, CircleCheckBig, Container, Gauge, Keyboard, RefreshCw, Search } from 'lucide-vue-next';
 import { useServicesStore } from '../stores/services.js';
 import { useToastStore } from '../stores/toast.js';
 import { useKeyboardNavigation } from '../composables/useKeyboardNavigation.js';
@@ -77,6 +78,16 @@ const runningContainerCount = computed(() => store.projects.reduce((count, proje
 const stoppedContainerCount = computed(() => containerCount.value - runningContainerCount.value);
 const healthyCount = computed(() => store.projects.filter((project) => !hasAttention(project)).length);
 const attentionCount = computed(() => store.projects.filter(hasAttention).length);
+const healthScore = computed(() => {
+  if (!store.projects.length) return 100;
+  const total = store.projects.reduce((count, project) => count + Math.max(1, project.containers.length), 0);
+  const penalties = store.projects.reduce((sum, project) => {
+    if (hasAttention(project)) sum += Math.max(1, project.containers.length) * (project.status === 'stopped' ? 1 : 0.6);
+    return sum;
+  }, 0);
+  return Math.max(0, Math.round((1 - penalties / total) * 100));
+});
+const healthTone = computed(() => healthScore.value >= 90 ? 'text-emerald-300' : healthScore.value >= 70 ? 'text-amber-300' : 'text-rose-300');
 const visibleProjects = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
   const matcher = statusMatchers[filter.value];

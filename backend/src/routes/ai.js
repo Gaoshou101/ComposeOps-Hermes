@@ -1,4 +1,5 @@
 import { getAiConfig, setAiConfig, callOpenAI, addAiMessage, getAiHistory, clearAiHistory, fetchAiModels } from '../services/ai.js';
+import { clearAiSession, listAiSessions } from '../lib/db.js';
 import { getActivityDocker } from '../services/docker-hosts.js';
 import { findProjectContainer } from '../services/scanner.js';
 import { readCompose } from '../services/compose-runner.js';
@@ -128,13 +129,26 @@ export default async function aiRoutes(fastify) {
     return { logs, count: logs.split('\n').filter((l) => l.trim()).length };
   });
 
-  // GET /api/v1/ai/history
-  fastify.get('/history', async () => {
-    return { messages: getAiHistory(50) };
+  // GET /api/v1/ai/history?sessionId=<id>&limit=100 —— 会话消息(留空取全部)
+  fastify.get('/history', async (request) => {
+    const sessionId = request.query?.sessionId;
+    const limit = Math.max(1, Math.min(Number(request.query?.limit) || 100, 200));
+    const messages = sessionId ? getAiHistory(limit, Number(sessionId)) : getAiHistory(limit);
+    return { messages };
   });
 
-  // DELETE /api/v1/ai/history
-  fastify.delete('/history', async () => {
+  // GET /api/v1/ai/sessions —— 会话列表(标题/时间/消息数)
+  fastify.get('/sessions', async (request) => {
+    return { sessions: listAiSessions(request.query?.limit) };
+  });
+
+  // DELETE /api/v1/ai/history?sessionId=<id> —— 删除指定会话;不带参数清空全部
+  fastify.delete('/history', async (request) => {
+    const sessionId = request.query?.sessionId;
+    if (sessionId) {
+      clearAiSession(Number(sessionId));
+      return { ok: true, sessionId: Number(sessionId) };
+    }
     clearAiHistory();
     return { ok: true };
   });
@@ -142,7 +156,7 @@ export default async function aiRoutes(fastify) {
   // POST /api/v1/ai/chat
   // body: { message, stream?:true } —— 通用对话，SSE 流式返回
   fastify.post('/chat', async (request, reply) => {
-    const { message, webSearch } = request.body || {};
+    const { message, webSearch, sessionId } = request.body || {};
     let sources = [];
     if (webSearch) {
       try {
@@ -153,13 +167,18 @@ export default async function aiRoutes(fastify) {
     const cfg = getAiConfig();
     if (!cfg.apiKey) return reply.code(400).send({ error: 'ai_not_configured', message: '请先在设置中配置 API Key' });
 
+    // 会话上下文:同一 sessionId 复用最近的对话轮次;未提供则默认取全局最近 10 条。
+    const contextMessages = sessionId
+      ? getAiHistory(10, Number(sessionId))
+      : getAiHistory(10);
     const messages = [
       { role: 'system', content: cfg.systemPrompt },
-      ...getAiHistory(10).map(({ role, content }) => ({ role, content })),
+      ...contextMessages.map(({ role, content }) => ({ role, content })),
       { role: 'user', content: message },
     ];
     if (sources.length) messages.push({ role: 'system', content: `以下是联网检索结果(供参考,如有冲突以检索为准):\n${sources.map((r, i) => `[${i + 1}] ${r.title}${r.url ? ' (' + r.url + ')' : ''}\n${r.snippet}`).join('\n\n')}` });
-    addAiMessage('user', message);
+    const resolvedSessionId = sessionId ? Number(sessionId) : null;
+    addAiMessage('user', message, null, resolvedSessionId);
 
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -179,7 +198,7 @@ export default async function aiRoutes(fastify) {
         onToken: (t) => send('token', t),
         signal: controller.signal,
       });
-      addAiMessage('assistant', full);
+      addAiMessage('assistant', full, null, resolvedSessionId);
       send('done', full);
       if (sources.length) send('sources', sources);
     } catch (e) {
@@ -194,7 +213,7 @@ export default async function aiRoutes(fastify) {
   // body: { containerId, composeContent } —— 一键日志排错
   // 自动组装：系统 Prompt + 最近 100 行容器日志 + compose 文件内容
   fastify.post('/diagnose', async (request, reply) => {
-    const { projectId, containerId } = request.body || {};
+    const { projectId, containerId, sessionId } = request.body || {};
     if (!projectId || !containerId) return reply.code(400).send({ error: 'missing projectId or containerId' });
     const cfg = getAiConfig();
     if (!cfg.apiKey) return reply.code(400).send({ error: 'ai_not_configured', message: '请先配置 API Key' });
@@ -254,7 +273,8 @@ ${logs.slice(-50000)}
     });
     const send = (type, data) => reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
 
-    addAiMessage('user', `诊断容器 ${match.container.name}`, { projectId, containerId: match.container.id });
+    const resolvedSessionId = sessionId ? Number(sessionId) : null;
+    addAiMessage('user', `诊断容器 ${match.container.name}`, { projectId, containerId: match.container.id }, resolvedSessionId);
     const controller = new AbortController();
     let completed = false;
     reply.raw.on('close', () => { if (!completed) controller.abort(); });
@@ -270,7 +290,7 @@ ${logs.slice(-50000)}
         onToken: (t) => send('token', t),
         signal: controller.signal,
       });
-      addAiMessage('assistant', full, { projectId, containerId: match.container.id });
+      addAiMessage('assistant', full, { projectId, containerId: match.container.id }, resolvedSessionId);
       send('done', full);
       if (sources.length) send('sources', sources);
     } catch (e) {

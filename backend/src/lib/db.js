@@ -23,6 +23,7 @@ db.exec(`
     role       TEXT NOT NULL,          -- user | assistant | system
     content    TEXT NOT NULL,
     context    TEXT,                    -- JSON: 关联的日志/compose 文件等上下文标记
+    session_id INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -60,6 +61,21 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS alert_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    key        TEXT NOT NULL DEFAULT '',
+    title      TEXT NOT NULL DEFAULT '',
+    detail     TEXT NOT NULL DEFAULT '',
+    priority   TEXT NOT NULL DEFAULT 'warning',
+    target     TEXT,
+    read       INTEGER NOT NULL DEFAULT 0,
+    muted      INTEGER NOT NULL DEFAULT 0,
+    logs       TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_alert_events_created ON alert_events(created_at);
+
   CREATE TABLE IF NOT EXISTS background_jobs (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
@@ -95,6 +111,14 @@ if (!projectPreferenceColumns.some((column) => column.name === 'managed')) {
 if (!projectPreferenceColumns.some((column) => column.name === 'mount_enabled')) {
   db.exec('ALTER TABLE project_preferences ADD COLUMN mount_enabled INTEGER NOT NULL DEFAULT 0');
 }
+const aiHistoryColumns = db.prepare('PRAGMA table_info(ai_history)').all();
+if (!aiHistoryColumns.some((column) => column.name === 'session_id')) {
+  db.exec('ALTER TABLE ai_history ADD COLUMN session_id INTEGER NOT NULL DEFAULT 0');
+}
+const alertEventColumns = db.prepare('PRAGMA table_info(alert_events)').all();
+if (!alertEventColumns.some((column) => column.name === 'logs')) {
+  db.exec("ALTER TABLE alert_events ADD COLUMN logs TEXT NOT NULL DEFAULT ''");
+}
 
 export function getSetting(key, fallback = null) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
@@ -107,21 +131,77 @@ export function setSetting(key, value) {
   ).run(key, value);
 }
 
-export function addAiMessage(role, content, context = null) {
+export function addAiMessage(role, content, context = null, sessionId = null) {
   db.prepare(
-    'INSERT INTO ai_history(role, content, context) VALUES(?, ?, ?)'
-  ).run(role, content, context ? JSON.stringify(context) : null);
+    'INSERT INTO ai_history(role, content, context, session_id) VALUES(?, ?, ?, ?)'
+  ).run(role, content, context ? JSON.stringify(context) : null, sessionId == null ? 0 : sessionId);
   return db.prepare('SELECT last_insert_rowid() AS id').get().id;
 }
 
-export function getAiHistory(limit = 50) {
+export function getAiHistory(limit = 50, sessionId = null) {
+  if (sessionId != null) {
+    return db.prepare(
+      'SELECT id, role, content, context, session_id AS sessionId, created_at FROM ai_history WHERE session_id = ? ORDER BY id DESC LIMIT ?'
+    ).all(sessionId, limit).reverse();
+  }
   return db.prepare(
-    'SELECT id, role, content, context, created_at FROM ai_history ORDER BY id DESC LIMIT ?'
+    'SELECT id, role, content, context, session_id AS sessionId, created_at FROM ai_history ORDER BY id DESC LIMIT ?'
   ).all(limit).reverse();
+}
+
+export function listAiSessions(limit = 30) {
+  const sessions = db.prepare(`
+    SELECT session_id AS sessionId,
+           MAX(created_at) AS createdAt,
+           (SELECT content FROM ai_history h2 WHERE h2.session_id = h.session_id AND h2.role = 'user' ORDER BY h2.id ASC LIMIT 1) AS firstUserMessage,
+           COUNT(*) AS messageCount
+    FROM ai_history h
+    WHERE session_id <> 0
+    GROUP BY session_id
+    ORDER BY MAX(id) DESC
+    LIMIT ?
+  `).all(Math.max(1, Math.min(Number(limit) || 30, 100)));
+  return sessions.map((session) => ({
+    ...session,
+    title: String(session.firstUserMessage || '').replace(/\s+/g, ' ').slice(0, 60),
+  }));
+}
+
+export function clearAiSession(sessionId) {
+  db.prepare('DELETE FROM ai_history WHERE session_id = ?').run(sessionId);
 }
 
 export function clearAiHistory() {
   db.prepare('DELETE FROM ai_history').run();
+}
+
+export function addAlertEvent({ key, title, detail, priority = 'warning', to = null, logs = '' }) {
+  // 同一 key 的未读事件先静默,避免重复刷屏
+  db.prepare('UPDATE alert_events SET muted = 1 WHERE key = ? AND read = 0 AND muted = 0').run(key);
+  const result = db.prepare(`
+    INSERT INTO alert_events(key, title, detail, priority, target, logs)
+    VALUES(?, ?, ?, ?, ?, ?)
+  `).run(key || '', String(title || ''), String(detail || ''), String(priority || 'warning'), to || null, String(logs || '').slice(0, 20000));
+  return db.prepare('SELECT * FROM alert_events WHERE id = ?').get(Number(result.lastInsertRowid));
+}
+
+export function listAlertEvents(limit = 50) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 200));
+  return db.prepare('SELECT * FROM alert_events ORDER BY id DESC LIMIT ?').all(safeLimit);
+}
+
+export function updateAlertEvent(id, patch = {}) {
+  const current = db.prepare('SELECT * FROM alert_events WHERE id = ?').get(id);
+  if (!current) return null;
+  const read = patch.read !== undefined ? (patch.read ? 1 : 0) : current.read;
+  const muted = patch.muted !== undefined ? (patch.muted ? 1 : 0) : current.muted;
+  db.prepare("UPDATE alert_events SET read = ?, muted = ?, updated_at = datetime('now') WHERE id = ?").run(read, muted, id);
+  return db.prepare('SELECT * FROM alert_events WHERE id = ?').get(id);
+}
+
+export function pruneAlertEvents(days = 7) {
+  const safeDays = Math.max(1, Number(days) || 7);
+  return db.prepare("DELETE FROM alert_events WHERE julianday('now') - julianday(created_at) > ?").run(safeDays);
 }
 
 export function createSession(tokenHash, expiresAt) {

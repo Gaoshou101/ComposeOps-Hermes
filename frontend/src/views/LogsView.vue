@@ -7,7 +7,7 @@
         <button class="btn-secondary" :class="{ 'btn-primary': aggregateMode }" :disabled="!projectId" :title="aggregateMode ? '当前为聚合模式,点击切换为单容器' : '聚合所有选中容器' " @click="toggleAggregate"><Layers class="w-4 h-4" />{{ aggregateMode ? '聚合中' : '聚合' }}</button>
         <select v-if="!aggregateMode" v-model="containerId" class="input" @change="onContainerChange"><option value="">选择容器</option><option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option></select>
         <select v-else v-model="selectedContainers" class="input" multiple size="1" title="聚合容器(按住 Ctrl 多选)"><option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option></select>
-        <select v-model="levelFilter" class="input w-24" title="级别过滤"><option value="">全部</option><option value="error">ERROR</option><option value="warn">WARN</option></select>
+        <select v-model="levelFilter" class="input w-28" title="级别过滤"><option value="">全部</option><option value="error">ERROR{{ levelCounts.error ? ` (${levelCounts.error})` : '' }}</option><option value="warn">WARN{{ levelCounts.warn ? ` (${levelCounts.warn})` : '' }}</option></select>
         <input v-model="search" class="input w-40" placeholder="搜索或 /regex/" />
         <button v-if="!connected" class="btn-primary" :disabled="!canConnect" @click="connect"><Play class="w-4 h-4" />连接</button>
         <button v-else class="btn-danger" @click="disconnect"><Square class="w-4 h-4" />断开</button>
@@ -22,7 +22,10 @@
     <div class="flex items-center gap-3 text-muted">
       <span :class="connected ? 'text-emerald-400' : ''"><span class="status-dot" :class="connected ? 'bg-emerald-400' : 'bg-surface-600'"></span>{{ connected ? '已连接' : '未连接' }}</span>
       <span>{{ filtered.length }} 条</span>
+      <span v-if="levelCounts.error" class="text-rose-400">ERROR {{ levelCounts.error }}</span>
+      <span v-if="levelCounts.warn" class="text-amber-400">WARN {{ levelCounts.warn }}</span>
       <span v-if="paused" class="text-amber-400">已暂停 · {{ pending.length }} 条待显示</span>
+      <span v-if="sawError && !paused" class="text-rose-300">检测到 {{ retainedCount }} 行异常日志,退出后可到事件中心查阅</span>
       <label class="toggle-label ml-auto"><input v-model="autoScroll" type="checkbox" />自动滚动</label>
     </div>
 
@@ -74,6 +77,9 @@ const boxEl = ref(null);
 const diagnosis = ref(false);
 const sequence = ref(0);
 const errorLines = ref(0);
+const levelCounts = ref({ error: 0, warn: 0, info: 0 });
+const sawError = ref(false);
+const retainedCount = ref(0);
 const LINE_H = 24;
 const OVERSCAN = 30;
 const viewStart = ref(0);
@@ -96,11 +102,7 @@ watch(search, () => nextTick(syncViewport));
 
 const filtered = computed(() => {
   let result = lines.value;
-  if (levelFilter.value === 'error') {
-    result = result.filter((line) => /(error|exception|fatal|panic|failed)/i.test(line.data));
-  } else if (levelFilter.value === 'warn') {
-    result = result.filter((line) => /(warn|deprecat)/i.test(line.data) && !/(error|exception|fatal|panic|failed)/i.test(line.data));
-  }
+  if (levelFilter.value) result = result.filter((line) => (line.level || classifyLevel(line.data)) === levelFilter.value);
   const needle = search.value.trim();
   if (needle) {
     const regex = needle.length > 2 && needle.startsWith('/') && needle.endsWith('/')
@@ -181,17 +183,29 @@ function flushPending() {
   for (const item of pending.value.splice(0)) append(item);
 }
 function append(item) {
+  const level = item.level || classifyLevel(item.data);
+  item.level = level;
   lines.value.push(item);
   if (lines.value.length > 5000) lines.value.splice(0, lines.value.length - 5000);
-  if (/(fatal|error|crash|exception|failed)/i.test(item.data)) errorLines.value += 1;
+  levelCounts.value[level] = (levelCounts.value[level] || 0) + 1;
+  if (level === 'error') { errorLines.value += 1; sawError.value = true; retainedCount.value += 1; }
   if (autoScroll.value && !autoScrollPaused.value) scheduleFollow();
 }
 function clearLines() {
   lines.value = [];
   errorLines.value = 0;
+  levelCounts.value = { error: 0, warn: 0, info: 0 };
+  sawError.value = false;
+  retainedCount.value = 0;
   viewStart.value = 0;
   viewEnd.value = 0;
   nextTick(syncViewport);
+}
+function classifyLevel(text = '') {
+  const t = String(text || '');
+  if (/(error|exception|fatal|panic|crash|failed)/i.test(t)) return 'error';
+  if (/(warn|deprecat)/i.test(t)) return 'warn';
+  return 'info';
 }
 /** rAF 合并的滚底调度:高频日志每帧只滚一次,避免反复强制 reflow 卡死主线程。 */
 function scheduleFollow() {

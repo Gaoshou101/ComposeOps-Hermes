@@ -16,13 +16,18 @@
         </div>
       </main>
     </div>
+    <div v-if="runtimeError" class="runtime-error-bar">
+      <span class="min-w-0 flex-1 truncate">{{ runtimeError }}</span>
+      <button class="shrink-0 text-xs underline" @click="dismissError">忽略并继续</button>
+      <button class="shrink-0 text-xs underline" @click="reloadApp">重新加载</button>
+    </div>
     <ToastContainer />
     <CheatSheetModal :open="cheatSheet" @close="cheatSheet = false" />
   </div>
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { onBeforeUnmount, onErrorCaptured, onMounted, ref } from 'vue';
 import AppHeader from './components/AppHeader.vue';
 import AppSidebar from './components/AppSidebar.vue';
 import ToastContainer from './components/common/ToastContainer.vue';
@@ -30,10 +35,16 @@ import CheatSheetModal from './components/common/CheatSheetModal.vue';
 import LoginView from './views/LoginView.vue';
 import { useAuthStore } from './stores/auth.js';
 import { useServicesStore } from './stores/services.js';
+import { useToastStore } from './stores/toast.js';
 
 const auth = useAuthStore();
 const servicesStore = useServicesStore();
+const toast = useToastStore();
 const cheatSheet = ref(false);
+const runtimeError = ref('');
+const density = ref(localStorage.getItem('composeops:density') || 'comfortable');
+function applyDensity() { document.body.dataset.density = density.value; localStorage.setItem('composeops:density', density.value); }
+function toggleDensity() { density.value = density.value === 'compact' ? 'comfortable' : 'compact'; applyDensity(); }
 const expire = () => auth.expire();
 const refreshOnHostChange = () => { void servicesStore.refresh(); };
 
@@ -46,7 +57,19 @@ function onGlobalKeydown(event) {
   cheatSheet.value = true;
 }
 function openCheatSheet() { cheatSheet.value = true; }
+function dismissError() { runtimeError.value = ''; }
+function onRuntimeError(event) { runtimeError.value = event?.detail?.message || '发生未知运行时错误'; }
+function onOperationStarted(event) { const detail = event?.detail || {}; toast.success(`已提交${detail.projectName || ''} ${ACTION_LABELS[detail.action] || detail.action} 操作,可在操作中心查看进度`); }
+const ACTION_LABELS = { up: '启动', stop: '停止', restart: '重启', pull: '拉取' };
+function reloadApp() { window.location.reload(); }
+onErrorCaptured((error) => {
+  runtimeError.value = `页面组件异常:${error?.message || error}`;
+  return false; // 不阻止向上传播,但避免整页白屏
+});
 onMounted(() => {
+  applyDensity();
+  window.addEventListener('composeops:runtime-error', onRuntimeError);
+  window.addEventListener('composeops:operation-started', onOperationStarted);
   window.addEventListener('composeops:unauthorized', expire);
   window.addEventListener('composeops:host-changed', refreshOnHostChange);
   window.addEventListener('keydown', onGlobalKeydown, { capture: true });
@@ -54,6 +77,8 @@ onMounted(() => {
   auth.check();
 });
 onBeforeUnmount(() => {
+  window.removeEventListener('composeops:runtime-error', onRuntimeError);
+  window.removeEventListener('composeops:operation-started', onOperationStarted);
   window.removeEventListener('composeops:unauthorized', expire);
   window.removeEventListener('composeops:host-changed', refreshOnHostChange);
   window.removeEventListener('keydown', onGlobalKeydown, { capture: true });

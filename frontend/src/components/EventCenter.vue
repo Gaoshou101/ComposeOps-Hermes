@@ -2,7 +2,7 @@
   <div class="relative">
     <button class="icon-btn relative" title="事件中心" aria-label="打开事件中心" @click="toggle">
       <Bell class="h-4 w-4" />
-      <span v-if="eventCount" class="event-count">{{ eventCount > 9 ? '9+' : eventCount }}</span>
+      <span v-if="unreadCount" class="event-count">{{ unreadCount > 9 ? '9+' : unreadCount }}</span>
     </button>
     <div v-if="open" class="fixed inset-0 z-[50]" @click="open = false"></div>
     <section v-if="open" class="event-panel z-[50]">
@@ -11,16 +11,29 @@
         <button class="icon-btn" title="刷新" aria-label="刷新事件" :disabled="loading" @click="load"><RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" /></button>
       </header>
       <div class="max-h-[min(68vh,32rem)] overflow-y-auto p-2">
-        <router-link v-for="event in events" :key="event.key" :to="event.to" class="event-item" @click="open = false">
-          <span class="event-icon" :class="event.tone"><component :is="event.icon" class="h-4 w-4" /></span>
-          <span class="min-w-0 flex-1"><strong>{{ event.title }}</strong><small>{{ event.detail }}</small></span>
-          <ChevronRight class="h-4 w-4 shrink-0 text-surface-600" />
-        </router-link>
+        <div v-for="event in events" :key="event.key" class="event-item" :class="{ 'event-read': event.read }">
+          <router-link :to="event.to" class="flex min-w-0 flex-1 items-center gap-2" @click="open = false">
+            <span class="event-icon shrink-0" :class="event.tone"><component :is="event.icon" class="h-4 w-4" /></span>
+            <span class="min-w-0 flex-1">
+              <strong class="flex items-center gap-1.5">{{ event.title }}<span v-if="event.priority === 'danger'" class="event-priority">紧急</span></strong>
+              <small>{{ event.detail }}</small>
+            </span>
+          </router-link>
+          <div class="flex shrink-0 items-center gap-1">
+            <button v-if="event.logs" class="icon-btn !h-6 !w-6" :title="expandedLogEventId === event.id ? '折叠日志' : '展开日志'" @click="toggleLogs(event)"><ChevronRight class="h-3 w-3" :class="{ 'rotate-90': expandedLogEventId === event.id }" /></button>
+            <button v-if="event.persisted && !event.read" class="icon-btn !h-6 !w-6" title="标记已读" @click="markRead(event)"><Check class="h-3 w-3" /></button>
+            <button v-if="event.persisted" class="icon-btn !h-6 !w-6" title="静默此告警" @click="muteEvent(event)"><VolumeX class="h-3 w-3" /></button>
+          </div>
+          <div v-if="event.logs && expandedLogEventId === event.id" class="w-full basis-full"><pre class="event-logs">{{ event.logs }}</pre></div>
+        </div>
         <EmptyState icon="CircleCheckBig" icon-class="text-emerald-400" compact title="当前没有待处理事件" description="异常与告警事件会出现在这里" />
       </div>
       <footer class="flex items-center justify-between border-t border-surface-800 px-4 py-2.5 text-muted">
-        <span>{{ eventCount }} 个需要关注</span>
-        <router-link to="/operations" class="text-accent hover:text-blue-300" @click="open = false">打开操作中心</router-link>
+        <span>{{ unreadCount }} 未读 · {{ eventCount }} 个需要关注</span>
+        <div class="flex items-center gap-2">
+          <button class="text-muted hover:text-surface-200 text-xs" @click="pruneAll">清空 7 天前</button>
+          <router-link to="/operations" class="text-accent hover:text-blue-300" @click="open = false">操作中心</router-link>
+        </div>
       </footer>
     </section>
   </div>
@@ -29,8 +42,8 @@
 <script setup>
 import { computed, markRaw, onMounted, onUnmounted, ref } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
-import { AlertTriangle, Bell, ChevronRight, CircleCheckBig, CircleX, RefreshCw, RefreshCwOff } from 'lucide-vue-next';
-import { api } from '../api/client.js';
+import { AlertTriangle, Bell, Check, ChevronRight, CircleCheckBig, CircleX, RefreshCw, RefreshCwOff, VolumeX } from 'lucide-vue-next';
+import { api, wsUrl } from '../api/client.js';
 import EmptyState from './common/EmptyState.vue';
 
 const open = ref(false);
@@ -39,9 +52,12 @@ const projects = ref([]);
 const operations = ref([]);
 const updates = ref({ lastResults: [] });
 const jobs = ref([]);
+const alertEvents = ref([]);
+const expandedLogEventId = ref(null);
 let timer;
+let eventWs;
 
-const events = computed(() => {
+const derivedEvents = computed(() => {
   const result = [];
   const since = Date.now() - 24 * 60 * 60 * 1000;
   for (const job of jobs.value.filter((item) => ['queued', 'running'].includes(item.status) || (['failed', 'interrupted'].includes(item.status) && new Date(`${item.createdAt}Z`).getTime() >= since)).slice(0, 4)) {
@@ -92,25 +108,102 @@ const events = computed(() => {
       tone: 'info',
     });
   }
-  return result.slice(0, 12);
+  return result;
+});
+
+const persistedEvents = computed(() => alertEvents.value
+  .filter((event) => !event.muted)
+  .map((event) => ({
+    key: `alert-${event.id}`,
+    id: event.id,
+    title: event.title,
+    detail: event.detail,
+    to: event.target || '/operations',
+    icon: markRaw(event.priority === 'danger' ? CircleX : AlertTriangle),
+    tone: event.priority === 'danger' ? 'danger' : 'warning',
+    priority: event.priority,
+    read: !!event.read,
+    createdAt: event.created_at,
+    logs: event.logs || '',
+    persisted: true,
+  })));
+
+const events = computed(() => {
+  // 持久化告警优先;派生事件只保留未重复的(按 key 去重,补足未入库但在 UI 可见的)
+  const seen = new Set();
+  const result = [];
+  for (const event of persistedEvents.value) {
+    if (!event.read || event.priority === 'danger') {
+      seen.add(event.key);
+      result.push(event);
+    }
+  }
+  for (const event of derivedEvents.value) {
+    if (!seen.has(event.key)) {
+      seen.add(event.key);
+      result.push(event);
+    }
+  }
+  return result.slice(0, 20);
 });
 const eventCount = computed(() => events.value.length);
+const unreadCount = computed(() => persistedEvents.value.filter((event) => !event.read).length);
 
 async function load() {
   if (loading.value) return;
   loading.value = true;
   try {
-    const [projectData, operationData, updateData, jobData] = await Promise.all([api.getProjects(), api.getOperations(), api.getUpdateSettings(), api.listJobs(20)]);
+    const [projectData, operationData, updateData, jobData, alertData] = await Promise.all([
+      api.getProjects(), api.getOperations(), api.getUpdateSettings(), api.listJobs(20), api.getAlertEvents(50),
+    ]);
     projects.value = projectData.projects || [];
     operations.value = operationData.operations || [];
     updates.value = updateData || { lastResults: [] };
     jobs.value = jobData.jobs || [];
+    alertEvents.value = alertData.events || [];
   } catch {}
   finally { loading.value = false; }
 }
-function toggle() { open.value = !open.value; if (open.value) load(); }
+function connectEventStream() {
+  try {
+    eventWs = new WebSocket(wsUrl('/ws/events'));
+    eventWs.onmessage = (event) => {
+      try {
+        const frame = JSON.parse(event.data);
+        if (frame.type === 'event' && frame.data) {
+          alertEvents.value = [frame.data, ...alertEvents.value.filter((item) => item.id !== frame.data.id)].slice(0, 60);
+        }
+      } catch {}
+    };
+    eventWs.onclose = () => { eventWs = null; };
+  } catch {}
+}
+async function markRead(eventItem) {
+  if (!eventItem.id) return;
+  const updated = await api.updateAlertEvent(eventItem.id, { read: true }).catch(() => null);
+  if (updated?.event) {
+    const idx = alertEvents.value.findIndex((item) => item.id === eventItem.id);
+    if (idx >= 0) alertEvents.value[idx] = updated.event;
+  }
+}
+async function muteEvent(eventItem) {
+  if (!eventItem.id) return;
+  const updated = await api.updateAlertEvent(eventItem.id, { muted: true }).catch(() => null);
+  if (updated?.event) {
+    alertEvents.value = alertEvents.value.filter((item) => item.id !== eventItem.id);
+  }
+}
+async function pruneAll() {
+  if (!confirm('清空 7 天前的告警事件?')) return;
+  await api.pruneAlertEvents(7).catch(() => {});
+  await load();
+}
+function toggleLogs(eventItem) {
+  expandedLogEventId.value = expandedLogEventId.value === eventItem.id ? null : eventItem.id;
+}
+function toggle() { open.value = !open.value; if (open.value) { load(); connectEventStream(); } else if (eventWs) { try { eventWs.close(); } catch {} eventWs = null; } }
 useEscapeKey({ active: open, onClose: () => { open.value = false; }, layer: 'event' });
 
 onMounted(() => { load(); timer = setInterval(load, 30000); });
-onUnmounted(() => clearInterval(timer));
+onUnmounted(() => { clearInterval(timer); if (eventWs) { try { eventWs.close(); } catch {} eventWs = null; } });
 </script>

@@ -5,6 +5,7 @@ import { api } from '../api/client.js';
 export const useAiStore = defineStore('ai', () => {
   const config = ref({ baseUrl: '', apiKey: '', model: '', systemPrompt: '' });
   const history = ref([]);
+  const sessions = ref([]);
   const loading = ref(false);
 
   async function loadConfig() {
@@ -14,14 +15,18 @@ export const useAiStore = defineStore('ai', () => {
     await api.saveAiConfig(payload);
     await loadConfig();
   }
-  async function loadHistory() {
-    const data = await api.getAiHistory();
+  async function loadHistory(sessionId = null) {
+    const data = await api.getAiHistory(sessionId);
     history.value = data.messages || [];
   }
-  async function clearHistory() {
-    await api.clearAiHistory();
+  async function loadSessions() {
+    const data = await api.getAiSessions(30);
+    sessions.value = data.sessions || [];
+  }
+  async function clearHistory(sessionId = null) {
+    await api.clearAiHistory(sessionId);
     history.value = [];
   }
 
-  return { config, history, loading, loadConfig, saveConfig, loadHistory, clearHistory };
+  return { config, history, sessions, loading, loadConfig, saveConfig, loadHistory, loadSessions, clearHistory };
 });

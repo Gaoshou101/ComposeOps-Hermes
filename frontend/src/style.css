@@ -51,13 +51,24 @@ body {
 .command-item.active .command-icon { @apply bg-accent/15 text-accent; }
 .event-count { @apply absolute -right-1 -top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-surface-900; }
 .event-panel { @apply fixed right-3 top-[4.5rem] z-[50] w-[calc(100vw-1.5rem)] max-w-md overflow-hidden rounded-xl border border-surface-700 bg-surface-900/95 shadow-2xl backdrop-blur-md sm:right-5; }
-.event-item { @apply flex items-center gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-surface-800; }
+.event-item { @apply flex flex-wrap items-center gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-surface-800; }
 .event-item strong { @apply block truncate text-sm font-medium text-surface-200; }
 .event-item small { @apply mt-0.5 block truncate text-muted; }
 .event-icon { @apply grid h-9 w-9 shrink-0 place-items-center rounded-lg; }
 .event-icon.warning { @apply bg-amber-950/50 text-amber-300; }
 .event-icon.danger { @apply bg-rose-950/50 text-rose-300; }
 .event-icon.info { @apply bg-blue-950/50 text-blue-300; }
+.event-item.event-read { @apply opacity-60; }
+.event-item.event-read strong { @apply text-surface-400; }
+.event-priority { @apply rounded bg-rose-500/15 px-1 py-px text-[9px] font-semibold text-rose-400; }
+.event-logs { @apply mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-surface-800 bg-surface-950/70 p-2 font-mono text-[10px] leading-relaxed text-surface-400; }
+.runtime-error-bar { @apply fixed bottom-4 left-1/2 z-[70] flex w-[calc(100vw-2rem)] max-w-xl -translate-x-1/2 items-center gap-3 rounded-xl border border-rose-800/60 bg-rose-950/90 px-4 py-2.5 text-xs text-rose-200 shadow-2xl backdrop-blur; }
+/* 视图密度:紧凑模式收紧卡片/表格间距 */
+body[data-density='compact'] .card { @apply !p-3; }
+body[data-density='compact'] .page-shell { @apply !py-3; }
+body[data-density='compact'] .event-item { @apply !py-2; }
+body[data-density='compact'] .data-table th,
+body[data-density='compact'] .data-table td { @apply !py-1.5 !px-2; }
 .drawer-backdrop { @apply fixed inset-0 z-[55] bg-black/55 backdrop-blur-[2px]; }
 .activity-drawer { @apply absolute inset-y-0 right-0 flex w-full max-w-xl flex-col border-l border-surface-700 bg-surface-900/95 shadow-2xl backdrop-blur-md; }
 .activity-list { @apply relative space-y-1 before:absolute before:bottom-4 before:left-[17px] before:top-4 before:w-px before:bg-surface-800; }
@@ -205,6 +216,10 @@ body {
   .terminal-output { @apply overflow-auto p-3 bg-[#0b0d10] text-xs font-mono whitespace-pre-wrap break-words; }
   .log-line { @apply whitespace-pre-wrap break-words min-h-4; }
   .diff-pane { @apply bg-surface-950 p-4 text-xs font-mono whitespace-pre-wrap overflow-auto min-h-72; }
+  .diff-line { @apply block whitespace-pre-wrap break-all leading-relaxed text-surface-300; }
+  .diff-same { @apply text-surface-300; }
+  .diff-add { @apply bg-emerald-950/40 text-emerald-300; }
+  .diff-remove { @apply bg-rose-950/40 text-rose-300 line-through; }
   .message { @apply max-w-[88%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words; }
   .message-user { @apply bg-accent text-white; }
   .message-assistant { @apply bg-surface-800 text-surface-100; }
@@ -286,6 +301,7 @@ body {
 .aggregate-line { @apply flex items-start gap-2 rounded px-1.5 py-0.5 font-mono text-[12px] leading-relaxed hover:bg-surface-800/40; }
 .container-badge { @apply mt-0.5 inline-flex shrink-0 items-center rounded border px-1.5 py-px text-[10px] font-semibold whitespace-nowrap; }
 .line-ts { @apply shrink-0 text-[10px] text-surface-600 tabular-nums; }
+.level-badge { @apply mt-0.5 inline-flex shrink-0 items-center rounded border px-1 py-px text-[9px] font-bold leading-none whitespace-nowrap; }
 .line-data { @apply min-w-0 flex-1 whitespace-pre-wrap break-all; }
 .line-error { @apply -ml-px border-l-2 border-rose-500/70 bg-rose-950/20; }
 .log-mark { @apply bg-rose-500/20 text-rose-300 rounded-sm px-px; }

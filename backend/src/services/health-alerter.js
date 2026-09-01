@@ -1,6 +1,7 @@
 import { getActivityDocker } from './docker-hosts.js';
 import { getNotificationConfig, sendNotification } from './notifications.js';
 import { scanProjects } from './scanner.js';
+import { recordAlertEventAndNotify } from './events.js';
 
 const DEFAULT_EVENTS = ['exit', 'oom', 'unhealthy'];
 const cooldowns = new Map(); // key -> ts
@@ -132,6 +133,14 @@ async function poll() {
         const logs = await containerTailLogs(container.id, 8).catch(() => '');
         const title = buildTitle(project, container, event);
         const body = buildBody(project, container, event, logs);
+        recordAlertEventAndNotify({
+          key: `${container.id}:${event}`,
+          title,
+          detail: `${project.projectName} / ${container.name} · ${container.statusText || ''}`,
+          priority: event === 'unhealthy' || event === 'oom' ? 'danger' : 'warning',
+          to: `/services?focus=${project.id}`,
+          logs,
+        });
         await sendNotification(title, body).catch(() => {});
       }
     }

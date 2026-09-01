@@ -18,8 +18,30 @@
       <span v-else class="status-pill text-rose-300">
         <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span><span class="hidden sm:inline">服务离线</span>
       </span>
+      <div class="relative">
+        <button class="btn-secondary !min-h-8 !px-2.5 !py-1 text-xs" title="快速切换项目" aria-label="快速切换项目" @click="projectSwitcherOpen = !projectSwitcherOpen">
+          <Layers class="w-3.5 h-3.5" /><span class="hidden md:inline">项目</span>
+          <ChevronDown class="w-3 h-3" />
+        </button>
+        <div v-if="projectSwitcherOpen" class="command-backdrop" @click.self="projectSwitcherOpen = false"></div>
+        <div v-if="projectSwitcherOpen" class="absolute right-0 top-full mt-2 w-64 overflow-hidden rounded-xl border border-surface-800 bg-surface-950 shadow-2xl z-[60]">
+          <div class="border-b border-surface-800 px-3 py-2 text-xs font-semibold text-surface-300">快速切换项目</div>
+          <div class="max-h-80 overflow-y-auto p-1.5">
+            <button v-for="p in quickProjects" :key="p.id" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-surface-800/60" @click="goProject(p)">
+              <span class="status-dot shrink-0" :class="p.status === 'running' ? 'bg-emerald-400' : p.status === 'partial' ? 'bg-amber-400' : 'bg-rose-400'"></span>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm font-mono text-surface-200">{{ p.projectName }}</span>
+                <span class="block truncate text-[10px] text-surface-500">{{ p.owner }} · {{ p.containers.length }} 容器</span>
+              </span>
+              <span v-if="p.managed" class="count-badge shrink-0 text-[9px] text-emerald-300">纳管</span>
+            </button>
+            <p v-if="!quickProjects.length" class="px-2 py-4 text-center text-xs text-surface-600">暂无项目</p>
+          </div>
+        </div>
+      </div>
       <HostSwitcher />
       <EventCenter />
+      <button class="icon-btn" :title="density === 'compact' ? '切换为舒适视图' : '切换为紧凑视图'" aria-label="视图密度" @click="toggleDensity"><Rows3 class="w-4 h-4" /></button>
       <span class="hidden lg:inline text-muted">{{ currentTime }}</span>
       <span class="h-5 w-px bg-surface-800"></span>
       <button class="icon-btn" title="退出登录" aria-label="退出登录" @click="$emit('logout')"><LogOut class="w-4 h-4" /></button>
@@ -69,7 +91,7 @@
 import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowRight, Bot, Boxes, ChartNoAxesCombined, FileCode2, History, KeyRound, Layers, LogOut, ScrollText, Search, Settings, Store, TerminalSquare, X } from 'lucide-vue-next';
+import { ArrowRight, Bot, Boxes, ChartNoAxesCombined, ChevronDown, FileCode2, History, KeyRound, Layers, LogOut, Play, RotateCw, Rows3, ScrollText, Search, Settings, Square, Store, TerminalSquare, X } from 'lucide-vue-next';
 import EventCenter from './EventCenter.vue';
 import HostSwitcher from './HostSwitcher.vue';
 import { api } from '../api/client.js';
@@ -85,6 +107,11 @@ const commandOpen = ref(false);
 const commandQuery = ref('');
 const selectedCommand = ref(0);
 const commandInput = ref(null);
+const projectSwitcherOpen = ref(false);
+const density = ref(localStorage.getItem('composeops:density') || 'comfortable');
+function toggleDensity() { density.value = density.value === 'compact' ? 'comfortable' : 'compact'; document.body.dataset.density = density.value; localStorage.setItem('composeops:density', density.value); }
+const allProjects = ref([]);
+const quickProjects = computed(() => allProjects.value.slice(0, 12));
 const pageNames = { services: '服务总览', compose: 'Compose 配置', logs: '实时日志', shell: '容器终端', ai: 'AI 运维助手', monitor: '资源监控', operations: '操作记录', settings: '系统设置' };
 const currentPage = computed(() => pageNames[route.name] || '运维控制台');
 const envProjects = ref([]);
@@ -131,12 +158,33 @@ const commands = computed(() => {
       icon: Store,
       keywords: `app store blueprint deploy 部署 应用市场 ${blueprint.name}`,
     }));
-  return [...nodeCommands, ...envCommands, ...blueprintCommands, ...baseCommands];
+  const actionCommands = allProjects.value
+    .filter((project) => project.managed)
+    .slice(0, 8)
+    .flatMap((project) => ([
+      { id: `run-${project.id}-up`, run: () => void runProjectAction(project, 'up'), label: `启动: ${project.projectName}`, description: '通过 Compose 启动项目', icon: Play, keywords: `start up 启动 运行 ${project.projectName}` },
+      { id: `run-${project.id}-restart`, run: () => void runProjectAction(project, 'restart'), label: `重启: ${project.projectName}`, description: '重启项目所有容器', icon: RotateCw, keywords: `restart reboot 重启 ${project.projectName}` },
+      { id: `run-${project.id}-stop`, run: () => void runProjectAction(project, 'stop'), label: `停止: ${project.projectName}`, description: '停止项目所有容器', icon: Square, keywords: `stop halt 停止 ${project.projectName}` },
+      { id: `logs-${project.id}`, to: `/logs?projectId=${project.id}`, label: `日志: ${project.projectName}`, description: '查看项目实时日志', icon: ScrollText, keywords: `logs 日志 ${project.projectName}` },
+    ]));
+  return [...actionCommands, ...nodeCommands, ...envCommands, ...blueprintCommands, ...baseCommands];
 });
 const filteredCommands = computed(() => {
   const query = commandQuery.value.trim().toLowerCase();
   return query ? commands.value.filter((item) => `${item.label} ${item.description} ${item.keywords}`.toLowerCase().includes(query)) : commands.value;
 });
+
+function goProject(project) {
+  projectSwitcherOpen.value = false;
+  router.push(`/services?focus=${project.id}`);
+}
+async function runProjectAction(project, action) {
+  closeCommand();
+  try {
+    await api.createProjectBatchJob([project.id], action);
+    window.dispatchEvent(new CustomEvent('composeops:operation-started', { detail: { projectName: project.projectName, action } }));
+  } catch {}
+}
 defineEmits(['logout']);
 let pingTimer; let clockTimer;
 
@@ -174,6 +222,7 @@ watch(filteredCommands, () => { selectedCommand.value = 0; });
 onMounted(() => {
   if (!hostsStore.hosts.length) void hostsStore.load();
   void api.getProjects().then((data) => { envProjects.value = data.projects || []; }).catch(() => {});
+  void api.getProjects(true).then((data) => { allProjects.value = data.projects || []; }).catch(() => {});
   void api.getBlueprints().then((data) => { appBlueprints.value = data.blueprints || []; }).catch(() => {});
   ping();
   currentTime.value = new Date().toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });

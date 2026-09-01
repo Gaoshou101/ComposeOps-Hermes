@@ -16,6 +16,7 @@
         <span v-else-if="imageState === 'failed'" class="count-badge hidden shrink-0 bg-rose-950/50 text-rose-300 lg:inline">镜像检查失败</span>
         <span v-else-if="imageState === 'current'" class="count-badge hidden shrink-0 text-emerald-300 xl:inline">镜像已检查</span>
         <span class="hidden sm:inline text-muted shrink-0">{{ project.containers.length }} 个容器</span>
+        <span v-if="statusHint" class="hidden sm:inline text-muted shrink-0" :class="statusHintClass">{{ statusHint }}</span>
         <span class="hidden lg:inline text-muted shrink-0">{{ project.owner }}</span>
         <span class="hidden md:block text-muted font-mono truncate flex-1" :title="project.workingDir">{{ project.workingDir }}</span>
         <ChevronDown class="w-4 h-4 text-surface-500 shrink-0 transition-transform" :class="{ 'rotate-180': expanded }" />
@@ -29,6 +30,16 @@
       <div class="flex flex-col lg:flex-row lg:items-center gap-2">
         <div class="min-w-0 flex-1">
           <p class="text-muted font-mono break-all">{{ project.workingDir || 'Docker 标签未提供工作目录' }}</p>
+          <div v-if="dependencyText" class="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <span class="count-badge text-[10px] bg-surface-800/60 text-surface-300"><GitBranch class="w-3 h-3" />依赖</span>
+            <span class="text-xs text-surface-400">{{ dependencyText }}</span>
+          </div>
+          <div v-if="envPreview.length" class="mt-1.5">
+            <div class="flex items-center gap-1.5"><span class="count-badge text-[10px] bg-surface-800/60 text-surface-300"><KeyRound class="w-3 h-3" />环境变量</span><button class="text-[10px] text-surface-500 hover:text-surface-300" @click="showEnvPreview = !showEnvPreview">{{ showEnvPreview ? '收起' : '预览' }}</button></div>
+            <div v-if="showEnvPreview" class="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
+              <span v-for="entry in envPreview" :key="entry.key" class="truncate font-mono text-[11px]"><span class="text-surface-500">{{ entry.key }}</span><span class="text-surface-400">={{ entry.masked }}</span></span>
+            </div>
+          </div>
           <p v-if="project.note" class="text-sm text-surface-300 border-l-2 border-surface-700 pl-2 mt-2">{{ project.note }}</p>
         </div>
         <span v-if="project.managed" class="count-badge self-start lg:self-auto">{{ project.editable ? 'Compose 模式' : '现有容器模式' }}</span>
@@ -65,8 +76,9 @@
               <span v-if="metrics[container.id]?.cpu != null" class="metric-chip" :class="metrics[container.id].cpu >= 85 ? 'bg-rose-950/50 text-rose-300' : metrics[container.id].cpu >= 60 ? 'bg-amber-950/50 text-amber-300' : 'text-emerald-300'">CPU {{ metrics[container.id].cpu.toFixed(1) }}%</span>
               <span v-if="metrics[container.id]?.mem != null" class="metric-chip" :class="metrics[container.id].mem >= 90 ? 'bg-rose-950/50 text-rose-300' : 'text-emerald-300'">MEM {{ metrics[container.id].memUsageMB.toFixed(0) }}MB / {{ metrics[container.id].mem.toFixed(1) }}%</span>
             </div>
-            <div class="text-muted truncate">{{ container.image }}<span v-if="container.ports.length"> · {{ portText(container) }}</span><span v-if="container.health" :class="healthClass(container.health)"> · {{ container.health }}</span></div>
-          </div>
+          <div class="text-muted truncate">{{ container.image }}<span v-if="container.ports.length"> · {{ portText(container) }}</span><span v-if="container.health" :class="healthClass(container.health)"> · {{ container.health }}</span></div>
+          <div v-if="container.stoppedAt || container.startedAt" class="text-muted text-[11px]">{{ containerStateHint(container) }}</div>
+        </div>
           <SparklineChart v-if="metrics[container.id]?.history && metrics[container.id].history.length >= 2" :cpu="metrics[container.id].history.map((point) => point.cpuPercent)" :mem="metrics[container.id].history.map((point) => point.memPercent)" class="hidden sm:block" />
           <router-link class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="实时日志" :to="`/logs?projectId=${project.id}&containerId=${container.id}`"><ScrollText class="w-4 h-4" /></router-link>
           <router-link v-if="dbContainers.length" class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="聚合日志(所有容器)" :to="`/logs?projectId=${project.id}`"><Layers class="w-4 h-4 text-emerald-300" /></router-link>
@@ -80,7 +92,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { Bot, ChevronDown, Database, Download, FileCode2, FolderCog, History, KeyRound, Layers, ListTree, Pencil, Play, RotateCw, ScrollText, Sparkles, Square, Star, TerminalSquare } from 'lucide-vue-next';
+import { Bot, ChevronDown, Database, Download, FileCode2, FolderCog, GitBranch, History, KeyRound, Layers, ListTree, Pencil, Play, RotateCw, ScrollText, Sparkles, Square, Star, TerminalSquare } from 'lucide-vue-next';
 import StatusBadge from '../common/StatusBadge.vue';
 import WebUiLauncher from './WebUiLauncher.vue';
 import SparklineChart from '../common/SparklineChart.vue';
@@ -100,6 +112,9 @@ const emit = defineEmits(['toggle-expand', 'toggle-select', 'action', 'activity'
 const metrics = ref({});
 const updateInfo = ref(null);
 const webuiLinks = ref([]);
+const dependencyMap = ref(new Map());
+const envPreview = ref([]);
+const showEnvPreview = ref(false);
 let statsAbort = null;
 let statsTimer = null;
 
@@ -107,8 +122,8 @@ watch(() => props.expanded, (expanded) => {
   if (!expanded) { closeStats(); return; }
   openStats();
 });
-watch(() => props.project.id, () => { closeStats(); checkUpdates(); loadWebUi(); if (props.expanded) openStats(); });
-onMounted(() => { checkUpdates(); loadWebUi(); if (props.expanded) openStats(); });
+watch(() => props.project.id, () => { closeStats(); checkUpdates(); loadWebUi(); loadDependencies(); loadEnvPreview(); if (props.expanded) openStats(); });
+onMounted(() => { checkUpdates(); loadWebUi(); loadDependencies(); loadEnvPreview(); if (props.expanded) openStats(); });
 onBeforeUnmount(closeStats);
 
 async function checkUpdates() {
@@ -129,6 +144,42 @@ async function loadWebUi() {
     webuiLinks.value = (data?.links || []).flatMap((entry) => entry.ports.map((port) => ({ port: port.port, url: port.url, containerName: entry.containerName })));
   } catch {
     webuiLinks.value = []; // 检测失败静默
+  }
+}
+
+async function loadEnvPreview() {
+  envPreview.value = [];
+  if (!props.project.editable) return;
+  try {
+    const data = await api.getProjectEnv(props.project.id, true);
+    const entries = data?.entries || data?.env || [];
+    if (!Array.isArray(entries)) return;
+    envPreview.value = entries.slice(0, 24).map((entry) => {
+      const key = String(entry.key || '').split('=')[0];
+      const value = String(entry.value ?? entry[key] ?? '');
+      const isSecret = /(SECRET|TOKEN|PASSWORD|PASSWD|\bPASS\b|(?:API|PRIVATE|ACCESS|SECRET|AUTH|SIGNING)[_-]?KEY)/i.test(key);
+      return { key, masked: isSecret ? '••••••' : (value.length > 28 ? value.slice(0, 28) + '…' : value) };
+    });
+  } catch { envPreview.value = []; }
+}
+async function loadDependencies() {
+  dependencyMap.value = new Map();
+  if (!props.project.editable) return;
+  try {
+    const file = await api.getComposeFile(props.project.id, 0, true);
+    const doc = (await import('yaml')).parse(file.content || '');
+    if (doc?.services && typeof doc.services === 'object') {
+      const map = new Map();
+      for (const [name, service] of Object.entries(doc.services)) {
+        const raw = service?.depends_on;
+        if (!raw) continue;
+        const deps = Array.isArray(raw) ? raw : typeof raw === 'object' ? Object.keys(raw) : String(raw).split(',');
+        map.set(name, deps);
+      }
+      dependencyMap.value = map;
+    }
+  } catch {
+    dependencyMap.value = new Map(); // 静默失败
   }
 }
 
@@ -165,6 +216,28 @@ const locked = computed(() => props.busy || !!props.actionRunning);
 const dbContainers = computed(() => props.project.containers.filter((c) => /(postgres|postgis|mysql|mariadb|redis|valkey|mongo)/i.test(c.image)));
 const attention = computed(() => props.project.status !== 'running' || props.project.containers.some((container) => container.health === 'unhealthy'));
 const statusDotClass = computed(() => (props.project.status === 'running' ? 'bg-emerald-400' : props.project.status === 'partial' ? 'bg-amber-400' : 'bg-rose-400'));
+const statusHint = computed(() => {
+  if (!props.project.containers.length) return '';
+  // 最近一次状态变化:优先 'x 分钟前停止',其次启动时间
+  const stopped = props.project.containers.filter((c) => c.state !== 'running' && c.stoppedAt);
+  if (stopped.length) {
+    const latest = stopped.reduce((a, b) => (a.stoppedAt > b.stoppedAt ? a : b));
+    return `${timeAgo(latest.stoppedAt)}前停止`;
+  }
+  const running = props.project.containers.filter((c) => c.state === 'running' && c.startedAt);
+  if (running.length) {
+    const latest = running.reduce((a, b) => (a.startedAt > b.startedAt ? a : b));
+    return `${timeAgo(latest.startedAt)}前启动`;
+  }
+  return '';
+});
+const statusHintClass = computed(() => (props.project.status === 'running' ? 'text-emerald-300/80' : 'text-amber-300/80'));
+const dependencyText = computed(() => {
+  const entries = [...dependencyMap.value.entries()]
+    .filter(([, deps]) => deps && deps.length)
+    .map(([name, deps]) => `${name} → ${deps.join(', ')}`);
+  return entries.slice(0, 3).join(' · ');
+});
 const imageState = computed(() => {
   const matches = props.lastResults.filter((result) => props.project.containers.some((container) => container.image === result.image));
   if (matches.some((result) => result.status === 'updated' && props.project.containers.some((container) => container.image === result.image && container.imageId !== result.after))) return 'updated';
@@ -185,4 +258,20 @@ async function editNote(project) {
 }
 function portText(container) { return container.ports.map((port) => `${port.public}:${port.private}`).join(', '); }
 function healthClass(health) { return health === 'unhealthy' ? 'text-rose-400' : health === 'healthy' ? 'text-emerald-400' : 'text-amber-400'; }
+function timeAgo(ts) {
+  if (!ts) return '';
+  const diff = Math.max(0, Date.now() - Number(ts));
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return '刚刚';
+  if (mins < 60) return `${mins} 分钟`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} 小时`;
+  const days = Math.floor(hours / 24);
+  return `${days} 天`;
+}
+function containerStateHint(container) {
+  if (container.state !== 'running' && container.stoppedAt) return `${timeAgo(container.stoppedAt)}前停止`;
+  if (container.state === 'running' && container.startedAt) return `${timeAgo(container.startedAt)}前启动`;
+  return '';
+}
 </script>

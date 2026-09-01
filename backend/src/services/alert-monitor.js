@@ -3,6 +3,7 @@ import { getSetting, setSetting } from '../lib/db.js';
 import { scanProjects } from './scanner.js';
 import { getNotificationConfig, sendNotification } from './notifications.js';
 import { checkImageUpdates, getDockerUsage } from './maintenance.js';
+import { recordAlertEventAndNotify } from './events.js';
 
 const previousStates = new Map();
 const cooldowns = new Map();
@@ -32,6 +33,13 @@ async function poll() {
         for (const item of project.containers) {
           const previous = previousStates.get(item.id);
           if (previous === 'running' && item.state !== 'running' && canAlert(`exit:${item.id}`, 1)) {
+            recordAlertEventAndNotify({
+              key: `${item.id}:exit`,
+              title: 'ComposeOps:容器已退出',
+              detail: `${project.projectName} / ${item.name} · ${item.statusText}`,
+              priority: 'danger',
+              to: `/services?focus=${project.id}`,
+            });
             await sendNotification('ComposeOps：容器已退出', `${project.projectName} / ${item.name}\n${item.statusText}`)
               .catch(() => {});
           }
@@ -43,6 +51,13 @@ async function poll() {
               const limit = stats.memory_stats?.limit || 0;
               const percent = limit ? usage / limit * 100 : 0;
               if (percent >= config.memoryThreshold && canAlert(`memory:${item.id}`)) {
+                recordAlertEventAndNotify({
+                  key: `${item.id}:memory`,
+                  title: 'ComposeOps:容器内存告警',
+                  detail: `${project.projectName} / ${item.name}: ${percent.toFixed(1)}%`,
+                  priority: 'warning',
+                  to: `/services?focus=${project.id}`,
+                });
                 await sendNotification('ComposeOps：容器内存告警', `${project.projectName} / ${item.name}: ${percent.toFixed(1)}%`)
                   .catch(() => {});
               }
@@ -52,6 +67,13 @@ async function poll() {
       }
       const usage = await getDockerUsage().catch(() => null);
       if (usage && usage.total >= config.dockerStorageThresholdGb * 1024 ** 3 && canAlert('docker-storage')) {
+        recordAlertEventAndNotify({
+          key: 'docker-storage',
+          title: 'ComposeOps:Docker 空间告警',
+          detail: `镜像与构建缓存占用 ${(usage.total / 1024 ** 3).toFixed(1)} GB`,
+          priority: 'warning',
+          to: '/settings?tab=maintenance',
+        });
         await sendNotification('ComposeOps：Docker 空间告警', `镜像与构建缓存占用 ${(usage.total / 1024 ** 3).toFixed(1)} GB`)
           .catch(() => {});
       }
