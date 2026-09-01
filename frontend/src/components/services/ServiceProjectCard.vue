@@ -1,5 +1,9 @@
 <template>
-  <article :id="`project-${project.id}`" class="card overflow-hidden" :class="{ 'project-attention': attention, 'ring-1 ring-accent': focused }">
+  <!-- 刻意不加 overflow-hidden:它会裁掉 WebUiLauncher 的多端口下拉菜单(overflow 裁剪
+       与 z-index 无关,菜单层级再高也逃不出去)。这里也不能用 isolate 代替 —— 那会让本卡片
+       成为独立层叠上下文,菜单反而被后面的兄弟卡片盖住。卡片内各子元素自身不触及圆角,
+       无需裁剪。 -->
+  <article :id="`project-${project.id}`" class="card" :class="{ 'project-attention': attention, 'ring-1 ring-accent': focused }">
     <header class="min-h-16 flex items-center gap-1 px-2 md:px-4">
       <input type="checkbox" class="ml-2 accent-accent" :checked="selected" :disabled="!project.managed || busy" :aria-label="`选择 ${project.projectName}`" @click.stop @change="$emit('toggle-select')" />
       <button class="icon-btn" :title="project.favorite ? '取消收藏' : '收藏项目'" @click="toggleFavorite(project)">

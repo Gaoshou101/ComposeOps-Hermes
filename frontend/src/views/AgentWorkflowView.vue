@@ -76,10 +76,15 @@
       </div>
 
       <!-- 右侧:思维链 + 快速操作 -->
-      <aside class="hidden w-96 shrink-0 flex-col gap-3 lg:flex">
-        <div class="card max-h-[46vh] overflow-y-auto p-4">
+      <!-- 这一列的高度被 page-shell-workspace 的 h-full 锁死。原先「思维过程」是唯一带
+           overflow-y-auto 的子项 —— 它的 min-height:auto 被解析成 0,而下面三张无 overflow
+           的卡片拒绝收缩到内容高度以下,于是 flex 只能压它,思维过程被挤成一条缝(看起来
+           就是被下面盖住了)。修法:给它显式 min-h(压过 min-height:auto)+ flex-1 抢占余量,
+           三张卡 shrink-0 保住自身高度,真的放不下时由 aside 整列滚动。 -->
+      <aside class="hidden w-96 shrink-0 flex-col gap-3 overflow-y-auto lg:flex">
+        <div class="card flex min-h-[12rem] flex-1 flex-col p-4">
           <h3 class="mb-2 text-sm font-semibold text-zinc-300">思维过程</h3>
-          <div class="space-y-2">
+          <div class="min-h-0 flex-1 space-y-2 overflow-y-auto">
             <div v-for="(thought, idx) in thoughts" :key="idx" class="text-xs">
               <span class="font-semibold text-cyan-400">{{ phaseLabel(thought.phase) }}</span>
               <p class="mt-0.5 text-zinc-500">{{ thought.content }}</p>
@@ -88,7 +93,7 @@
           </div>
         </div>
 
-        <div class="card p-4">
+        <div class="card shrink-0 p-4">
           <h3 class="mb-2 text-sm font-semibold text-zinc-300">快速操作</h3>
           <div class="grid grid-cols-2 gap-2">
             <button v-for="tool in quickTools" :key="tool.name" class="btn-secondary !px-2 !py-1.5 !text-xs" :disabled="quickRunning === tool.name" @click="quickInvoke(tool)">
@@ -97,7 +102,7 @@
           </div>
         </div>
 
-        <div class="card p-4">
+        <div class="card shrink-0 p-4">
           <h3 class="mb-2 text-sm font-semibold text-zinc-300">可用工具({{ tools.length }})</h3>
           <div class="max-h-48 space-y-1 overflow-y-auto">
             <div v-for="tool in tools" :key="tool.name" class="flex items-center gap-2 text-xs">
@@ -108,7 +113,7 @@
           </div>
         </div>
 
-        <div class="card p-4">
+        <div class="card shrink-0 p-4">
           <div class="mb-2 flex items-center justify-between">
             <h3 class="text-sm font-semibold text-zinc-300">执行历史</h3>
             <button class="btn-secondary !px-2 !py-1 !text-[10px]" :disabled="exporting" @click="exportAgentData"><Download v-if="!exporting" class="h-3 w-3" /><LoaderCircle v-else class="h-3 w-3 animate-spin" />导出</button>
