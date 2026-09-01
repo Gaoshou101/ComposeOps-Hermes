@@ -106,6 +106,18 @@ Docker Socket 本身等价于宿主机高权限。即使有登录，也应只在
 
 ## 开发与测试
 
+仓库根目录提供聚合脚本，一次装完两端依赖并跑全量测试：
+
+```bash
+npm run install:all   # 安装 backend + frontend 依赖
+npm test              # 后端 node --test + 前端 vitest
+npm run dev:backend   # 后端开发服务器(3001)
+npm run dev:frontend  # 前端开发服务器(5173)
+npm run build         # 构建前端 dist
+```
+
+也可以进入子目录单独操作：
+
 ```bash
 cd backend
 npm install
