@@ -122,7 +122,8 @@ async function ensureFile() {
     const data = JSON.parse(raw);
     jobs = Array.isArray(data.jobs) ? data.jobs : [];
     history = Array.isArray(data.history) ? data.history : [];
-  } catch {
+  } catch (err) {
+    console.error('[cron-scheduler] Failed to load cron data file:', err.message);
     jobs = [];
     history = [];
   }
@@ -344,7 +345,9 @@ async function tick() {
     const started = Date.now();
     executeJob(job)
       .then(async (summary) => { await recordRun(job, 'success', '', Date.now() - started); return summary; })
-      .catch(() => {})
+      .catch((err) => {
+        console.error(`[cron-scheduler] Job ${job.name} (${job.id}) execution failed:`, err.message);
+      })
       .finally(() => running.delete(job.id));
   }
 }

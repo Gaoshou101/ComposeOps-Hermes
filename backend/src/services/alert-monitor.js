@@ -104,7 +104,9 @@ async function evaluateAgentRules(project, container, stats) {
   try {
     const inspected = await docker.getContainer(container.id).inspect();
     restartCount = Number(inspected?.RestartCount) || 0;
-  } catch {}
+  } catch (err) {
+    console.error(`[alert-monitor] Failed to inspect container ${container.id}:`, err.message);
+  }
 
   for (const rule of rules) {
     if (!containerMatchesService(container, rule.service)) continue;
@@ -163,7 +165,9 @@ async function poll() {
                 await sendNotification('ComposeOps：容器内存告警', `${project.projectName} / ${item.name}: ${percent.toFixed(1)}%`)
                   .catch(() => {});
               }
-            } catch {}
+            } catch (err) {
+              console.error(`[alert-monitor] Failed to check stats for ${project.projectName}/${item.name}:`, err.message);
+            }
           }
         }
       }
@@ -187,7 +191,9 @@ async function poll() {
           try {
             const stats = await docker.getContainer(item.id).stats({ stream: false });
             await evaluateAgentRules(project, item, stats);
-          } catch {}
+          } catch (err) {
+            console.error(`[alert-monitor] Failed to evaluate agent rules for ${project.projectName}/${item.name}:`, err.message);
+          }
         }
       }
     }
