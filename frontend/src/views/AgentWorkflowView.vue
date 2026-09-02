@@ -243,16 +243,11 @@ async function askAgent() {
 async function executePlan(message) {
   if (executing.value) return;
   executing.value = true;
-  const steps = message.plan?.steps || [];
-  const needsConfirm = steps.some((step) => step.confirmationRequired || step.risk === 'high' || step.risk === 'critical');
-  if (needsConfirm) {
-    message.results = [];
-    message.awaitingStep = 0;
-    executing.value = false;
-    return;
-  }
+  // 点击「执行」即为用户对整条工作流的确认:给所有高风险步骤带上 confirmed 标记,
+  // 避免后端再次要求逐步骤确认导致反馈死循环。
+  const steps = (message.plan?.steps || []).map((step) => ({ ...step, confirmed: true }));
   try {
-    const response = await api.agentExecute({ planId: message.planId, steps: message.plan.steps });
+    const response = await api.agentExecute({ planId: message.planId, steps });
     thoughts.value = Array.isArray(response.thoughts) ? response.thoughts : [];
     message.results = response.results || [];
     message.executed = true;
