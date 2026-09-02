@@ -22,7 +22,16 @@
                 <p class="mx-auto max-w-md text-sm leading-6 text-zinc-500">用一句话描述目标,例如「重启 web 服务并清理旧镜像」。Agent 会规划工具步骤,高风险操作需你确认后再执行。</p>
               </div>
               <div class="flex flex-wrap justify-center gap-2">
-                <button v-for="preset in presets" :key="preset" class="preset-chip" @click="input = preset"><Sparkles class="h-3.5 w-3.5 text-cyan-400" />{{ preset }}</button>
+                <button
+                  v-for="preset in presets"
+                  :key="preset"
+                  class="preset-chip"
+                  :disabled="presetsNeedProject.has(preset) && !projectId"
+                  :class="{ 'opacity-50 cursor-not-allowed': presetsNeedProject.has(preset) && !projectId }"
+                  @click="input = preset"
+                >
+                  <Sparkles class="h-3.5 w-3.5 text-cyan-400" />{{ preset }}
+                </button>
               </div>
             </div>
           </template>
@@ -158,6 +167,7 @@ const quickRunning = ref('');
 let nextId = 0;
 
 const presets = ['重启 web 服务', '查看项目容器状态', '清理旧镜像和悬空卷', '校验 Compose 配置', '分析容器为什么异常退出'];
+const presetsNeedProject = new Set(['重启 web 服务', '查看项目容器状态', '校验 Compose 配置', '分析容器为什么异常退出']);
 const quickTools = [
   { name: 'compose.ps', label: '容器状态', params: {} },
   { name: 'metrics.query', label: '资源指标', params: {} },
@@ -195,12 +205,27 @@ async function loadTools() {
 }
 
 async function loadProjects() {
-  try { projects.value = ((await api.getProjects()).projects || []).filter((p) => p.managed); } catch {}
+  try {
+    projects.value = ((await api.getProjects()).projects || []).filter((p) => p.managed);
+    // 如果只有一个纳管项目且当前未选择，自动选中
+    if (projects.value.length === 1 && !projectId.value) {
+      projectId.value = projects.value[0].id;
+    }
+  } catch {}
 }
 
 async function askAgent() {
   const text = input.value.trim();
   if (!text || planning.value) return;
+
+  // 检查是否需要项目上下文
+  const needsProject = /校验|validate|配置|compose|重启|启动|停止|日志|编辑|预览|diff|容器|状态/.test(text);
+  if (needsProject && !projectId.value) {
+    messages.value.push({ id: ++nextId, role: 'assistant', content: '该操作需要选择一个项目，请先在上方下拉框中选择项目' });
+    input.value = '';
+    return;
+  }
+
   input.value = '';
   planning.value = true;
   messages.value.push({ id: ++nextId, role: 'user', content: text });
