@@ -9,6 +9,7 @@ const routes = [
   { path: '/ai', name: 'ai', component: () => import('./views/AiView.vue') },
   { path: '/agent', name: 'agent', component: () => import('./views/AgentWorkflowView.vue') },
   { path: '/monitor', name: 'monitor', component: () => import('./views/MonitorView.vue') },
+  { path: '/resources', name: 'resources', component: () => import('./views/ResourcesView.vue') },
   { path: '/operations', name: 'operations', component: () => import('./views/OperationsView.vue') },
   { path: '/blueprints', name: 'blueprints', component: () => import('./views/BlueprintsView.vue') },
   { path: '/cron', name: 'cron', component: () => import('./views/CronTasksView.vue') },

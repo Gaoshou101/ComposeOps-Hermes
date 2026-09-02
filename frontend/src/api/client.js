@@ -134,6 +134,8 @@ export const api = {
   // docker storage
   getStorageDf: () => request('/ops/storage/df'),
   pruneStorage: (mode, confirm) => request('/ops/storage/prune', { method: 'POST', body: JSON.stringify({ mode, confirm }) }),
+  getStorageResources: (force = false) => request('/ops/storage/resources', { force }),
+  removeStorageResource: (kind, id) => request(`/ops/storage/resources/${kind}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   // app blueprints
   getBlueprints: () => request('/ops/blueprints'),
   streamBlueprintDeploy: (blueprintId, values, onFrame) => streamComposeControl(null, null, onFrame, '/ops/blueprints/deploy', { blueprintId, values }),

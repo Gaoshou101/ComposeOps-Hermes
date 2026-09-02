@@ -24,7 +24,7 @@
 </template>
 
 <script setup>
-import { Boxes, Clock3, FileCode2, ScrollText, TerminalSquare, Bot, ChartNoAxesCombined, History, Settings, Store, Workflow } from 'lucide-vue-next';
+import { Boxes, Clock3, FileCode2, ScrollText, TerminalSquare, Bot, ChartNoAxesCombined, HardDrive, History, Settings, Store, Workflow } from 'lucide-vue-next';
 const groups = [
   { label: '运行', items: [
     { to: '/services', icon: Boxes, label: '服务' },
@@ -42,6 +42,7 @@ const groups = [
     { to: '/cron', icon: Clock3, label: '定时任务' },
   ] },
   { label: '系统', items: [
+    { to: '/resources', icon: HardDrive, label: '资源' },
     { to: '/operations', icon: History, label: '记录' },
     { to: '/settings', icon: Settings, label: '设置' },
   ] },

@@ -1,4 +1,5 @@
 import { getSystemStorageDf, pruneStorage } from '../services/docker-storage.js';
+import { listDockerResources, removeDockerResource } from '../services/docker-resources.js';
 import { listBlueprints, deployBlueprint } from '../services/app-blueprints.js';
 import { checkAllUpdates } from '../services/image-updater.js';
 import { getNotificationConfig, saveNotificationConfig, sendNotification } from '../services/notifications.js';
@@ -65,6 +66,39 @@ export default async function opsRoutes(fastify) {
       return { ok: true, ...result };
     } catch (error) {
       return reply.code(502).send({ error: 'storage_prune_failed', message: error.message });
+    }
+  });
+
+  // ---- 细粒度资源清单与逐项删除(镜像 / 卷 / 网络) ----
+  fastify.get('/storage/resources', async (request, reply) => {
+    try {
+      return await listDockerResources();
+    } catch (error) {
+      return reply.code(error.statusCode || 502).send({ error: 'resources_list_failed', message: error.message });
+    }
+  });
+
+  // kind 不设 enum:处理函数自己归一 image|volume|network 并返回 400。
+  // 卷删除默认 force,避免"被引用卷删除静默失败"的糟糕体验。
+  fastify.delete('/storage/resources/:kind/:id', {
+    schema: {
+      params: {
+        type: 'object',
+        required: ['kind', 'id'],
+        properties: { kind: { type: 'string', maxLength: 16 }, id: { type: 'string', minLength: 1, maxLength: 200 } },
+      },
+    },
+  }, async (request, reply) => {
+    const { kind, id } = request.params;
+    if (!['image', 'volume', 'network'].includes(kind)) {
+      return reply.code(400).send({ error: 'unknown_resource_kind', message: `未知资源类型:${kind}` });
+    }
+    try {
+      const result = await removeDockerResource(kind, id, true);
+      addOperation({ action: `resource.remove.${kind}`, status: 'success', detail: id });
+      return { ok: true, ...result };
+    } catch (error) {
+      return reply.code(error.statusCode || 502).send({ error: 'resource_remove_failed', message: error.message });
     }
   });
 
