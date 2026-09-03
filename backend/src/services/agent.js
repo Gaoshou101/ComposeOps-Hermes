@@ -8,7 +8,7 @@ import {
   listAgentPlans,
   listAgentExecutions,
 } from '../lib/db.js';
-import { registerAgentTools } from './agent-tools.js';
+import { registerAgentTools, assessRisk } from './agent-tools.js';
 import { findProject, findProjectContainer } from './scanner.js';
 import { PreconditionChecker, PostconditionValidator, TOOL_CATEGORIES, expandMacro, MACRO_TOOLS } from './agent-tool-categories.js';
 
@@ -220,7 +220,6 @@ export class OperationsAgent {
       }
 
       // Phase 1 增强:动态风险评估
-      const { assessRisk } = await import('./agent-tools.js');
       const dynamicRisk = assessRisk(step.tool, params, context);
 
       return { tool: step.tool, params, confirmationRequired: !!tool?.confirmationRequired, risk: dynamicRisk };
