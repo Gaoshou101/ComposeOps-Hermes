@@ -2,9 +2,9 @@
  * 成本分析服务
  * 提供容器资源使用、存储占用、镜像大小分析
  */
-import { getActivityDocker } from './docker.js';
-import { listManagedProjects } from './projects.js';
-import { getSetting, setSetting } from './settings.js';
+import { getActivityDocker } from './docker-hosts.js';
+import { scanProjects } from './scanner.js';
+import { getSetting, setSetting } from '../lib/db.js';
 
 /**
  * 获取容器资源使用统计
@@ -127,11 +127,11 @@ export async function getStorageStats() {
  * 获取项目成本汇总
  */
 export async function getProjectCostSummary() {
-  const projects = await listManagedProjects();
+  const projects = (await scanProjects()).filter((project) => project.managed);
   const containerStats = await getContainerResourceStats();
   
   const summary = projects.map(project => {
-    const projectContainers = containerStats.filter(c => c.projectName === project.id);
+    const projectContainers = containerStats.filter(c => c.projectName === project.projectName);
     
     const totalCPU = projectContainers.reduce((sum, c) => sum + c.cpuPercent, 0);
     const totalMemory = projectContainers.reduce((sum, c) => sum + c.memoryUsageMB, 0);
@@ -139,7 +139,7 @@ export async function getProjectCostSummary() {
     
     return {
       projectId: project.id,
-      projectName: project.name,
+      projectName: project.projectName,
       containerCount: projectContainers.length,
       runningCount,
       totalCPUPercent: Math.round(totalCPU * 100) / 100,
