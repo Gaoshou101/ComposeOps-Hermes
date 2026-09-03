@@ -273,7 +273,10 @@ async function askAgent() {
     thoughts.value = Array.isArray(response.thoughts) ? response.thoughts : [];
     messages.value.push({ id: ++nextId, role: 'assistant', content: response.plan?.steps?.length ? `已生成 ${response.plan.steps.length} 步执行计划` : '未能生成可执行计划', plan: response.plan, planId: response.planId, executed: false, results: null });
   } catch (e) {
-    messages.value.push({ id: ++nextId, role: 'assistant', content: `规划失败:${e.message}` });
+    // 401 错误时不显示错误消息,让 App.vue 自动显示登录页
+    if (e.status !== 401) {
+      messages.value.push({ id: ++nextId, role: 'assistant', content: `规划失败:${e.message}` });
+    }
   } finally {
     planning.value = false;
   }
@@ -312,6 +315,10 @@ async function doExecutePlan(message, confirmedSteps) {
     message.executed = true;
     message.content = response.success ? '工作流执行完成' : '工作流执行失败';
   } catch (e) {
+    // 401 错误时不设置 message,让 App.vue 自动显示登录页
+    if (e.status === 401) {
+      return;
+    }
     message.content = `执行失败:${e.message}`;
     message.executed = true;
   } finally {
