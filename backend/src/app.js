@@ -14,12 +14,14 @@ import hostRoutes from './routes/hosts.js';
 import opsRoutes from './routes/ops.js';
 import cronRoutes from './routes/cron.js';
 import metricsRoutes from './routes/metrics.js';
+import gitopsRoutes from './routes/gitops.js';
 import docker from './services/docker.js';
 import { isAuthenticated, isConfigured, setPassword, validateOrigin } from './lib/auth.js';
 import { stopAlertMonitor } from './services/alert-monitor.js';
 import { stopHealthAlerter } from './services/health-alerter.js';
 import { stopCronScheduler } from './services/cron-scheduler.js';
 import { closeAllWorkspaceRunners } from './services/compose-workspace.js';
+import { stopAllGitOpsWatchers } from './services/gitops.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -114,6 +116,7 @@ export async function buildApp({ logger = { level: process.env.LOG_LEVEL || 'inf
       await api.register(opsRoutes, { prefix: '/ops' });
       await api.register(cronRoutes, { prefix: '/cron' });
       await api.register(metricsRoutes, { prefix: '/metrics' });
+      await api.register(gitopsRoutes, { prefix: '/gitops' });
     },
     { prefix: '/api/v1' }
   );
@@ -168,6 +171,7 @@ export async function buildApp({ logger = { level: process.env.LOG_LEVEL || 'inf
     stopAlertMonitor();
     stopHealthAlerter();
     stopCronScheduler();
+    stopAllGitOpsWatchers();
     await closeAllWorkspaceRunners();
   });
 

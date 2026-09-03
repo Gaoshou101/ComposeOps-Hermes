@@ -3,6 +3,7 @@ import { startAlertMonitor } from './services/alert-monitor.js';
 import { startHealthAlerter } from './services/health-alerter.js';
 import { startCronScheduler } from './services/cron-scheduler.js';
 import { initializeBackgroundJobs } from './services/background-jobs.js';
+import { initGitOps } from './services/gitops.js';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -17,6 +18,7 @@ const start = async () => {
     startAlertMonitor();
     startHealthAlerter();
     startCronScheduler();
+    initGitOps();
     fastify.log.info(`OpsDash backend listening on http://${HOST}:${PORT}`);
   } catch (err) {
     fastify.log.error(err);
