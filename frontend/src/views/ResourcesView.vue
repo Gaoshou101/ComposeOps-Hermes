@@ -1,8 +1,9 @@
 <template>
   <div class="page-shell page-shell-workspace">
     <div class="page-header">
-      <div><h1 class="page-title">存储资源</h1><p class="page-subtitle">逐项查看并清理悬空镜像、孤儿卷与闲置网络</p></div>
+      <div><h1 class="page-title">存储资源</h1><p class="page-subtitle">批量清理悬空镜像、孤儿卷与闲置网络</p></div>
       <div class="page-actions">
+        <button v-if="selected.length > 0" class="btn-danger" :disabled="busy" @click="batchRemove"><Trash2 class="w-4 h-4" />批量删除 ({{ selected.length }})</button>
         <button class="btn-secondary" :disabled="loading" @click="refresh"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />刷新</button>
       </div>
     </div>
@@ -16,8 +17,18 @@
       <span v-if="data" class="rounded border border-surface-800 bg-surface-950/50 px-2 py-0.5">闲置网络 <b class="text-amber-300">{{ data.counts.unusedNetworks }}</b></span>
     </div>
 
-    <div class="flex items-center gap-1 border-b border-surface-800 pb-0">
-      <button v-for="tab in tabs" :key="tab.key" class="nav-link !flex-none px-3 py-2 text-sm" :class="{ 'nav-link-active': activeTab === tab.key }" @click="activeTab = tab.key">{{ tab.label }}<span class="ml-2 count-badge">{{ (data?.counts?.[tab.countKey] ?? 0) }}</span></button>
+    <div class="flex items-center justify-between gap-3 border-b border-surface-800 pb-0">
+      <div class="flex items-center gap-1">
+        <button v-for="tab in tabs" :key="tab.key" class="nav-link !flex-none px-3 py-2 text-sm" :class="{ 'nav-link-active': activeTab === tab.key }" @click="switchTab(tab.key)">{{ tab.label }}<span class="ml-2 count-badge">{{ (data?.counts?.[tab.countKey] ?? 0) }}</span></button>
+      </div>
+      <div class="flex items-center gap-2 pb-2">
+        <span v-if="searchQuery || filterStatus" class="text-xs text-surface-400">显示 <b class="text-sky-300">{{ filteredRows.length }}</b> / {{ rows.length }}</span>
+        <input v-model="searchQuery" type="text" class="input !py-1 !text-sm w-48" placeholder="搜索..." />
+        <select v-model="filterStatus" class="input !py-1 !text-sm w-32">
+          <option value="">全部状态</option>
+          <option v-for="status in statusOptions" :key="status.value" :value="status.value">{{ status.label }}</option>
+        </select>
+      </div>
     </div>
 
     <Skeleton v-if="loading && !data" variant="table" :rows="6" label="资源清单加载中" />
@@ -27,6 +38,9 @@
         <table class="data-table">
           <thead>
             <tr>
+              <th class="w-12">
+                <input type="checkbox" :checked="allSelected" :indeterminate="someSelected" @change="toggleAll" class="checkbox" />
+              </th>
               <th v-if="activeTab === 'images'">镜像</th>
               <th v-else-if="activeTab === 'volumes'">卷名</th>
               <th v-else>网络</th>
@@ -36,8 +50,15 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-if="!rows.length"><td :colspan="5" class="text-center text-muted py-6">{{ activeTab === 'networks' ? '没有可清理的网络' : `没有${tabLabel}可清理,系统很干净` }}</td></tr>
-            <tr v-for="row in rows" :key="row.key" class="hover:bg-surface-800/25">
+            <tr v-if="!filteredRows.length">
+              <td :colspan="6" class="text-center text-muted py-6">
+                {{ (searchQuery || filterStatus) ? '未找到匹配的资源' : (activeTab === 'networks' ? '没有可清理的网络' : `没有${tabLabel}可清理,系统很干净`) }}
+              </td>
+            </tr>
+            <tr v-for="row in filteredRows" :key="row.key" class="hover:bg-surface-800/25">
+              <td class="text-center">
+                <input v-if="row.deletable" type="checkbox" :checked="selected.includes(row.key)" @change="toggleRow(row.key)" class="checkbox" />
+              </td>
               <td class="max-w-xs truncate font-mono tabular-nums" :title="row.title">{{ row.primary }}<span v-if="row.note" class="ml-2 text-muted text-xs">{{ row.note }}</span></td>
               <td><span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium" :class="row.toneCls">{{ row.statusLabel }}</span></td>
               <td class="text-right font-mono tabular-nums whitespace-nowrap">{{ formatBytes(row.size) }}</td>
@@ -54,8 +75,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
-import { RefreshCw } from 'lucide-vue-next';
+import { computed, onMounted, ref, watch } from 'vue';
+import { RefreshCw, Trash2 } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import Skeleton from '../components/common/Skeleton.vue';
 
@@ -66,6 +87,9 @@ const flash = ref('');
 const activeTab = ref('images');
 const pendingKey = ref('');
 const busy = ref(false);
+const selected = ref([]);
+const searchQuery = ref('');
+const filterStatus = ref('');
 
 const tabs = [
   { key: 'images', label: '镜像', countKey: 'images' },
@@ -73,6 +97,27 @@ const tabs = [
   { key: 'networks', label: '网络', countKey: 'networks' },
 ];
 const tabLabel = computed(() => tabs.find((t) => t.key === activeTab.value)?.label || '');
+
+const statusOptions = computed(() => {
+  if (activeTab.value === 'images') {
+    return [
+      { value: 'dangling', label: '悬空' },
+      { value: 'inUse', label: '使用中' },
+      { value: 'unused', label: '未使用' },
+    ];
+  }
+  if (activeTab.value === 'volumes') {
+    return [
+      { value: 'orphan', label: '孤儿' },
+      { value: 'referenced', label: '被引用' },
+    ];
+  }
+  return [
+    { value: 'builtin', label: '内置' },
+    { value: 'unused', label: '闲置' },
+    { value: 'attached', label: '已接入' },
+  ];
+});
 
 // 状态徽章的调色板:tone -> tailwind 类(与 StatusBadge 的语义色对齐)
 const TONE = {
@@ -96,6 +141,7 @@ const rows = computed(() => {
       tone: img.dangling ? 'amber' : img.inUse ? 'sky' : 'green',
       toneCls: TONE[img.dangling ? 'amber' : img.inUse ? 'sky' : 'green'],
       statusLabel: img.dangling ? '悬空' : img.inUse ? '使用中' : '未使用',
+      statusValue: img.dangling ? 'dangling' : img.inUse ? 'inUse' : 'unused',
       size: img.size,
       deletable: !img.inUse,
       undeletableReason: img.inUse ? '被容器引用' : '',
@@ -109,6 +155,7 @@ const rows = computed(() => {
       tone: vol.orphan ? 'amber' : 'green',
       toneCls: TONE[vol.orphan ? 'amber' : 'green'],
       statusLabel: vol.orphan ? '孤儿' : `被引用 ×${vol.refCount}`,
+      statusValue: vol.orphan ? 'orphan' : 'referenced',
       size: vol.size,
       deletable: vol.orphan,
       undeletableReason: '被容器挂载',
@@ -121,11 +168,97 @@ const rows = computed(() => {
     tone: net.unused ? 'amber' : net.builtin ? 'slate' : 'green',
     toneCls: TONE[net.unused ? 'amber' : net.builtin ? 'slate' : 'green'],
     statusLabel: net.builtin ? '内置' : net.unused ? '闲置' : `接入 ${net.attached}`,
+    statusValue: net.builtin ? 'builtin' : net.unused ? 'unused' : 'attached',
     size: 0,
     deletable: net.unused,
     undeletableReason: net.builtin ? 'Docker 内置' : `被 ${net.attached} 个容器使用`,
   })).sort((a, b) => Number(a.deletable) - Number(b.deletable));
 });
+
+const filteredRows = computed(() => {
+  let result = rows.value;
+  
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase();
+    result = result.filter(row => 
+      row.primary.toLowerCase().includes(query) || 
+      row.title.toLowerCase().includes(query)
+    );
+  }
+  
+  if (filterStatus.value) {
+    result = result.filter(row => row.statusValue === filterStatus.value);
+  }
+  
+  return result;
+});
+
+const deletableRows = computed(() => filteredRows.value.filter(r => r.deletable));
+const allSelected = computed(() => deletableRows.value.length > 0 && selected.value.length === deletableRows.value.length);
+const someSelected = computed(() => selected.value.length > 0 && selected.value.length < deletableRows.value.length);
+
+function switchTab(key) {
+  activeTab.value = key;
+  selected.value = [];
+  searchQuery.value = '';
+  filterStatus.value = '';
+}
+
+function toggleAll() {
+  if (allSelected.value) {
+    selected.value = [];
+  } else {
+    selected.value = deletableRows.value.map(r => r.key);
+  }
+}
+
+function toggleRow(key) {
+  const idx = selected.value.indexOf(key);
+  if (idx > -1) {
+    selected.value.splice(idx, 1);
+  } else {
+    selected.value.push(key);
+  }
+}
+
+async function batchRemove() {
+  if (selected.value.length === 0) return;
+  
+  const totalCount = selected.value.length;
+  const msg = `确认批量删除 ${totalCount} 项资源?`;
+  if (!confirm(msg)) return;
+  
+  busy.value = true;
+  const kinds = { images: 'image', volumes: 'volume', networks: 'network' };
+  const errors = [];
+  let successCount = 0;
+  
+  for (const key of selected.value) {
+    const row = rows.value.find(r => r.key === key);
+    if (!row) continue;
+    
+    try {
+      const id = activeTab.value === 'images' ? rowRemaining(row) : row.primary;
+      await api.removeStorageResource(kinds[activeTab.value], id);
+      successCount++;
+    } catch (e) {
+      errors.push(`${row.primary}: ${e.message}`);
+    }
+  }
+  
+  busy.value = false;
+  selected.value = [];
+  
+  if (errors.length > 0) {
+    error.value = `成功 ${successCount} 项,失败 ${errors.length} 项:\n${errors.join('\n')}`;
+    flash.value = '';
+  } else {
+    flash.value = `已成功删除 ${successCount} 项`;
+    error.value = '';
+  }
+  
+  await refresh();
+}
 
 async function refresh() {
   if (loading.value) return;
@@ -180,6 +313,10 @@ function formatBytes(value = 0) {
   while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
   return `${n.toFixed(i ? 1 : 0)} ${units[i]}`;
 }
+
+watch(activeTab, () => {
+  selected.value = [];
+});
 
 onMounted(refresh);
 </script>
