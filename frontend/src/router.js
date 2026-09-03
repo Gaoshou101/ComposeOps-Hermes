@@ -17,6 +17,7 @@ const routes = [
   { path: '/cron', name: 'cron', component: () => import('./views/CronTasksView.vue') },
   { path: '/gitops', name: 'gitops', component: () => import('./views/GitOpsView.vue') },
   { path: '/cost', name: 'cost', component: () => import('./views/CostAnalysisView.vue') },
+  { path: '/marketplace', name: 'marketplace', component: () => import('./views/MarketplaceView.vue') },
   { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
 ];
 
