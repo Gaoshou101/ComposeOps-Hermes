@@ -118,16 +118,14 @@
           </div>
         </div>
 
-        <div class="card shrink-0 p-4">
-          <h3 class="mb-2 text-sm font-semibold text-zinc-300">可用工具({{ tools.length }})</h3>
-          <div class="max-h-48 space-y-1 overflow-y-auto">
-            <div v-for="tool in tools" :key="tool.name" class="flex items-center gap-2 text-xs">
-              <code class="font-mono text-cyan-300">{{ tool.name }}</code>
-              <span v-if="tool.confirmationRequired" class="rounded border border-rose-900/50 bg-rose-950/40 px-1 text-[9px] text-rose-300">需确认</span>
-              <span class="truncate text-zinc-600">{{ tool.description }}</span>
-            </div>
-          </div>
-        </div>
+        <ToolCategoriesPanel
+          :tools="tools"
+          :categories="categories"
+          :project-selected="!!projectId"
+          :running="quickRunning"
+          :loading="loading"
+          @invoke="quickInvoke"
+        />
 
         <div class="card shrink-0 p-4">
           <div class="mb-2 flex items-center justify-between">
@@ -163,6 +161,7 @@ import { AlertTriangle, Bot, CheckCircle2, Download, History, ListChecks, Loader
 import { api } from '../api/client.js';
 import WorkflowDAG from '../components/agent/WorkflowDAG.vue';
 import BatchConfirmModal from '../components/agent/BatchConfirmModal.vue';
+import ToolCategoriesPanel from '../components/ToolCategoriesPanel.vue';
 
 const projects = ref([]);
 const projectId = ref('');
@@ -171,6 +170,7 @@ const input = ref('');
 const messages = ref([]);
 const thoughts = ref([]);
 const tools = ref([]);
+const categories = ref([]);
 const roles = ref([]);
 const history = ref([]);
 const role = ref('planner');
@@ -216,6 +216,7 @@ async function loadTools() {
   loading.value = true;
   try {
     tools.value = (await api.getAgentTools()).tools || [];
+    categories.value = (await api.getAgentCategories()).categories || [];
     roles.value = (await api.getAgentRoles()).roles || [];
     if (!roles.value.some((item) => item.name === role.value)) role.value = 'planner';
   } catch {} finally { loading.value = false; }

@@ -496,6 +496,17 @@ ${evidence}`;
   // GET /api/v1/ai/agent/tools —— 可用工具元数据
   fastify.get('/agent/tools', async () => ({ tools: getAgent().listTools() }));
 
+  // GET /api/v1/ai/agent/categories —— 工具分类元数据
+  fastify.get('/agent/categories', async () => {
+    const { TOOL_CATEGORIES, getToolsByCategory } = await import('../services/agent-tool-categories.js');
+    const categories = Object.entries(TOOL_CATEGORIES).map(([key, meta]) => ({
+      key,
+      ...meta,
+      tools: getToolsByCategory(key),
+    }));
+    return { categories };
+  });
+
   // GET /api/v1/ai/agent/roles —— 多角色 Agent 元数据
   fastify.get('/agent/roles', async () => ({ roles: getAgent().listRoles() }));
 

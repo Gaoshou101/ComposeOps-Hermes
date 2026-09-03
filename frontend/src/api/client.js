@@ -156,6 +156,7 @@ export const api = {
   clearAiHistory: (sessionId) => request(`/ai/history${sessionId ? `?sessionId=${sessionId}` : ''}`, { method: 'DELETE' }),
   // ai agent
   getAgentTools: () => request('/ai/agent/tools'),
+  getAgentCategories: () => request('/ai/agent/categories'),
   agentPlan: (payload) => request('/ai/agent/plan', { method: 'POST', body: JSON.stringify(payload) }),
   agentExecute: (payload) => request('/ai/agent/execute', { method: 'POST', body: JSON.stringify(payload) }),
   agentConfirm: (payload) => request('/ai/agent/confirm', { method: 'POST', body: JSON.stringify(payload) }),
