@@ -27,6 +27,7 @@ import { findProjectContainer } from '../services/scanner.js';
 import { readCompose } from '../services/compose-runner.js';
 import { readWorkspaceCompose } from '../services/compose-workspace.js';
 import { getAgent } from '../services/agent.js';
+import { generateSmartSuggestions } from '../services/agent-suggestions.js';
 
 /** 只读探测命令白名单:仅允许不带副作用的信息类命令。 */
 const READONLY_EXEC = /^(env|printenv|ps|top\s+-b\s+-n\s+1|netstat|ss|curl|wget|cat|head|tail|ls|df|du|free|uptime|uname|hostname|date|whoami|id|ip\s+addr|ping\s+-c\s+\d+)/;
@@ -636,6 +637,23 @@ ${evidence}`;
     const updated = recordAgentFeedback(planId, rating, feedbackText);
     if (!updated) return reply.code(404).send({ error: 'plan_not_found', message: '执行计划不存在' });
     return updated;
+  });
+
+  // GET /api/v1/ai/agent/suggestions —— 基于历史的智能建议
+  fastify.get('/agent/suggestions', {
+    schema: {
+      querystring: {
+        type: 'object',
+        properties: {
+          projectId: idField,
+          limit: limitField(10),
+        },
+      },
+    },
+  }, async (request) => {
+    const { projectId, limit = 5 } = request.query || {};
+    const suggestions = await generateSmartSuggestions(projectId, limit);
+    return { suggestions };
   });
 
   // GET /api/v1/ai/agent/export —— 审计/可观测性数据导出

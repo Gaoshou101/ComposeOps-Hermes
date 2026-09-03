@@ -21,6 +21,19 @@
                 <h2 class="text-base font-semibold tracking-tight text-zinc-100">AI 智能运维 Agent</h2>
                 <p class="mx-auto max-w-md text-sm leading-6 text-zinc-500">用一句话描述目标,例如「重启 web 服务并清理旧镜像」。Agent 会规划工具步骤,高风险操作需你确认后再执行。</p>
               </div>
+              <div v-if="suggestions.length" class="w-full max-w-2xl space-y-2">
+                <h3 class="text-xs font-medium text-zinc-400">基于历史的建议</h3>
+                <div class="flex flex-wrap justify-center gap-2">
+                  <button
+                    v-for="(suggestion, idx) in suggestions"
+                    :key="idx"
+                    class="preset-chip"
+                    @click="input = suggestion.message"
+                  >
+                    <Sparkles class="h-3.5 w-3.5 text-cyan-400" />{{ suggestion.label }}
+                  </button>
+                </div>
+              </div>
               <div class="flex flex-wrap justify-center gap-2">
                 <button
                   v-for="preset in presets"
@@ -173,6 +186,7 @@ const tools = ref([]);
 const categories = ref([]);
 const roles = ref([]);
 const history = ref([]);
+const suggestions = ref([]);
 const role = ref('planner');
 const planning = ref(false);
 const executing = ref(false);
@@ -220,6 +234,13 @@ async function loadTools() {
     roles.value = (await api.getAgentRoles()).roles || [];
     if (!roles.value.some((item) => item.name === role.value)) role.value = 'planner';
   } catch {} finally { loading.value = false; }
+}
+
+async function loadSuggestions() {
+  try {
+    const data = await api.getAgentSuggestions(projectId.value || '', 5);
+    suggestions.value = data?.suggestions || [];
+  } catch {}
 }
 
 async function loadProjects() {
@@ -385,5 +406,5 @@ async function quickInvoke(tool) {
   }
 }
 
-onMounted(async () => { await Promise.all([loadProjects(), loadTools(), loadHistory()]); });
+onMounted(async () => { await Promise.all([loadProjects(), loadTools(), loadHistory(), loadSuggestions()]); });
 </script>

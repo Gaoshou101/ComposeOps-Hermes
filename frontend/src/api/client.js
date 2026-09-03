@@ -161,6 +161,7 @@ export const api = {
   agentExecute: (payload) => request('/ai/agent/execute', { method: 'POST', body: JSON.stringify(payload) }),
   agentConfirm: (payload) => request('/ai/agent/confirm', { method: 'POST', body: JSON.stringify(payload) }),
   getAgentExecutions: (planId = '') => request(`/ai/agent/executions${planId ? `?planId=${encodeURIComponent(planId)}` : ''}`),
+  getAgentSuggestions: (projectId = '', limit = 5) => request(`/ai/agent/suggestions?${projectId ? `projectId=${encodeURIComponent(projectId)}&` : ''}limit=${limit}`),
   getAgentRoles: () => request('/ai/agent/roles'),
   getAgentFeedback: () => request('/ai/agent/feedback'),
   agentFeedback: (payload) => request('/ai/agent/feedback', { method: 'POST', body: JSON.stringify(payload) }),
