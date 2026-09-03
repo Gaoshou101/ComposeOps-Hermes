@@ -41,7 +41,14 @@
                 <div class="max-w-[88%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words" :class="message.role === 'user' ? 'bg-cyan-950/40 text-zinc-100' : 'bg-zinc-900 text-zinc-300'">{{ message.content }}</div>
               </div>
               <div v-if="message.plan" class="rounded-xl border border-zinc-800 bg-zinc-950/50 p-3">
-                <div class="mb-2 flex items-center gap-2 text-xs font-semibold text-zinc-300"><ListChecks class="h-3.5 w-3.5 text-cyan-400" />执行计划({{ message.plan.steps.length }} 步)</div>
+                <div class="mb-3 flex items-center gap-2 text-xs font-semibold text-zinc-300"><ListChecks class="h-3.5 w-3.5 text-cyan-400" />执行计划({{ message.plan.steps.length }} 步)</div>
+                
+                <!-- DAG Visualization -->
+                <div class="mb-3 overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/80 p-3">
+                  <WorkflowDAG :steps="message.plan.steps" :results="message.results || []" />
+                </div>
+
+                <!-- Step List -->
                 <div class="space-y-1.5">
                   <div v-for="(step, idx) in message.plan.steps" :key="idx" class="flex items-center gap-2 text-sm">
                     <span class="count-badge shrink-0">{{ idx + 1 }}</span>
@@ -125,7 +132,10 @@
         <div class="card shrink-0 p-4">
           <div class="mb-2 flex items-center justify-between">
             <h3 class="text-sm font-semibold text-zinc-300">执行历史</h3>
-            <button class="btn-secondary !px-2 !py-1 !text-[10px]" :disabled="exporting" @click="exportAgentData"><Download v-if="!exporting" class="h-3 w-3" /><LoaderCircle v-else class="h-3 w-3 animate-spin" />导出</button>
+            <div class="flex items-center gap-1.5">
+              <button class="btn-secondary !px-2 !py-1 !text-[10px]" @click="$router.push('/agent/history')"><History class="h-3 w-3" />查看全部</button>
+              <button class="btn-secondary !px-2 !py-1 !text-[10px]" :disabled="exporting" @click="exportAgentData"><Download v-if="!exporting" class="h-3 w-3" /><LoaderCircle v-else class="h-3 w-3 animate-spin" />导出</button>
+            </div>
           </div>
           <div class="max-h-44 space-y-1 overflow-y-auto">
             <div v-for="plan in history" :key="plan.id" class="rounded border border-zinc-800 p-2">
@@ -146,8 +156,9 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { AlertTriangle, Bot, CheckCircle2, Download, ListChecks, LoaderCircle, Play, RefreshCw, ShieldAlert, Sparkles, XCircle, Zap } from 'lucide-vue-next';
+import { AlertTriangle, Bot, CheckCircle2, Download, History, ListChecks, LoaderCircle, Play, RefreshCw, ShieldAlert, Sparkles, XCircle, Zap } from 'lucide-vue-next';
 import { api } from '../api/client.js';
+import WorkflowDAG from '../components/agent/WorkflowDAG.vue';
 
 const projects = ref([]);
 const projectId = ref('');
