@@ -287,3 +287,15 @@ export function wsUrl(path) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${location.host}${path}`;
 }
+
+// Metrics API
+export const metricsApi = {
+  getContainerMetrics: (containerId, metric = 'cpu', period = '5m') => 
+    request(`/metrics/container/${containerId}?metric=${metric}&period=${period}`),
+  getAlerts: (containerFilter = null) => 
+    request(`/metrics/alerts${containerFilter ? `?container=${containerFilter}` : ''}`),
+  createAlert: (config) => 
+    request('/metrics/alerts', { method: 'POST', body: JSON.stringify(config) }),
+  deleteAlert: (ruleId) => 
+    request(`/metrics/alerts/${ruleId}`, { method: 'DELETE' }),
+};

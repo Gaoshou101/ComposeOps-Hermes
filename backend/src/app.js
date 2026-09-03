@@ -13,6 +13,7 @@ import jobRoutes from './routes/jobs.js';
 import hostRoutes from './routes/hosts.js';
 import opsRoutes from './routes/ops.js';
 import cronRoutes from './routes/cron.js';
+import metricsRoutes from './routes/metrics.js';
 import docker from './services/docker.js';
 import { isAuthenticated, isConfigured, setPassword, validateOrigin } from './lib/auth.js';
 import { stopAlertMonitor } from './services/alert-monitor.js';
@@ -112,6 +113,7 @@ export async function buildApp({ logger = { level: process.env.LOG_LEVEL || 'inf
       await api.register(hostRoutes, { prefix: '/hosts' });
       await api.register(opsRoutes, { prefix: '/ops' });
       await api.register(cronRoutes, { prefix: '/cron' });
+      await api.register(metricsRoutes, { prefix: '/metrics' });
     },
     { prefix: '/api/v1' }
   );
