@@ -151,6 +151,9 @@
         </div>
       </aside>
     </div>
+
+    <!-- Batch Confirm Modal -->
+    <BatchConfirmModal :show="showBatchConfirm" :steps="batchConfirmSteps" @confirm="handleBatchConfirm" @cancel="cancelBatchConfirm" />
   </div>
 </template>
 
@@ -159,6 +162,7 @@ import { computed, onMounted, ref } from 'vue';
 import { AlertTriangle, Bot, CheckCircle2, Download, History, ListChecks, LoaderCircle, Play, RefreshCw, ShieldAlert, Sparkles, XCircle, Zap } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import WorkflowDAG from '../components/agent/WorkflowDAG.vue';
+import BatchConfirmModal from '../components/agent/BatchConfirmModal.vue';
 
 const projects = ref([]);
 const projectId = ref('');
@@ -175,6 +179,8 @@ const executing = ref(false);
 const loading = ref(false);
 const exporting = ref(false);
 const quickRunning = ref('');
+const showBatchConfirm = ref(false);
+const batchConfirmSteps = ref([]);
 let nextId = 0;
 
 const presets = ['重启 web 服务', '查看项目容器状态', '清理旧镜像和悬空卷', '校验 Compose 配置', '分析容器为什么异常退出'];
@@ -253,12 +259,25 @@ async function askAgent() {
 
 async function executePlan(message) {
   if (executing.value) return;
+  
+  const steps = message.plan?.steps || [];
+  const highRiskSteps = steps.filter((step) => step.confirmationRequired || step.risk === 'high' || step.risk === 'critical');
+  
+  // 如果有高风险步骤，先弹出批量确认模态框
+  if (highRiskSteps.length > 0) {
+    showBatchConfirm.value = true;
+    batchConfirmSteps.value = steps.map((step) => ({ ...step, confirmed: false }));
+    return;
+  }
+  
+  // 无高风险步骤，直接执行
+  await doExecutePlan(message, steps.map((step) => ({ ...step, confirmed: true })));
+}
+
+async function doExecutePlan(message, confirmedSteps) {
   executing.value = true;
-  // 点击「执行」即为用户对整条工作流的确认:给所有高风险步骤带上 confirmed 标记,
-  // 避免后端再次要求逐步骤确认导致反馈死循环。
-  const steps = (message.plan?.steps || []).map((step) => ({ ...step, confirmed: true }));
   try {
-    const response = await api.agentExecute({ planId: message.planId, steps });
+    const response = await api.agentExecute({ planId: message.planId, steps: confirmedSteps });
     thoughts.value = Array.isArray(response.thoughts) ? response.thoughts : [];
     message.results = response.results || [];
     message.executed = true;
@@ -269,6 +288,19 @@ async function executePlan(message) {
   } finally {
     executing.value = false;
   }
+}
+
+function handleBatchConfirm(steps) {
+  showBatchConfirm.value = false;
+  const message = messages.value.find((m) => m.planId && !m.executed);
+  if (message) {
+    doExecutePlan(message, steps);
+  }
+}
+
+function cancelBatchConfirm() {
+  showBatchConfirm.value = false;
+  batchConfirmSteps.value = [];
 }
 
 async function confirmStep(message) {
