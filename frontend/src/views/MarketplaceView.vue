@@ -183,7 +183,7 @@ const toast = useToastStore();
 
 const loading = ref(false);
 const error = ref('');
-const stats = ref(null);
+const stats = ref({ totalBuiltin: 0, totalCommunity: 0, totalCustom: 0, totalFavorites: 0, categories: [] });
 const allTemplates = ref({ builtin: [], community: [], custom: [] });
 const filteredTemplates = ref([]);
 const searchQuery = ref('');
