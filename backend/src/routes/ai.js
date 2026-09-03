@@ -558,14 +558,27 @@ ${evidence}`;
     if (!planId) {
       return reply.code(400).send({ error: 'missing_plan_id', message: '缺少 planId' });
     }
-    if (!getAgentPlan(planId)) {
+    const plan = getAgentPlan(planId);
+    if (!plan) {
       return reply.code(404).send({ error: 'plan_not_found', message: '执行计划不存在' });
     }
     if (!Array.isArray(steps) || !steps.length) {
       return reply.code(400).send({ error: 'missing_steps', message: '缺少执行步骤' });
     }
     const result = await agent.executeWorkflow(planId, steps, { sessionId });
-    return { ...result, thoughts: agent.thoughts };
+
+    // Phase 1 增强:返回细粒度执行状态
+    const updatedPlan = getAgentPlan(planId);
+    return {
+      ...result,
+      thoughts: agent.thoughts,
+      progress: {
+        stage: updatedPlan.progress_stage || null,
+        percent: updatedPlan.progress_percent || 0,
+        currentStepIndex: updatedPlan.current_step_index || 0,
+        updatedAt: updatedPlan.updated_at || null,
+      },
+    };
   });
 
   // POST /api/v1/ai/agent/confirm —— 单工具确认后直接执行(快速操作)

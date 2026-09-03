@@ -218,7 +218,12 @@ export class OperationsAgent {
       if (properties.containerId && !params.containerId && context.containerId) {
         params.containerId = context.containerId;
       }
-      return { tool: step.tool, params, confirmationRequired: !!tool?.confirmationRequired, risk: tool?.risk || 'low' };
+
+      // Phase 1 增强:动态风险评估
+      const { assessRisk } = await import('./agent-tools.js');
+      const dynamicRisk = assessRisk(step.tool, params, context);
+
+      return { tool: step.tool, params, confirmationRequired: !!tool?.confirmationRequired, risk: dynamicRisk };
     })
       .filter((step) => {
         if (!role) return true;
@@ -312,6 +317,16 @@ export class OperationsAgent {
 
       const execId = recordAgentExecution(planId, toolName, params, 'executing');
       this.addThought('executing', `执行 ${toolName}`, { execId, params });
+
+      // Phase 1 增强:更新执行进度到数据库
+      const stepIndex = steps.indexOf(step);
+      updateAgentPlan(planId, {
+        progress_stage: `正在执行 ${toolName}...`,
+        progress_percent: Math.round((stepIndex / steps.length) * 100),
+        current_step_index: stepIndex,
+        updated_at: new Date().toISOString(),
+      });
+
       const started = Date.now();
       try {
         const resolved = await resolveToolContext(params);
@@ -335,7 +350,28 @@ export class OperationsAgent {
         updateAgentExecution(execId, { status: 'failed', error: error.message, durationMs: Date.now() - started });
         results.push({ tool: toolName, status: 'failed', error: error.message, durationMs: Date.now() - started });
         this.addThought('validating', `${toolName} 执行失败:${error.message}`, { execId });
-        break;
+
+        // Phase 1 增强:失败后尝试 LLM 重新规划
+        this.addThought('planning', '尝试让 LLM 重新规划后续步骤', { failedTool: toolName, error: error.message });
+        try {
+          const replanPrompt = `步骤 ${toolName} 执行失败,错误:${error.message}。已完成的步骤:${results.filter(r => r.status === 'success').map(r => r.tool).join(', ')}。请重新规划后续步骤或提供替代方案。`;
+          const replanResult = await this.plan(replanPrompt, _context);
+
+          if (replanResult?.steps?.length > 0) {
+            this.addThought('planning', `已生成 ${replanResult.steps.length} 步新计划`, { newSteps: replanResult.steps.map(s => s.tool) });
+            // 将新计划的步骤追加到当前工作流
+            const currentIndex = steps.indexOf(step);
+            steps.splice(currentIndex + 1, steps.length, ...replanResult.steps);
+            this.addThought('planning', '继续执行新计划', {});
+            continue; // 继续执行而不是 break
+          } else {
+            this.addThought('planning', '无法生成有效的替代计划', {});
+            break;
+          }
+        } catch (replanError) {
+          this.addThought('planning', `重新规划失败:${replanError.message}`, {});
+          break;
+        }
       }
     }
     const failed = results.some((item) => item.status === 'failed');

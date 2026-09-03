@@ -281,17 +281,25 @@ async function askAgent() {
 
 async function executePlan(message) {
   if (executing.value) return;
-  
+
   const steps = message.plan?.steps || [];
   const highRiskSteps = steps.filter((step) => step.confirmationRequired || step.risk === 'high' || step.risk === 'critical');
-  
+
+  // Phase 1 增强:低风险自动执行
+  if (highRiskSteps.length === 0 && steps.length > 0) {
+    // 全部是低风险步骤,直接执行 + toast 通知
+    ElMessage.info({ message: '检测到低风险操作,自动执行中...', duration: 2000 });
+    await doExecutePlan(message, steps.map((step) => ({ ...step, confirmed: true })));
+    return;
+  }
+
   // 如果有高风险步骤，先弹出批量确认模态框
   if (highRiskSteps.length > 0) {
     showBatchConfirm.value = true;
     batchConfirmSteps.value = steps.map((step) => ({ ...step, confirmed: false }));
     return;
   }
-  
+
   // 无高风险步骤，直接执行
   await doExecutePlan(message, steps.map((step) => ({ ...step, confirmed: true })));
 }

@@ -159,6 +159,16 @@ const MIGRATIONS = [
       addColumn(database, 'agent_plans', 'feedback_at', 'TEXT');
     },
   },
+  {
+    version: 2,
+    name: 'Agent 执行状态追踪列',
+    up(database) {
+      addColumn(database, 'agent_plans', 'progress_stage', 'TEXT');
+      addColumn(database, 'agent_plans', 'progress_percent', 'INTEGER DEFAULT 0');
+      addColumn(database, 'agent_plans', 'current_step_index', 'INTEGER DEFAULT 0');
+      addColumn(database, 'agent_plans', 'updated_at', 'TEXT');
+    },
+  },
 ];
 
 /** 幂等加列:列已存在时直接返回 false,不抛错。 */

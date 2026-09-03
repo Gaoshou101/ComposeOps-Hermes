@@ -18,6 +18,41 @@ import { queryContainerMetrics, configureAlert, listAlerts, deleteAlert } from '
 /** 只读探测命令白名单,与 AI 排障探针保持一致。curl/wget 已移除:可发起外部请求。 */
 const READONLY_EXEC = /^(env|printenv|ps|top\s+-b\s+-n\s+1|netstat|ss|cat|head|tail|ls|df|du|free|uptime|uname|hostname|date|whoami|id|ip\s+addr|ping\s+-c\s+\d+)/;
 
+/**
+ * 动态风险评估:根据项目上下文提升工具风险等级
+ * @param {string} toolName - 工具名称
+ * @param {object} params - 工具参数
+ * @param {object} context - 执行上下文(包含 project)
+ * @returns {string} 动态评估后的风险等级
+ */
+export function assessRisk(toolName, params, context) {
+  const RISK_LEVELS = {
+    'compose.up': 'high',
+    'compose.stop': 'high',
+    'compose.restart': 'medium',
+    'compose.pull': 'low',
+    'config.edit': 'high',
+    'config.rollback': 'high',
+    'environment.set': 'high',
+    'volume.mount': 'high',
+    'maintenance.clean': 'critical',
+    'compose.exec': 'high',
+    'compose.scale': 'medium',
+    'cron.create': 'medium',
+  };
+
+  const baseRisk = RISK_LEVELS[toolName] || 'low';
+
+  // 生产项目提升风险等级
+  const project = context?.project;
+  if (project && (project.tags?.includes('production') || project.projectName?.match(/prod|production/i))) {
+    if (baseRisk === 'medium') return 'high';
+    if (baseRisk === 'high') return 'critical';
+  }
+
+  return baseRisk;
+}
+
 async function execReadonly(container, cmdString) {
   const parts = String(cmdString || '').trim().split(/\s+/);
   if (!parts.length) throw new Error('命令为空');
