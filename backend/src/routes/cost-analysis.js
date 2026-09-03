@@ -11,7 +11,7 @@ import {
   getCostAnalysisReport,
   getOptimizationSuggestions
 } from '../services/cost-analysis.js';
-import { addOperation } from '../services/operations.js';
+import { addOperation } from '../lib/db.js';
 
 export default async function costAnalysisRoutes(api, opts) {
   // 获取完整成本分析报告
