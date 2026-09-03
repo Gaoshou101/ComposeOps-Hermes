@@ -357,8 +357,8 @@ export class OperationsAgent {
           // 保留完整上下文(包括 projectId/containerId)以便重新规划时工具仍能解析项目
           const replanContext = { 
             sessionId: _context.sessionId,
-            projectId: context.projectId,
-            containerId: context.containerId
+            projectId: _context.projectId,
+            containerId: _context.containerId
           };
           const replanResult = await this.plan(replanPrompt, replanContext);
 
