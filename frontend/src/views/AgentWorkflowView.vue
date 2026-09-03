@@ -1,16 +1,16 @@
 <template>
   <div class="page-shell page-shell-workspace">
     <div class="page-header">
-      <div><h1 class="page-title">AI 智能运维 Agent</h1><p class="page-subtitle">自然语言规划 → 可视化工作流 → 确认后执行</p></div>
-      <div class="page-actions">
-        <select v-model="projectId" class="input" @change="onProjectChange"><option value="">全部纳管项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
-        <select v-if="containers.length" v-model="containerId" class="input"><option value="">选择容器(可选)</option><option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option></select>
-        <select v-model="role" class="input"><option v-for="r in roles" :key="r.name" :value="r.name">{{ r.label }}</option></select>
-        <button class="btn-secondary" :disabled="loading" @click="loadTools"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />刷新工具</button>
+      <div><h1 class="page-title">AI 智能运维 Agent</h1><p class="page-subtitle hidden sm:block">自然语言规划 → 可视化工作流 → 确认后执行</p></div>
+      <div class="page-actions flex-wrap">
+        <select v-model="projectId" class="input w-full sm:w-auto" @change="onProjectChange"><option value="">全部纳管项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
+        <select v-if="containers.length" v-model="containerId" class="input w-full sm:w-auto"><option value="">选择容器(可选)</option><option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option></select>
+        <select v-model="role" class="input w-full sm:w-auto"><option v-for="r in roles" :key="r.name" :value="r.name">{{ r.label }}</option></select>
+        <button class="btn-secondary w-full sm:w-auto" :disabled="loading" @click="loadTools"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" /><span class="hidden sm:inline">刷新工具</span><span class="sm:hidden">刷新</span></button>
       </div>
     </div>
 
-    <div class="flex min-h-0 flex-1 gap-3">
+    <div class="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
       <!-- 左侧:对话 / 规划 -->
       <div class="flex min-w-0 flex-1 flex-col gap-3">
         <div class="card flex-1 min-h-[320px] overflow-y-auto p-4 space-y-3">
@@ -110,7 +110,7 @@
            的卡片拒绝收缩到内容高度以下,于是 flex 只能压它,思维过程被挤成一条缝(看起来
            就是被下面盖住了)。修法:给它显式 min-h(压过 min-height:auto)+ flex-1 抢占余量,
            三张卡 shrink-0 保住自身高度,真的放不下时由 aside 整列滚动。 -->
-      <aside class="hidden w-96 shrink-0 flex-col gap-3 overflow-y-auto lg:flex">
+      <aside class="flex w-full shrink-0 flex-col gap-3 overflow-y-auto lg:w-96">
         <div class="card flex min-h-[12rem] flex-1 flex-col p-4">
           <h3 class="mb-2 text-sm font-semibold text-zinc-300">思维过程</h3>
           <div class="min-h-0 flex-1 space-y-2 overflow-y-auto">
