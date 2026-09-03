@@ -685,4 +685,117 @@ ${evidence}`;
     feedback: listAgentFeedback(request.query?.limit || 200),
     baselines: listPerformanceBaselines(request.query?.limit || 100),
   }));
+
+  // POST /api/v1/ai/agent/execute-stream —— Phase 2: Tool-calling 原生循环 + SSE 流式推送
+  fastify.post('/agent/execute-stream', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['message'],
+        properties: {
+          message: { type: 'string', maxLength: 32768 },
+          projectId: idField,
+          containerId: idField,
+          sessionId: numericId,
+          role: { type: 'string', maxLength: 32 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { message, projectId, containerId, sessionId, role } = request.body || {};
+    if (!message || !String(message).trim()) {
+      return reply.code(400).send({ error: 'missing_message', message: '缺少 message' });
+    }
+
+    // 设置 SSE 响应头
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    const send = (event) => {
+      try {
+        reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+      } catch (error) {
+        console.error('[agent:execute-stream] Failed to write event:', error.message);
+      }
+    };
+
+    const agent = getAgent();
+    const context = { projectId, containerId, sessionId, role };
+
+    // 客户端断开时中断执行
+    const abortController = new AbortController();
+    let completed = false;
+    reply.raw.on('close', () => {
+      if (!completed) {
+        console.log('[agent:execute-stream] Client disconnected, aborting execution');
+        abortController.abort();
+      }
+    });
+
+    try {
+      // 调用 executeWithLoop,事件通过 onEvent 回调推送
+      await agent.executeWithLoop(message, context, send, abortController.signal);
+      send({ type: 'done' });
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        send({ type: 'interrupted', content: '执行已被用户中断' });
+      } else {
+        send({ type: 'error', content: error.message });
+      }
+    } finally {
+      completed = true;
+      reply.raw.end();
+    }
+  });
+
+  // POST /api/v1/ai/agent/approve —— Phase 2: 批准工具调用
+  fastify.post('/agent/approve', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['executionId', 'toolCallId', 'approved'],
+        properties: {
+          executionId: { type: 'string', maxLength: 128 },
+          toolCallId: { type: 'string', maxLength: 128 },
+          approved: { type: 'boolean' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { executionId, toolCallId, approved } = request.body || {};
+    const agent = getAgent();
+    const success = agent.approveToolCall(executionId, toolCallId, approved);
+    if (!success) {
+      return reply.code(404).send({ error: 'execution_not_found', message: '执行会话不存在或已完成' });
+    }
+    return { success: true };
+  });
+
+  // POST /api/v1/ai/agent/interrupt —— Phase 2: 中断执行
+  fastify.post('/agent/interrupt', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['executionId'],
+        properties: {
+          executionId: { type: 'string', maxLength: 128 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { executionId } = request.body || {};
+    const agent = getAgent();
+    const success = agent.interruptExecution(executionId);
+    if (!success) {
+      return reply.code(404).send({ error: 'execution_not_found', message: '执行会话不存在或已完成' });
+    }
+    return { success: true };
+  });
 }

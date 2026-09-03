@@ -72,6 +72,7 @@ export class OperationsAgent {
     this.executionHistory = [];
     this.currentContext = null;
     this.thoughts = [];
+    this.activeExecutions = new Map(); // Phase 2: 跟踪活跃执行(planId -> AbortController)
     registerAgentTools(this);
   }
 
@@ -460,6 +461,271 @@ export class OperationsAgent {
 
   listPlans(limit) {
     return listAgentPlans(limit);
+  }
+
+  /**
+   * Phase 2: Tool-calling 原生循环执行。
+   * 不再预先规划全部步骤,而是让 LLM 逐步决策:调用工具 → 观察结果 → 决定下一步。
+   * @param {string} userMessage - 用户需求
+   * @param {object} context - 执行上下文(projectId, containerId, sessionId)
+   * @param {function} onEvent - 事件回调函数,推送执行状态给前端
+   * @param {AbortSignal} signal - 可选的中断信号
+   * @returns {Promise<{success: boolean, messages: Array, finalContent: string}>}
+   */
+  async executeWithLoop(userMessage, context = {}, onEvent, signal = null) {
+    this.thoughts = [];
+    const planId = context.planId || `plan-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    
+    // 注册 AbortController
+    const abortController = new AbortController();
+    this.activeExecutions.set(planId, abortController);
+    
+    // 外部信号触发时也中断内部 controller
+    if (signal) {
+      signal.addEventListener('abort', () => abortController.abort());
+    }
+
+    try {
+      const messages = [{ role: 'user', content: userMessage }];
+      const cfg = getAiConfig();
+      
+      if (!cfg.apiKey) {
+        onEvent({ type: 'error', content: '未配置 AI API Key,无法使用 Tool Loop 模式' });
+        return { success: false, messages, finalContent: '需要配置 AI API Key' };
+      }
+
+      // 获取当前角色的可用工具
+      const role = context.role && AGENT_ROLES[context.role] ? context.role : 'planner';
+      const roleMeta = AGENT_ROLES[role];
+      const visibleTools = this.listTools()
+        .filter((tool) => !roleMeta.allowedTools || roleMeta.allowedTools.includes(tool.name));
+
+      // 转换为 OpenAI tool 格式
+      const tools = visibleTools.map((tool) => ({
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters,
+        }
+      }));
+
+      this.addThought('loop_started', `开始 Tool Loop 执行,角色:${roleMeta.label}`, { tools: tools.length });
+      onEvent({ type: 'loop_started', role: roleMeta.label, toolsAvailable: tools.length });
+
+      let loopCount = 0;
+      const maxLoops = 20; // 防止无限循环
+
+      while (loopCount < maxLoops) {
+        if (abortController.signal.aborted) {
+          onEvent({ type: 'interrupted', reason: '用户中断执行' });
+          this.addThought('interrupted', '用户中断执行', { loopCount });
+          return { success: false, messages, finalContent: '执行已中断', interrupted: true };
+        }
+
+        loopCount++;
+        this.addThought('loop_iteration', `第 ${loopCount} 轮循环`, {});
+
+        // 调用 LLM(带工具定义)
+        let responseText = '';
+        let toolCalls = [];
+        let stopReason = null;
+
+        try {
+          // 使用流式输出实时推送 LLM 思考过程
+          const response = await callOpenAI({
+            ...cfg,
+            messages,
+            tools,
+            stream: true,
+            onToken: (token) => {
+              onEvent({ type: 'thought', content: token });
+            },
+            signal: abortController.signal,
+          });
+
+          // callOpenAI 现已返回结构化响应 { content, finishReason, toolCalls }
+          responseText = response.content;
+          stopReason = response.finishReason;
+          toolCalls = response.toolCalls;
+          
+        } catch (error) {
+          if (error.name === 'AbortError') {
+            onEvent({ type: 'interrupted', reason: '用户中断执行' });
+            return { success: false, messages, finalContent: '执行已中断', interrupted: true };
+          }
+          onEvent({ type: 'error', content: `LLM 调用失败: ${error.message}` });
+          this.addThought('error', `LLM 调用失败: ${error.message}`, {});
+          return { success: false, messages, finalContent: `错误: ${error.message}` };
+        }
+
+        // 将 LLM 响应添加到消息历史
+        messages.push({ role: 'assistant', content: responseText });
+
+        // 检查 stop_reason
+        if (stopReason === 'stop' || stopReason === 'end_turn') {
+          // LLM 决定结束对话
+          onEvent({ type: 'done', content: responseText });
+          this.addThought('loop_completed', 'LLM 决定结束执行', { loopCount });
+          return { success: true, messages, finalContent: responseText };
+        }
+
+        if (stopReason === 'tool_calls' && toolCalls.length > 0) {
+          // LLM 请求调用工具
+          for (const toolCall of toolCalls) {
+            const toolName = toolCall.function.name;
+            const toolParams = JSON.parse(toolCall.function.arguments || '{}');
+            
+            this.addThought('tool_requested', `LLM 请求调用工具: ${toolName}`, { params: toolParams });
+            onEvent({ type: 'tool_requested', tool: toolName, params: toolParams });
+
+            // 检查工具风险等级,决定是否需要确认
+            const tool = this.getTool(toolName);
+            if (!tool) {
+              const errorMsg = `工具 ${toolName} 未注册`;
+              messages.push({
+                role: 'user',
+                content: JSON.stringify({ type: 'tool_result', tool_call_id: toolCall.id, content: errorMsg, is_error: true })
+              });
+              onEvent({ type: 'tool_error', tool: toolName, error: errorMsg });
+              continue;
+            }
+
+            const dynamicRisk = assessRisk(toolName, toolParams, context);
+            
+            if (dynamicRisk === 'high' || dynamicRisk === 'critical') {
+              // 需要用户确认
+              onEvent({ 
+                type: 'confirmation_required', 
+                tool: toolName, 
+                params: toolParams, 
+                risk: dynamicRisk,
+                toolCallId: toolCall.id,
+                description: tool.description
+              });
+              
+              // 等待前端确认(通过 Promise 机制)
+              const approved = await this._waitForApproval(planId, toolCall.id, abortController.signal);
+              
+              if (!approved) {
+                // 用户拒绝
+                const rejectMsg = `用户拒绝执行 ${toolName}`;
+                messages.push({
+                  role: 'user',
+                  content: rejectMsg
+                });
+                onEvent({ type: 'tool_rejected', tool: toolName });
+                this.addThought('tool_rejected', rejectMsg, {});
+                continue; // 让 LLM 看到拒绝消息后重新决策
+              }
+            }
+
+            // 执行工具
+            onEvent({ type: 'tool_executing', tool: toolName });
+            this.addThought('tool_executing', `正在执行 ${toolName}`, { params: toolParams });
+
+            try {
+              const result = await this.executeTool(toolName, toolParams, context);
+              
+              // 将工具结果回喂给 LLM
+              messages.push({
+                role: 'user',
+                content: JSON.stringify({
+                  type: 'tool_result',
+                  tool_call_id: toolCall.id,
+                  content: JSON.stringify(result)
+                })
+              });
+
+              onEvent({ type: 'tool_result', tool: toolName, result });
+              this.addThought('tool_executed', `${toolName} 执行完成`, { success: result.success });
+
+            } catch (error) {
+              const errorMsg = error.message;
+              messages.push({
+                role: 'user',
+                content: JSON.stringify({
+                  type: 'tool_result',
+                  tool_call_id: toolCall.id,
+                  content: errorMsg,
+                  is_error: true
+                })
+              });
+              onEvent({ type: 'tool_error', tool: toolName, error: errorMsg });
+              this.addThought('tool_error', `${toolName} 执行失败`, { error: errorMsg });
+            }
+          }
+          
+          // 工具执行完毕,继续下一轮循环让 LLM 看结果
+          continue;
+        }
+
+        // 未知 stop_reason,结束循环
+        onEvent({ type: 'done', content: responseText });
+        return { success: true, messages, finalContent: responseText };
+      }
+
+      // 达到最大循环次数
+      onEvent({ type: 'max_loops_reached', maxLoops });
+      this.addThought('max_loops_reached', `达到最大循环次数 ${maxLoops}`, {});
+      return { success: false, messages, finalContent: `达到最大循环次数 ${maxLoops}`, maxLoopsReached: true };
+
+    } finally {
+      // 清理 AbortController
+      this.activeExecutions.delete(planId);
+    }
+  }
+
+  /**
+   * 等待用户确认工具执行。
+   * 前端通过调用 /api/v1/ai/agent/approve 来触发确认。
+   * @private
+   */
+  async _waitForApproval(planId, toolCallId, signal) {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        resolve(false); // 30 秒未确认视为拒绝
+      }, 30000);
+
+      // 保存 resolve 函数供外部调用
+      if (!this.pendingApprovals) this.pendingApprovals = new Map();
+      this.pendingApprovals.set(`${planId}:${toolCallId}`, { resolve, timeout });
+
+      // 监听中断信号
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          clearTimeout(timeout);
+          resolve(false);
+        });
+      }
+    });
+  }
+
+  /**
+   * 外部调用:批准工具执行。
+   */
+  approveToolCall(planId, toolCallId, approved = true) {
+    const key = `${planId}:${toolCallId}`;
+    const pending = this.pendingApprovals?.get(key);
+    if (pending) {
+      clearTimeout(pending.timeout);
+      pending.resolve(approved);
+      this.pendingApprovals.delete(key);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * 中断执行中的 Agent Loop。
+   */
+  interruptExecution(planId) {
+    const controller = this.activeExecutions.get(planId);
+    if (controller) {
+      controller.abort();
+      return true;
+    }
+    return false;
   }
 }
 

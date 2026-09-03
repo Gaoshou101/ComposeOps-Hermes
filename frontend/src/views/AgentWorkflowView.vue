@@ -284,26 +284,105 @@ async function askAgent() {
 
 async function executePlan(message) {
   if (executing.value) return;
-
-  const steps = message.plan?.steps || [];
-  const highRiskSteps = steps.filter((step) => step.confirmationRequired || step.risk === 'high' || step.risk === 'critical');
-
-  // Phase 1 增强:低风险自动执行
-  if (highRiskSteps.length === 0 && steps.length > 0) {
-    // 全部是低风险步骤,直接执行(无需 toast 通知)
-    await doExecutePlan(message, steps.map((step) => ({ ...step, confirmed: true })));
-    return;
+  
+  // Phase 2: 使用流式执行
+  const text = message.content;
+  executing.value = true;
+  
+  const abortController = new AbortController();
+  let executionId = null;
+  let pendingApproval = null;
+  
+  try {
+    await api.agentExecuteStream(
+      {
+        message: text,
+        projectId: projectId.value || undefined,
+        containerId: containerId.value || undefined,
+        role: role.value,
+      },
+      async (event) => {
+        switch (event.type) {
+          case 'thought':
+            // 实时显示 LLM 推理过程
+            thoughts.value.push({ phase: 'thinking', content: event.content });
+            break;
+            
+          case 'confirmation_required':
+            // 单步确认:暂停并等待用户批准
+            pendingApproval = event;
+            executionId = event.executionId;
+            
+            // 弹出确认对话框
+            const tool = event.tool;
+            const approved = await showToolConfirmation(tool);
+            
+            // 发送批准结果
+            await api.agentApprove({
+              executionId: executionId,
+              toolCallId: tool.id,
+              approved: approved,
+            });
+            pendingApproval = null;
+            break;
+            
+          case 'executing':
+            // 显示工具执行状态
+            thoughts.value.push({ phase: 'executing', content: `正在执行 ${event.tool}...` });
+            break;
+            
+          case 'tool_result':
+            // 显示工具执行结果
+            if (!message.results) message.results = [];
+            message.results.push({
+              tool: event.tool,
+              status: event.result?.success ? 'success' : 'failed',
+              result: event.result?.result,
+              error: event.result?.error,
+              durationMs: event.result?.durationMs,
+            });
+            break;
+            
+          case 'done':
+            message.executed = true;
+            message.content = '工作流执行完成';
+            break;
+            
+          case 'error':
+            message.executed = true;
+            message.content = `执行失败: ${event.content}`;
+            break;
+            
+          case 'interrupted':
+            message.executed = true;
+            message.content = '执行已被用户中断';
+            break;
+        }
+      },
+      abortController.signal
+    );
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      message.content = '执行已取消';
+    } else if (e.status === 401) {
+      // 401 错误让 App.vue 处理
+      return;
+    } else {
+      message.content = `执行失败: ${e.message}`;
+    }
+    message.executed = true;
+  } finally {
+    executing.value = false;
   }
+}
 
-  // 如果有高风险步骤，先弹出批量确认模态框
-  if (highRiskSteps.length > 0) {
-    showBatchConfirm.value = true;
-    batchConfirmSteps.value = steps.map((step) => ({ ...step, confirmed: false }));
-    return;
-  }
-
-  // 无高风险步骤，直接执行
-  await doExecutePlan(message, steps.map((step) => ({ ...step, confirmed: true })));
+// 显示工具确认对话框的辅助函数
+function showToolConfirmation(tool) {
+  return new Promise((resolve) => {
+    // 使用简单的 confirm 对话框(后续可替换为更精美的模态框)
+    const msg = `即将执行高风险操作:\n\n工具: ${tool.name}\n风险等级: ${riskLabel(tool.risk)}\n参数: ${JSON.stringify(tool.input, null, 2)}\n\n是否继续?`;
+    resolve(confirm(msg));
+  });
 }
 
 async function doExecutePlan(message, confirmedSteps) {

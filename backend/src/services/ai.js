@@ -103,17 +103,24 @@ export async function fetchAiModels({ baseUrl, apiKey } = {}) {
  * @param {string} opts.apiKey
  * @param {string} opts.model
  * @param {Array<{role:string,content:string}>} opts.messages
+ * @param {Array<{type:string,function:{name:string,description:string,parameters:Object}}>} [opts.tools] 工具定义
  * @param {boolean} [opts.stream]
  * @param {function(string):void} [opts.onToken]  流式回调
- * @returns {Promise<string>} 完整回复文本
+ * @param {AbortSignal} [opts.signal]  取消信号
+ * @returns {Promise<{content:string, finishReason:string, toolCalls:Array}>} 结构化响应
  */
-export async function callOpenAI({ baseUrl, apiKey, model, messages, stream = false, onToken, signal }) {
+export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stream = false, onToken, signal }) {
   if (!apiKey) throw new Error('AI 未配置 API Key');
   if (!baseUrl) throw new Error('AI 未配置 Base URL');
 
   const url = baseUrl.replace(/\/+$/, '') + '/chat/completions';
   const body = { model, messages, stream };
+  if (tools && tools.length > 0) {
+    body.tools = tools;
+  }
   let fullText = '';
+  let finishReason = '';
+  let toolCalls = [];
 
   // Node 22 的全局 fetch 已内置对 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 环境变量的支持
   // （大小写不敏感），无需额外代理库。容器化下把宿主机代理透传进 env，AI 出站
@@ -137,8 +144,11 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, stream = fa
 
   if (!stream) {
     const data = await resp.json();
-    fullText = data?.choices?.[0]?.message?.content || '';
-    return fullText;
+    const message = data?.choices?.[0]?.message || {};
+    fullText = message.content || '';
+    finishReason = data?.choices?.[0]?.finish_reason || '';
+    toolCalls = message.tool_calls || [];
+    return { content: fullText, finishReason, toolCalls };
   }
 
   // 流式：解析 SSE
@@ -158,15 +168,42 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, stream = fa
       if (payload === '[DONE]') break;
       try {
         const json = JSON.parse(payload);
-        const delta = json?.choices?.[0]?.delta?.content || '';
+        const choice = json?.choices?.[0];
+        if (!choice) continue;
+        
+        // 累积 content
+        const delta = choice.delta?.content || '';
         if (delta) {
           fullText += delta;
           if (onToken) onToken(delta);
         }
+        
+        // 累积 tool_calls (流式返回时分多个 chunk)
+        const deltaToolCalls = choice.delta?.tool_calls;
+        if (Array.isArray(deltaToolCalls)) {
+          for (const dtc of deltaToolCalls) {
+            const index = dtc.index ?? 0;
+            if (!toolCalls[index]) {
+              toolCalls[index] = {
+                id: dtc.id || '',
+                type: dtc.type || 'function',
+                function: { name: '', arguments: '' },
+              };
+            }
+            if (dtc.id) toolCalls[index].id = dtc.id;
+            if (dtc.function?.name) toolCalls[index].function.name = dtc.function.name;
+            if (dtc.function?.arguments) toolCalls[index].function.arguments += dtc.function.arguments;
+          }
+        }
+        
+        // finish_reason 在最后一个 chunk
+        if (choice.finish_reason) {
+          finishReason = choice.finish_reason;
+        }
       } catch {}
     }
   }
-  return fullText;
+  return { content: fullText, finishReason, toolCalls };
 }
 
 export {
