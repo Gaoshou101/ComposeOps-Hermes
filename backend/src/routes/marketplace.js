@@ -12,7 +12,7 @@ import {
   addFavorite,
   removeFavorite
 } from '../services/marketplace.js';
-import { addOperation } from '../services/operations.js';
+import { addOperation } from '../lib/db.js';
 
 export default async function marketplaceRoutes(fastify) {
   // 获取所有模板
