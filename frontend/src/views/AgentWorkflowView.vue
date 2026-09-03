@@ -287,8 +287,7 @@ async function executePlan(message) {
 
   // Phase 1 增强:低风险自动执行
   if (highRiskSteps.length === 0 && steps.length > 0) {
-    // 全部是低风险步骤,直接执行 + toast 通知
-    ElMessage.info({ message: '检测到低风险操作,自动执行中...', duration: 2000 });
+    // 全部是低风险步骤,直接执行(无需 toast 通知)
     await doExecutePlan(message, steps.map((step) => ({ ...step, confirmed: true })));
     return;
   }
