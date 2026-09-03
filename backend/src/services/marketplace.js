@@ -5,7 +5,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getSetting, setSetting } from './settings.js';
+import { getSetting, setSetting } from '../lib/db.js';
 import { getBlueprint, listBlueprints } from './app-blueprints.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
