@@ -30,10 +30,10 @@ const {
 } = await import('../src/lib/db.js');
 const { readAgentAlertRules } = await import('../src/services/alert-monitor.js');
 
-test('agent: 注册 28 个工具并暴露元数据(含风险等级)', () => {
+test('agent: 注册 35 个工具并暴露元数据(含风险等级)', () => {
   const agent = getAgent();
   const tools = agent.listTools();
-  assert.equal(tools.length, 28);
+  assert.equal(tools.length, 35);
   const names = new Set(tools.map((tool) => tool.name));
   for (const expected of [
     'compose.up', 'compose.restart', 'config.edit', 'diagnostic.probe', 'maintenance.clean', 'metrics.query',
@@ -96,16 +96,16 @@ test('agent: 参数校验只拦截必填缺失与数组类型错误', () => {
 });
 
 test('agent: 权限门阻止未纳管/不可编辑项目', async () => {
-  await assert.doesNotReject(() => assertPermission({ requiredPermission: 'managed', requiresProject: false }, { project: null }));
+  await assert.doesNotReject(() => assertPermission({ requiredPermission: 'readonly', requiresProject: false }, { project: null }));
   await assert.rejects(
-    () => assertPermission({ requiredPermission: 'managed' }, { project: { managed: false } }),
+    () => assertPermission({ requiredPermission: 'managed', requiresProject: true }, { project: { managed: false } }),
     /尚未加入管理/,
   );
   await assert.rejects(
-    () => assertPermission({ requiredPermission: 'editable' }, { project: { managed: true, editable: false } }),
+    () => assertPermission({ requiredPermission: 'editable', requiresProject: true }, { project: { managed: true, editable: false } }),
     /未启用可编辑/,
   );
-  await assert.doesNotReject(() => assertPermission({ requiredPermission: 'editable' }, { project: { managed: true, editable: true } }));
+  await assert.doesNotReject(() => assertPermission({ requiredPermission: 'editable', requiresProject: true }, { project: { managed: true, editable: true } }));
 });
 
 test('agent: 计划与执行记录持久化回环', () => {

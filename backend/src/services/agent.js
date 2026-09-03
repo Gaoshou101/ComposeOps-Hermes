@@ -10,6 +10,7 @@ import {
 } from '../lib/db.js';
 import { registerAgentTools } from './agent-tools.js';
 import { findProject, findProjectContainer } from './scanner.js';
+import { PreconditionChecker, PostconditionValidator, TOOL_CATEGORIES, expandMacro, MACRO_TOOLS } from './agent-tool-categories.js';
 
 /**
  * ComposeOps 自研轻量 Agent 编排引擎。
@@ -23,11 +24,20 @@ import { findProject, findProjectContainer } from './scanner.js';
 
 const PLAN_SYSTEM_PROMPT = `你是 ComposeOps 的运维规划 Agent。请根据用户需求,从给定的工具列表中规划执行步骤。
 
+工具组织:
+- 工具已按类别组织(lifecycle/config/diagnostic/maintenance/security/advanced),便于快速定位。
+- 提供宏工具(macro.*)用于原子化多步操作:
+  * macro.safe_restart: 安全重启(备份→停止→验证→启动→健康检查)
+  * macro.deploy_with_backup: 带备份的配置部署
+  * macro.scale_with_health_check: 带健康检查的扩缩容
+  * macro.emergency_rollback: 紧急回滚(停止→配置回滚→重启→验证)
+
 规则:
 1. 只使用列表中声明的工具,不得虚构工具名。
-2. 每个步骤给出 tool 与 params;params 只填写你从用户需求中能确定的字段,项目 ID 会由系统自动注入。
-3. 高风险操作(启动/停止/重启/修改配置/清理资源)需要用户确认,系统会自动标记。
-4. 输出必须是合法 JSON,不要输出 markdown 代码块以外的任何文字。
+2. 优先使用宏工具简化常见多步操作,减少失败风险。
+3. 每个步骤给出 tool 与 params;params 只填写你从用户需求中能确定的字段,项目 ID 会由系统自动注入。
+4. 高风险操作(启动/停止/重启/修改配置/清理资源)需要用户确认,系统会自动标记。
+5. 输出必须是合法 JSON,不要输出 markdown 代码块以外的任何文字。
 
 输出格式:
 {"steps":[{"tool":"工具名","params":{}},{"tool":"工具名","params":{}}]}`;
@@ -92,7 +102,7 @@ export class OperationsAgent {
 
   /** 返回不含 execute 的元数据,用于前端提示与 LLM 规划。 */
   listTools() {
-    return [...this.tools.values()].map((tool) => ({
+    const tools = [...this.tools.values()].map((tool) => ({
       name: tool.name,
       description: tool.description,
       parameters: tool.parameters,
@@ -100,6 +110,32 @@ export class OperationsAgent {
       confirmationRequired: tool.confirmationRequired,
       risk: tool.risk,
       category: tool.category,
+    }));
+    
+    // 追加宏工具
+    const macros = Object.values(MACRO_TOOLS).map((macro) => ({
+      name: macro.name,
+      description: macro.description,
+      parameters: macro.parameters,
+      requiredPermission: macro.requiredPermission,
+      confirmationRequired: true, // 宏工具默认需要确认
+      risk: macro.risk,
+      category: macro.category,
+      isMacro: true
+    }));
+    
+    return [...tools, ...macros];
+  }
+  
+  /** 返回工具分类信息 */
+  listCategories() {
+    return Object.entries(TOOL_CATEGORIES).map(([name, category]) => ({
+      name,
+      label: category.label,
+      description: category.description,
+      icon: category.icon,
+      risk: category.risk,
+      toolCount: category.tools.length
     }));
   }
 
@@ -193,8 +229,32 @@ export class OperationsAgent {
 
   /** 执行单个工具(用于快速调用与 /agent/confirm)。 */
   async executeTool(toolName, params = {}, _context = {}) {
+    // 宏工具展开
+    if (toolName.startsWith('macro.')) {
+      const expanded = expandMacro(toolName, params, _context);
+      if (!expanded) throw Object.assign(new Error(`未知的宏工具:${toolName}`), { statusCode: 404 });
+      this.addThought('planning', `宏工具 ${toolName} 展开为 ${expanded.steps.length} 步`, { steps: expanded.steps });
+      // 递归执行宏的每一步
+      const results = [];
+      for (const step of expanded.steps) {
+        const stepResult = await this.executeTool(step.tool, step.params, _context);
+        results.push(stepResult);
+        if (!stepResult.success) break; // 宏中任一步失败即停止
+      }
+      const allSuccess = results.every(r => r.success);
+      return { success: allSuccess, isMacro: true, steps: results, durationMs: results.reduce((sum, r) => sum + (r.durationMs || 0), 0) };
+    }
+
     const tool = this.getTool(toolName);
     if (!tool) throw Object.assign(new Error(`未注册的工具:${toolName}`), { statusCode: 404 });
+    
+    // 前置条件检查
+    const precondition = await PreconditionChecker.check(toolName, params, _context);
+    if (!precondition.allowed) {
+      this.addThought('validating', `前置条件未满足:${precondition.reason}`, { tool: toolName });
+      throw Object.assign(new Error(precondition.reason), { statusCode: 400 });
+    }
+    
     const resolved = await resolveToolContext(params);
     await assertPermission(tool, resolved);
     validateParams(tool.parameters, params);
@@ -202,6 +262,14 @@ export class OperationsAgent {
     const started = Date.now();
     try {
       const result = await tool.execute(params, resolved);
+      
+      // 后置条件验证
+      const postcondition = await PostconditionValidator.validate(toolName, params, result, _context);
+      if (!postcondition.valid) {
+        this.addThought('validating', `后置条件验证失败:${postcondition.reason}`, { tool: toolName });
+        return { success: false, error: postcondition.reason, result, durationMs: Date.now() - started };
+      }
+      
       return { success: true, result, durationMs: Date.now() - started };
     } catch (error) {
       return { success: false, error: error.message, durationMs: Date.now() - started };
@@ -234,6 +302,14 @@ export class OperationsAgent {
         return { success: false, status: 'pending_confirmation', results, awaitingConfirmation: true };
       }
 
+      // 前置条件检查
+      const precondition = await PreconditionChecker.check(toolName, params, _context);
+      if (!precondition.allowed) {
+        results.push({ tool: toolName, status: 'precondition_failed', error: precondition.reason });
+        this.addThought('validating', `${toolName} 前置条件未满足:${precondition.reason}`, {});
+        break;
+      }
+
       const execId = recordAgentExecution(planId, toolName, params, 'executing');
       this.addThought('executing', `执行 ${toolName}`, { execId, params });
       const started = Date.now();
@@ -242,6 +318,16 @@ export class OperationsAgent {
         await assertPermission(tool, resolved);
         validateParams(tool.parameters, params);
         const result = await tool.execute(params, resolved);
+        
+        // 后置条件验证
+        const postcondition = await PostconditionValidator.validate(toolName, params, result, _context);
+        if (!postcondition.valid) {
+          updateAgentExecution(execId, { status: 'postcondition_failed', error: postcondition.reason, result, durationMs: Date.now() - started });
+          results.push({ tool: toolName, status: 'postcondition_failed', error: postcondition.reason, result, durationMs: Date.now() - started });
+          this.addThought('validating', `${toolName} 后置条件验证失败:${postcondition.reason}`, { execId });
+          break;
+        }
+        
         updateAgentExecution(execId, { status: 'success', result, durationMs: Date.now() - started });
         results.push({ tool: toolName, status: 'success', result, durationMs: Date.now() - started });
         this.addThought('validating', `${toolName} 执行成功`, { execId });

@@ -13,6 +13,7 @@ import { callOpenAI, getAiConfig } from './ai.js';
 import { assertEnvAccess, readProjectEnv, saveProjectEnv, applyProjectEnv } from './project-env.js';
 import { getNotificationConfig, sendNotification } from './notifications.js';
 import { createJob } from './cron-scheduler.js';
+import { queryContainerMetrics, configureAlert, listAlerts, deleteAlert } from './agent-metrics.js';
 
 /** 只读探测命令白名单,与 AI 排障探针保持一致。curl/wget 已移除:可发起外部请求。 */
 const READONLY_EXEC = /^(env|printenv|ps|top\s+-b\s+-n\s+1|netstat|ss|cat|head|tail|ls|df|du|free|uptime|uname|hostname|date|whoami|id|ip\s+addr|ping\s+-c\s+\d+)/;
@@ -519,39 +520,79 @@ export function registerAgentTools(agent) {
       },
     });
 
-  // ---- 指标 ----
-  agent.registerTool('metrics.query', {
-    description: '查询容器 CPU/内存/网络资源使用情况',
-    category: 'diagnostic',
-    requiredPermission: 'managed',
-    confirmationRequired: false,
-    requiresProject: false,
-    parameters: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'string', description: '项目 ID(可选)' },
-        containerId: { type: 'string', description: '容器 ID(可选)' },
+  // ---- 指标与告警 ----
+  agent
+    .registerTool('metrics.query', {
+      description: '查询容器资源指标(CPU/内存/网络/磁盘)及历史趋势',
+      category: 'diagnostic',
+      requiredPermission: 'readonly',
+      confirmationRequired: false,
+      requiresProject: false,
+      parameters: {
+        type: 'object',
+        properties: {
+          container: { type: 'string', description: '容器名称或 ID' },
+          metric: { type: 'string', enum: ['cpu', 'memory', 'network', 'disk'], description: '指标类型(默认 cpu)' },
+          period: { type: 'string', description: '历史时间段(如 5m/1h/24h,默认 5m)' },
+        },
+        required: ['container'],
       },
-    },
-    execute: async (params, context) => {
-      if (params.containerId) {
-        if (!context.container) throw new Error('容器不属于当前项目');
-        return { container: context.container.name, ...(await readContainerStat(context.container.id)) };
-      }
-      if (params.projectId && context.project) {
-        const stats = {};
-        for (const item of context.project.containers) {
-          try {
-            stats[item.name] = await readContainerStat(item.id);
-          } catch {
-            stats[item.name] = { error: '无法读取统计' };
-          }
-        }
-        return { project: context.project.projectName, stats };
-      }
-      return { storage: await getDockerUsage() };
-    },
-  });
+      execute: async (params) => queryContainerMetrics(params.container, params.metric || 'cpu', params.period || '5m'),
+    })
+    .registerTool('alert.configure', {
+      description: '配置容器资源告警规则(超过阈值触发通知或自动操作)',
+      category: 'maintenance',
+      requiredPermission: 'managed',
+      confirmationRequired: true,
+      requiresProject: false,
+      parameters: {
+        type: 'object',
+        properties: {
+          container: { type: 'string', description: '容器名称或 ID' },
+          metric: { type: 'string', enum: ['cpu', 'memory', 'network', 'disk'], description: '监控指标' },
+          threshold: { type: 'number', description: '阈值(CPU/内存为百分比,网络/磁盘为 MB/s 或 MB)' },
+          duration: { type: 'string', description: '持续时间(如 5m/10m,默认 5m)' },
+          action: { type: 'string', enum: ['notify', 'restart', 'scale'], description: '触发动作(默认 notify)' },
+        },
+        required: ['container', 'metric', 'threshold'],
+      },
+      execute: async (params) => configureAlert({
+        container: params.container,
+        metric: params.metric,
+        threshold: Number(params.threshold),
+        duration: params.duration || '5m',
+        action: params.action || 'notify',
+      }),
+    })
+    .registerTool('alert.list', {
+      description: '列出已配置的告警规则',
+      category: 'maintenance',
+      requiredPermission: 'readonly',
+      confirmationRequired: false,
+      requiresProject: false,
+      parameters: {
+        type: 'object',
+        properties: {
+          container: { type: 'string', description: '容器名称或 ID(可选,用于过滤)' },
+        },
+      },
+      execute: async (params) => listAlerts(params.container),
+    })
+    .registerTool('alert.delete', {
+      description: '删除告警规则',
+      category: 'maintenance',
+      requiredPermission: 'managed',
+      confirmationRequired: true,
+      requiresProject: false,
+      parameters: {
+        type: 'object',
+        properties: {
+          ruleId: { type: 'string', description: '规则 ID' },
+        },
+        required: ['ruleId'],
+      },
+      execute: async (params) => deleteAlert(params.ruleId),
+    });
 
   // ---- Sprint 2:高级编排 / 配置 / 环境 / 维护 ----
   agent
