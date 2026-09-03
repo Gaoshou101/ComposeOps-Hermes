@@ -16,6 +16,7 @@ import cronRoutes from './routes/cron.js';
 import metricsRoutes from './routes/metrics.js';
 import gitopsRoutes from './routes/gitops.js';
 import marketplaceRoutes from './routes/marketplace.js';
+import costAnalysisRoutes from './routes/cost-analysis.js';
 import docker from './services/docker.js';
 import { isAuthenticated, isConfigured, setPassword, validateOrigin } from './lib/auth.js';
 import { stopAlertMonitor } from './services/alert-monitor.js';
@@ -119,6 +120,7 @@ export async function buildApp({ logger = { level: process.env.LOG_LEVEL || 'inf
       await api.register(metricsRoutes, { prefix: '/metrics' });
       await api.register(gitopsRoutes, { prefix: '/gitops' });
       await api.register(marketplaceRoutes, { prefix: '/marketplace' });
+      await api.register(costAnalysisRoutes, { prefix: '/cost-analysis' });
     },
     { prefix: '/api/v1' }
   );
