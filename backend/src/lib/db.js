@@ -169,6 +169,14 @@ const MIGRATIONS = [
       addColumn(database, 'agent_plans', 'updated_at', 'TEXT');
     },
   },
+  {
+    version: 3,
+    name: 'Agent 上下文持久化(projectId/containerId)',
+    up(database) {
+      addColumn(database, 'agent_plans', 'project_id', 'TEXT');
+      addColumn(database, 'agent_plans', 'container_id', 'TEXT');
+    },
+  },
 ];
 
 /** 幂等加列:列已存在时直接返回 false,不抛错。 */
@@ -258,11 +266,19 @@ export function clearAiHistory() {
 }
 
 /** 创建 Agent 执行计划,返回 planId。 */
-export function createAgentPlan(sessionId, userMessage, planJson) {
+export function createAgentPlan(sessionId, userMessage, planJson, projectId = null, containerId = null) {
   const planId = `plan-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   db.prepare(
-    'INSERT INTO agent_plans(id, session_id, user_message, plan_json, status) VALUES(?, ?, ?, ?, ?)'
-  ).run(planId, sessionId == null ? 0 : Number(sessionId), String(userMessage || ''), JSON.stringify(planJson || {}), 'pending');
+    'INSERT INTO agent_plans(id, session_id, user_message, plan_json, status, project_id, container_id) VALUES(?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    planId,
+    sessionId == null ? 0 : Number(sessionId),
+    String(userMessage || ''),
+    JSON.stringify(planJson || {}),
+    'pending',
+    projectId || null,
+    containerId || null
+  );
   return planId;
 }
 

@@ -354,7 +354,13 @@ export class OperationsAgent {
         this.addThought('planning', '尝试让 LLM 重新规划后续步骤', { failedTool: toolName, error: error.message });
         try {
           const replanPrompt = `步骤 ${toolName} 执行失败,错误:${error.message}。已完成的步骤:${results.filter(r => r.status === 'success').map(r => r.tool).join(', ')}。请重新规划后续步骤或提供替代方案。`;
-          const replanResult = await this.plan(replanPrompt, _context);
+          // 保留完整上下文(包括 projectId/containerId)以便重新规划时工具仍能解析项目
+          const replanContext = { 
+            sessionId: _context.sessionId,
+            projectId: context.projectId,
+            containerId: context.containerId
+          };
+          const replanResult = await this.plan(replanPrompt, replanContext);
 
           if (replanResult?.steps?.length > 0) {
             this.addThought('planning', `已生成 ${replanResult.steps.length} 步新计划`, { newSteps: replanResult.steps.map(s => s.tool) });
@@ -440,8 +446,8 @@ export class OperationsAgent {
     return rollback;
   }
 
-  persistPlan(sessionId, userMessage, plan) {
-    return createAgentPlan(sessionId, userMessage, { steps: plan.steps, confirmations: plan.confirmations });
+  persistPlan(sessionId, userMessage, plan, context = {}) {
+    return createAgentPlan(sessionId, userMessage, { steps: plan.steps, confirmations: plan.confirmations }, context.projectId, context.containerId);
   }
 
   getPlan(planId) {

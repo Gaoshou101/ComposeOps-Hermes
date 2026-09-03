@@ -534,7 +534,7 @@ ${evidence}`;
     }
     const agent = getAgent();
     const plan = await agent.plan(message, { projectId, containerId, sessionId, role });
-    const planId = agent.persistPlan(sessionId, message, plan);
+    const planId = agent.persistPlan(sessionId, message, plan, { projectId, containerId });
     return { planId, plan, thoughts: agent.thoughts };
   });
 
@@ -565,7 +565,11 @@ ${evidence}`;
     if (!Array.isArray(steps) || !steps.length) {
       return reply.code(400).send({ error: 'missing_steps', message: '缺少执行步骤' });
     }
-    const result = await agent.executeWorkflow(planId, steps, { sessionId });
+    const result = await agent.executeWorkflow(planId, steps, { 
+      sessionId, 
+      projectId: plan.project_id, 
+      containerId: plan.container_id 
+    });
 
     // Phase 1 增强:返回细粒度执行状态
     const updatedPlan = getAgentPlan(planId);
