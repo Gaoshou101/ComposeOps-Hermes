@@ -66,11 +66,19 @@
 
                 <!-- Step List -->
                 <div class="space-y-1.5">
-                  <div v-for="(step, idx) in message.plan.steps" :key="idx" class="flex items-center gap-2 text-sm">
+                  <div v-for="(step, idx) in message.plan.steps" :key="idx" class="flex items-center gap-2 text-sm group">
                     <span class="count-badge shrink-0">{{ idx + 1 }}</span>
                     <code class="font-mono text-xs text-cyan-300">{{ step.tool }}</code>
                     <span v-if="step.params && Object.keys(step.params).length" class="truncate text-xs text-zinc-500">{{ formatParams(step.params) }}</span>
                     <span v-if="step.confirmationRequired || step.risk === 'high' || step.risk === 'critical'" class="ml-auto inline-flex items-center gap-1 rounded border border-rose-900/50 bg-rose-950/40 px-2 py-0.5 text-[10px] text-rose-300"><AlertTriangle class="h-3 w-3" />{{ riskLabel(step.risk) }}</span>
+                    <button
+                      v-if="!message.executed"
+                      class="ml-auto shrink-0 opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-rose-400 transition-opacity"
+                      @click="removeStep(message, idx)"
+                      title="移除此步骤"
+                    >
+                      <XCircle class="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </div>
                 <div v-if="message.plan.steps.length && !message.executed" class="mt-3">
@@ -643,6 +651,14 @@ function handleCustomizeSave({ presets: newPresets, quickTools: newQuickTools })
   saveQuickTools(newQuickTools);
   showCustomize.value = false;
   toast.success('自定义设置已保存');
+}
+
+function removeStep(message, idx) {
+  if (message.executed) return;
+  const step = message.plan.steps[idx];
+  message.plan.steps.splice(idx, 1);
+  message.content = `已移除步骤:${step.tool},当前计划剩余 ${message.plan.steps.length} 步`;
+  toast.success(`已移除步骤:${step.tool}`);
 }
 
 onMounted(async () => { await Promise.all([loadProjects(), loadTools(), loadHistory(), loadSuggestions()]); });
