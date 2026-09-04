@@ -58,7 +58,7 @@
                 
                 <!-- DAG Visualization -->
                 <div class="mb-3 overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/80 p-3">
-                  <WorkflowDAG :steps="message.plan.steps" :results="message.results || []" />
+                  <WorkflowDAG :steps="message.plan.steps" :results="message.results || []" :current-step-index="message.awaitingStep" @node-click="showStepDetailHandler" />
                 </div>
 
                 <!-- Step List -->
@@ -166,6 +166,7 @@
     <!-- Batch Confirm Modal -->
     <BatchConfirmModal :show="showBatchConfirm" :steps="batchConfirmSteps" @confirm="handleBatchConfirm" @cancel="cancelBatchConfirm" />
     <ToolConfirmModal :show="showToolConfirm" :tool="pendingToolConfirm?.tool" @confirm="handleToolConfirm" @cancel="handleToolCancel" />
+    <StepDetailModal :show="showStepDetail" :step="currentStepDetail" @close="showStepDetail = false" />
   </div>
 </template>
 
@@ -178,6 +179,7 @@ import WorkflowDAG from '../components/agent/WorkflowDAG.vue';
 import BatchConfirmModal from '../components/agent/BatchConfirmModal.vue';
 import ToolCategoriesPanel from '../components/ToolCategoriesPanel.vue';
 import ToolConfirmModal from '../components/agent/ToolConfirmModal.vue';
+import StepDetailModal from '../components/agent/StepDetailModal.vue';
 
 const toast = useToastStore();
 
@@ -202,7 +204,14 @@ const showBatchConfirm = ref(false);
 const batchConfirmSteps = ref([]);
 const showToolConfirm = ref(false);
 const pendingToolConfirm = ref(null);
+const showStepDetail = ref(false);
+const currentStepDetail = ref(null);
 let nextId = 0;
+
+function showStepDetailHandler(node) {
+  currentStepDetail.value = node;
+  showStepDetail.value = true;
+}
 
 const presets = ['重启 web 服务', '查看项目容器状态', '清理旧镜像和悬空卷', '校验 Compose 配置', '分析容器为什么异常退出'];
 const presetsNeedProject = new Set(['重启 web 服务', '查看项目容器状态', '校验 Compose 配置', '分析容器为什么异常退出']);

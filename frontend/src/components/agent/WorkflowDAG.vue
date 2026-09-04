@@ -31,19 +31,19 @@
     </g>
 
     <!-- Nodes -->
-    <g v-for="node in nodes" :key="node.id" :transform="`translate(${node.x}, ${node.y})`">
+    <g v-for="node in nodes" :key="node.id" :transform="`translate(${node.x}, ${node.y})`" class="cursor-pointer" @click="$emit('node-click', node)">
       <rect
         :width="nodeWidth"
         :height="nodeHeight"
         :rx="8"
         :class="[
           'transition-all duration-200',
+          node.isCurrent ? 'stroke-[2.5]' : 'stroke-[1.5]',
           node.status === 'success' ? 'fill-emerald-950/60 stroke-emerald-500' :
           node.status === 'failed' ? 'fill-rose-950/60 stroke-rose-500' :
           node.status === 'executing' ? 'fill-cyan-950/60 stroke-cyan-400' :
           'fill-zinc-900/80 stroke-zinc-700'
         ]"
-        stroke-width="1.5"
       />
       
       <!-- Status indicator -->
@@ -96,8 +96,11 @@ import { computed } from 'vue';
 
 const props = defineProps({
   steps: { type: Array, default: () => [] },
-  results: { type: Array, default: () => [] }
+  results: { type: Array, default: () => [] },
+  currentStepIndex: { type: Number, default: -1 }
 });
+
+defineEmits(['node-click']);
 
 const nodeWidth = 180;
 const nodeHeight = 56;
@@ -124,11 +127,15 @@ const nodes = computed(() => {
 
     return {
       id: `node-${idx}`,
+      index: idx,
       tool: step.tool,
+      params: step.params,
       status,
       risk: step.risk,
       confirmationRequired: step.confirmationRequired,
       label,
+      result,
+      isCurrent: idx === props.currentStepIndex,
       x: col * (nodeWidth + horizontalGap) + 20,
       y: row * (nodeHeight + verticalGap) + 20
     };
