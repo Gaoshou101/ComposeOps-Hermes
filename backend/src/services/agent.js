@@ -593,6 +593,8 @@ export class OperationsAgent {
 
             const dynamicRisk = assessRisk(toolName, toolParams, context);
             
+            let effectiveParams = toolParams;
+            
             if (dynamicRisk === 'high' || dynamicRisk === 'critical') {
               // 需要用户确认
               onEvent({ 
@@ -615,12 +617,12 @@ export class OperationsAgent {
                   content: rejectMsg
                 });
                 onEvent({ type: 'tool_rejected', tool: toolName });
-                this.addThought('tool_rejected', rejectMsg, {});
+                this.addThought('tool_rejected', rejectMsg, );
                 continue; // 让 LLM 看到拒绝消息后重新决策
               }
 
               // 支持确认弹窗中编辑参数:有输入则覆盖原参数
-              const effectiveParams =
+              effectiveParams =
                 approval.input && typeof approval.input === 'object' && Object.keys(approval.input).length
                   ? approval.input
                   : toolParams;

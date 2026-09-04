@@ -25,9 +25,13 @@ test('db-migrations: runMigrations 对空库应用全部迁移并更新 user_ver
   assert.equal(db.pragma('user_version', { simple: true }), 0);
   const applied = runMigrations(db);
   assert.ok(applied.includes(1));
-  assert.equal(db.pragma('user_version', { simple: true }), 1);
+  assert.ok(applied.includes(2));
+  assert.ok(applied.includes(3));
+  assert.equal(db.pragma('user_version', { simple: true }), 3);
   assert.ok(db.prepare('PRAGMA table_info(project_preferences)').all().some((c) => c.name === 'managed'));
   assert.ok(db.prepare('PRAGMA table_info(ai_history)').all().some((c) => c.name === 'session_id'));
+  assert.ok(db.prepare('PRAGMA table_info(agent_plans)').all().some((c) => c.name === 'progress_stage'));
+  assert.ok(db.prepare('PRAGMA table_info(agent_plans)').all().some((c) => c.name === 'project_id'));
 });
 
 test('db-migrations: 已应用版本跳过,重放返回空数组', () => {
@@ -36,15 +40,15 @@ test('db-migrations: 已应用版本跳过,重放返回空数组', () => {
     CREATE TABLE project_preferences(project_id TEXT PRIMARY KEY, managed INTEGER, mount_enabled INTEGER);
     CREATE TABLE ai_history(id INTEGER PRIMARY KEY, session_id INTEGER);
     CREATE TABLE alert_events(id INTEGER PRIMARY KEY, logs TEXT);
-    CREATE TABLE agent_plans(id INTEGER PRIMARY KEY, rating INTEGER, feedback_text TEXT, feedback_at TEXT);
+    CREATE TABLE agent_plans(id INTEGER PRIMARY KEY, rating INTEGER, feedback_text TEXT, feedback_at TEXT, progress_stage TEXT, progress_percent INTEGER, current_step_index INTEGER, updated_at TEXT, project_id TEXT, container_id TEXT);
   `);
-  db.pragma('user_version = 1');
+  db.pragma('user_version = 3');
   const applied = runMigrations(db);
   assert.deepEqual(applied, []);
-  assert.equal(db.pragma('user_version', { simple: true }), 1);
+  assert.equal(db.pragma('user_version', { simple: true }), 3);
 });
 
-test('db-migrations: 真实 user_version=0 历史库(列已在)幂等升到 v1', async () => {
+test('db-migrations: 真实 user_version=0 历史库(列已在)幂等升到 v3', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'mig-legacy-'));
   const dbPath = join(dir, 'legacy.db');
   const db = new Database(dbPath);
@@ -52,7 +56,7 @@ test('db-migrations: 真实 user_version=0 历史库(列已在)幂等升到 v1',
     CREATE TABLE project_preferences(project_id TEXT PRIMARY KEY, managed INTEGER, mount_enabled INTEGER);
     CREATE TABLE ai_history(id INTEGER PRIMARY KEY, session_id INTEGER);
     CREATE TABLE alert_events(id INTEGER PRIMARY KEY, logs TEXT);
-    CREATE TABLE agent_plans(id INTEGER PRIMARY KEY, rating INTEGER, feedback_text TEXT, feedback_at TEXT);
+    CREATE TABLE agent_plans(id INTEGER PRIMARY KEY, rating INTEGER, feedback_text TEXT, feedback_at TEXT, progress_stage TEXT, progress_percent INTEGER, current_step_index INTEGER, updated_at TEXT, project_id TEXT, container_id TEXT);
   `);
   db.pragma('user_version = 0');
   db.close();
@@ -60,7 +64,9 @@ test('db-migrations: 真实 user_version=0 历史库(列已在)幂等升到 v1',
   const reopened = new Database(dbPath);
   const applied = runMigrations(reopened);
   assert.ok(applied.includes(1));
-  assert.equal(reopened.pragma('user_version', { simple: true }), 1);
+  assert.ok(applied.includes(2));
+  assert.ok(applied.includes(3));
+  assert.equal(reopened.pragma('user_version', { simple: true }), 3);
   reopened.close();
   rmSync(dir, { recursive: true, force: true });
 });

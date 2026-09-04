@@ -2,11 +2,10 @@
  * 模板市场服务
  * 支持社区模板、自定义模板、模板分享、评分与收藏
  */
-import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getSetting, setSetting } from '../lib/db.js';
-import { getBlueprint, listBlueprints } from './app-blueprints.js';
+import { listBlueprints } from './app-blueprints.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

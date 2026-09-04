@@ -8,9 +8,9 @@
  * - 多环境配置（dev/staging/prod 分支映射）
  */
 
-import { execSync, spawn } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { execSync } from 'node:child_process';
+import { existsSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { getSetting, setSetting } from '../lib/db.js';
 import { sendNotification } from './notifications.js';
 
@@ -18,7 +18,6 @@ const GITOPS_CONFIG_KEY = 'gitops.repositories';
 const POLL_INTERVAL_KEY = 'gitops.poll_interval';
 const DEFAULT_POLL_INTERVAL = 300; // 5 分钟
 
-let pollTimer = null;
 const activeWatchers = new Map(); // repoId -> { interval, process }
 
 /**

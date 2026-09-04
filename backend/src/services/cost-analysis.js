@@ -171,7 +171,7 @@ export function getCostTrends(days = 7) {
  * 记录成本快照
  */
 export async function recordCostSnapshot() {
-  const [containers, images, storage, projects] = await Promise.all([
+  const [containers, images, storage, _projects] = await Promise.all([
     getContainerResourceStats(),
     getImageSizeStats(),
     getStorageStats(),

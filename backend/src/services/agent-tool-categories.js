@@ -8,7 +8,7 @@
  * 4. 宏工具（多步骤组合）
  */
 
-import { findProject, findProjectContainer } from './scanner.js';
+import { findProject } from './scanner.js';
 import { getActivityDocker } from './docker-hosts.js';
 
 /** 工具分类定义 */

@@ -6,7 +6,7 @@ import { prepareProjectAction } from './project-action-runner.js';
 import { readCompose, saveCompose, spawnComposeCommand } from './compose-runner.js';
 import { runWorkspaceComposeArgs } from './compose-workspace.js';
 import { validateComposeSemantics, previewComposeChange } from './compose-validator.js';
-import { checkImageUpdates, getDockerUsage } from './maintenance.js';
+import { checkImageUpdates } from './maintenance.js';
 import { getProjectUpdates } from './image-updater.js';
 import { readContainerStat } from './stats.js';
 import { callOpenAI, getAiConfig } from './ai.js';

@@ -5,7 +5,6 @@
  */
 
 import { getActivityDocker } from './docker-hosts.js';
-import { findProject, findProjectContainer } from './scanner.js';
 import { getSetting, setSetting } from '../lib/db.js';
 
 /**
@@ -103,7 +102,7 @@ function formatBytes(bytes) {
 /**
  * 获取历史指标数据（简化版，实际应该对接时序数据库）
  */
-async function getHistoricalMetrics(containerIdOrName, metric, period) {
+async function getHistoricalMetrics(_containerIdOrName, _metric, _period) {
   // TODO: 集成 Prometheus/InfluxDB
   // 当前返回模拟数据
   return {

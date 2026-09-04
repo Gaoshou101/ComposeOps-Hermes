@@ -13,7 +13,7 @@ import {
 } from '../services/cost-analysis.js';
 import { addOperation } from '../lib/db.js';
 
-export default async function costAnalysisRoutes(api, opts) {
+export default async function costAnalysisRoutes(api, _opts) {
   // 获取完整成本分析报告
   api.get('/report', {
     schema: {
@@ -45,7 +45,7 @@ export default async function costAnalysisRoutes(api, opts) {
         }
       }
     }
-  }, async (request, reply) => {
+  }, async (_request, _reply) => {
     const report = await getCostAnalysisReport();
     return report;
   });
@@ -74,7 +74,7 @@ export default async function costAnalysisRoutes(api, opts) {
         }
       }
     }
-  }, async (request, reply) => {
+  }, async (_request, _reply) => {
     const stats = await getContainerResourceStats();
     return stats;
   });
@@ -99,7 +99,7 @@ export default async function costAnalysisRoutes(api, opts) {
         }
       }
     }
-  }, async (request, reply) => {
+  }, async (_request, _reply) => {
     const stats = await getImageSizeStats();
     return stats;
   });
@@ -121,7 +121,7 @@ export default async function costAnalysisRoutes(api, opts) {
         }
       }
     }
-  }, async (request, reply) => {
+  }, async (_request, _reply) => {
     const stats = await getStorageStats();
     return stats;
   });
@@ -148,7 +148,7 @@ export default async function costAnalysisRoutes(api, opts) {
         }
       }
     }
-  }, async (request, reply) => {
+  }, async (_request, _reply) => {
     const summary = await getProjectCostSummary();
     return summary;
   });
@@ -182,7 +182,7 @@ export default async function costAnalysisRoutes(api, opts) {
         }
       }
     }
-  }, async (request, reply) => {
+  }, async (request, _reply) => {
     const { days = 7 } = request.query;
     const trends = getCostTrends(days);
     return trends;
@@ -208,7 +208,7 @@ export default async function costAnalysisRoutes(api, opts) {
         }
       }
     }
-  }, async (request, reply) => {
+  }, async (_request, _reply) => {
     const snapshot = await recordCostSnapshot();
     
     await addOperation({
@@ -243,7 +243,7 @@ export default async function costAnalysisRoutes(api, opts) {
         }
       }
     }
-  }, async (request, reply) => {
+  }, async (_request, _reply) => {
     const suggestions = await getOptimizationSuggestions();
     return suggestions;
   });
