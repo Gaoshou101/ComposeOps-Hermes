@@ -188,6 +188,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useToastStore } from '../stores/toast.js';
+import { api } from '../api/client.js';
 import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 
 const toast = useToastStore();
@@ -217,7 +218,7 @@ const pendingDeleteId = ref(null);
 
 async function loadStats() {
   try {
-    const data = await fetch('/api/v1/marketplace/stats').then(r => r.json());
+    const data = await api.getMarketplaceStats();
     stats.value = data;
   } catch (err) {
     console.error('Failed to load stats:', err);
@@ -234,8 +235,7 @@ async function loadTemplates() {
     if (selectedSource.value !== 'all') params.set('source', selectedSource.value);
     if (onlyFavorites.value) params.set('onlyFavorites', 'true');
 
-    const url = `/api/v1/marketplace/templates/search${params.toString() ? '?' + params.toString() : ''}`;
-    const data = await fetch(url).then(r => r.json());
+    const data = await api.searchMarketplaceTemplates(params);
     filteredTemplates.value = data.results || [];
   } catch (err) {
     error.value = err.message || '加载失败';
@@ -253,8 +253,7 @@ function handleSearch() {
 async function toggleFavorite(templateId) {
   try {
     const isFavorited = filteredTemplates.value.find(t => t.id === templateId)?.favorited;
-    const method = isFavorited ? 'DELETE' : 'POST';
-    await fetch(`/api/v1/marketplace/favorites/${templateId}`, { method });
+    await api.toggleMarketplaceFavorite(templateId, isFavorited);
     
     await Promise.all([loadTemplates(), loadStats()]);
     toast.success(isFavorited ? '已取消收藏' : '已添加收藏');
@@ -288,16 +287,11 @@ async function saveTemplate() {
   }
 
   try {
-    const url = editingTemplate.value
-      ? `/api/v1/marketplace/templates/custom/${editingTemplate.value.id}`
-      : '/api/v1/marketplace/templates/custom';
-    const method = editingTemplate.value ? 'PATCH' : 'POST';
-    
-    await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData.value)
-    });
+    if (editingTemplate.value) {
+      await api.updateMarketplaceTemplate(editingTemplate.value.id, formData.value);
+    } else {
+      await api.createMarketplaceTemplate(formData.value);
+    }
 
     toast.success(editingTemplate.value ? '模板已更新' : '模板已创建');
     closeModal();
@@ -317,7 +311,7 @@ async function confirmDelete() {
   showDeleteDialog.value = false;
 
   try {
-    await fetch(`/api/v1/marketplace/templates/custom/${id}`, { method: 'DELETE' });
+    await api.deleteMarketplaceTemplate(id);
     toast.success('模板已删除');
     await Promise.all([loadTemplates(), loadStats()]);
   } catch (err) {

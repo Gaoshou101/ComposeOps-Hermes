@@ -188,6 +188,13 @@ export const api = {
   checkUpdates: () => request('/personal/updates/check', { method: 'POST' }),
   exportUrl: `${BASE}/personal/export`,
   importData: (payload) => request('/personal/import', { method: 'POST', body: JSON.stringify(payload) }),
+  // marketplace
+  getMarketplaceStats: () => request('/marketplace/stats'),
+  searchMarketplaceTemplates: (params) => request(`/marketplace/templates/search?${params.toString()}`),
+  toggleMarketplaceFavorite: (templateId, isFavorited) => request(`/marketplace/favorites/${templateId}`, { method: isFavorited ? 'DELETE' : 'POST' }),
+  createMarketplaceTemplate: (payload) => request('/marketplace/templates/custom', { method: 'POST', body: JSON.stringify(payload) }),
+  updateMarketplaceTemplate: (id, payload) => request(`/marketplace/templates/custom/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  deleteMarketplaceTemplate: (id) => request(`/marketplace/templates/custom/${id}`, { method: 'DELETE' }),
 };
 
 /**
