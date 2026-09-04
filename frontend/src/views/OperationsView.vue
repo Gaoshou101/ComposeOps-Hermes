@@ -125,6 +125,7 @@ const statusFilter = ref(route.query.status === 'failed' ? 'failed' : 'all');
 const jobStatusFilter = ref('all');
 const activeTab = ref(route.query.tab === 'jobs' || route.query.job ? 'jobs' : 'operations');
 let jobPollTimer;
+let jobStreamController = null;
 
 const successCount = computed(() => operations.value.filter((item) => item.status === 'success').length);
 const failedCount = computed(() => operations.value.length - successCount.value);
@@ -164,6 +165,11 @@ function setTab(tab) {
 }
 async function openJob(id, updateRoute = true) {
   clearTimeout(jobPollTimer);
+  if (jobStreamController) {
+    jobStreamController.abort();
+    jobStreamController = null;
+  }
+  
   activeTab.value = 'jobs';
   const job = await api.getJob(id);
   selectedJob.value = job;
@@ -172,11 +178,46 @@ async function openJob(id, updateRoute = true) {
   const index = jobs.value.findIndex((item) => item.id === job.id);
   if (index >= 0) jobs.value[index] = { ...jobs.value[index], ...job, items: undefined };
   if (updateRoute && route.query.job !== id) router.replace({ query: { ...route.query, tab: 'jobs', job: id } });
-  if (['queued', 'running'].includes(job.status)) jobPollTimer = setTimeout(() => void openJob(id, false), 1200);
+  
+  // 活跃任务使用 SSE 推送
+  if (['queued', 'running'].includes(job.status)) {
+    jobStreamController = new AbortController();
+    api.streamJobUpdates(id, (frame) => {
+      if (frame.type === 'snapshot') {
+        selectedJob.value = frame.job;
+        const idx = jobs.value.findIndex((item) => item.id === frame.job.id);
+        if (idx >= 0) jobs.value[idx] = { ...jobs.value[idx], ...frame.job, items: undefined };
+      } else if (frame.type === 'update') {
+        selectedJob.value = frame.job;
+        const idx = jobs.value.findIndex((item) => item.id === frame.job.id);
+        if (idx >= 0) jobs.value[idx] = { ...jobs.value[idx], ...frame.job, items: undefined };
+        // 任务结束时清理流
+        if (!['queued', 'running'].includes(frame.job.status)) {
+          if (jobStreamController) {
+            jobStreamController.abort();
+            jobStreamController = null;
+          }
+        }
+      }
+    }, jobStreamController.signal).catch(() => {
+      // SSE 连接失败时降级到轮询
+      if (['queued', 'running'].includes(job.status)) {
+        jobPollTimer = setTimeout(() => void openJob(id, false), 1200);
+      }
+    });
+  }
 }
 function closeJob() {
-  clearTimeout(jobPollTimer); selectedJob.value = null; selectedJobItem.value = null;
-  const next = { ...route.query }; delete next.job; router.replace({ query: next });
+  clearTimeout(jobPollTimer);
+  if (jobStreamController) {
+    jobStreamController.abort();
+    jobStreamController = null;
+  }
+  selectedJob.value = null;
+  selectedJobItem.value = null;
+  const next = { ...route.query };
+  delete next.job;
+  router.replace({ query: next });
 }
 function diagnoseOperation() {
   const item = selectedOperation.value;
@@ -202,8 +243,22 @@ function actionLabel(action) {
 
 watch(() => route.query.job, (id) => {
   if (id && selectedJob.value?.id !== String(id)) void openJob(String(id), false);
-  if (!id && selectedJob.value) { clearTimeout(jobPollTimer); selectedJob.value = null; selectedJobItem.value = null; }
+  if (!id && selectedJob.value) {
+    clearTimeout(jobPollTimer);
+    if (jobStreamController) {
+      jobStreamController.abort();
+      jobStreamController = null;
+    }
+    selectedJob.value = null;
+    selectedJobItem.value = null;
+  }
 });
 onMounted(async () => { await load(); if (route.query.job) await openJob(String(route.query.job), false); });
-onUnmounted(() => clearTimeout(jobPollTimer));
+onUnmounted(() => {
+  clearTimeout(jobPollTimer);
+  if (jobStreamController) {
+    jobStreamController.abort();
+    jobStreamController = null;
+  }
+});
 </script>

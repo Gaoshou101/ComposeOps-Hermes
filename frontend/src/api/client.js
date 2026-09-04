@@ -93,6 +93,31 @@ export const api = {
   getProjectActivity: (id) => request(`/projects/${id}/activity`),
   listJobs: (limit = 20) => request(`/jobs?limit=${limit}`),
   getJob: (id) => request(`/jobs/${id}`),
+  streamJobUpdates: (jobId, onFrame, signal) => {
+    return fetch(`${BASE}/jobs/${jobId}/stream`, { signal }).then(async (res) => {
+      if (!res.ok || !res.body) {
+        const payload = await res.json().catch(() => ({}));
+        throw new Error(payload.message || payload.error || '任务流请求失败');
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop();
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith('data:')) continue;
+          try {
+            onFrame(JSON.parse(line.slice(5).trim()));
+          } catch {}
+        }
+      }
+    });
+  },
   createProjectBatchJob: (projectIds, action) => request('/jobs', { method: 'POST', body: JSON.stringify({ projectIds, action }) }),
   saveProjectPreference: (id, payload) => request(`/projects/${id}/preferences`, { method: 'PATCH', body: JSON.stringify(payload) }),
   getComposeFile: (projectId, fileIndex = 0, force = false) => request(`/projects/${projectId}/compose?fileIndex=${fileIndex}`, { force }),
