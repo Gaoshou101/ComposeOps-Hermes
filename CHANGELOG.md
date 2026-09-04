@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Security policy (SECURITY.md) with best practices and vulnerability reporting
 - GitHub issue templates (bug report, feature request, question)
 - Code of Conduct (Contributor Covenant 2.1)
+- Architecture documentation (docs/architecture/README.md) with component breakdown, data flow diagrams, security model, AI Agent architecture, and design decisions
+- CI/CD workflows: automated testing, linting, Docker builds on push/PR
+- Release automation workflow: multi-arch Docker images (amd64/arm64) with GitHub releases
+- Dependabot configuration for automated dependency updates (weekly schedule, grouped updates)
+- ESLint 9 flat config for frontend with Vue 3 + Composition API enforcement
+- Prettier configuration for consistent code formatting
 
 ## [1.0.0] - 2026-09-04
 
