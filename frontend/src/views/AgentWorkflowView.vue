@@ -87,7 +87,20 @@
               </div>
               <div v-if="message.results" class="space-y-2">
                 <div v-for="(result, idx) in message.results" :key="idx" class="border-l-2 pl-3" :class="result.status === 'success' ? 'border-emerald-500' : 'border-rose-500'">
-                  <div class="flex items-center gap-2 text-xs font-mono text-zinc-300"><CheckCircle2 v-if="result.status === 'success'" class="h-3.5 w-3.5 text-emerald-400" /><XCircle v-else class="h-3.5 w-3.5 text-rose-400" />{{ result.tool }}<span class="text-zinc-600">{{ result.durationMs }}ms</span></div>
+                  <div class="flex items-center gap-2 text-xs font-mono text-zinc-300">
+                    <CheckCircle2 v-if="result.status === 'success'" class="h-3.5 w-3.5 text-emerald-400" />
+                    <XCircle v-else class="h-3.5 w-3.5 text-rose-400" />
+                    {{ result.tool }}
+                    <span class="text-zinc-600">{{ result.durationMs }}ms</span>
+                    <button
+                      v-if="result.status === 'failed' && message.executed"
+                      class="ml-auto text-[10px] text-cyan-400 hover:text-cyan-300"
+                      :disabled="executing"
+                      @click="retryStep(message, idx)"
+                    >
+                      重试此步
+                    </button>
+                  </div>
                   <pre v-if="result.result" class="mt-1 max-h-40 overflow-auto rounded bg-zinc-950/60 p-2 text-[11px] text-zinc-400">{{ stringifyResult(result.result) }}</pre>
                   <p v-if="result.error" class="mt-1 text-xs text-rose-400">{{ result.error }}</p>
                 </div>
@@ -488,6 +501,47 @@ async function confirmStep(message) {
 function cancelStepwise(message) {
   message.awaitingStep = null;
   message.content = '已取消逐步执行,可重新规划';
+}
+
+async function retryStep(message, idx) {
+  if (executing.value) return;
+  const result = message.results[idx];
+  if (!result || result.status !== 'failed') return;
+  
+  // 从原始计划中找到对应的步骤
+  const step = message.plan?.steps?.[idx];
+  if (!step) return;
+  
+  executing.value = true;
+  try {
+    const response = await api.agentExecute({ 
+      planId: message.planId, 
+      steps: [step] 
+    });
+    const newResult = response?.results?.[0];
+    
+    // 更新该步骤的结果
+    message.results[idx] = newResult || { 
+      tool: step.tool, 
+      status: 'failed', 
+      error: response?.error || '重试失败' 
+    };
+    
+    if (newResult?.status === 'success') {
+      toast.success(`${step.tool} 重试成功`);
+    } else {
+      toast.error(`${step.tool} 重试失败`);
+    }
+  } catch (e) {
+    message.results[idx] = { 
+      tool: step.tool, 
+      status: 'failed', 
+      error: e.message 
+    };
+    toast.error(`重试失败: ${e.message}`);
+  } finally {
+    executing.value = false;
+  }
 }
 
 async function ratePlan(plan, rating) {
