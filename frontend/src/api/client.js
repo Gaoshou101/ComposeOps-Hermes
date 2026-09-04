@@ -53,6 +53,7 @@ async function request(path, opts = {}) {
     invalidateSwr('/personal/');
     invalidateSwr('/ops/');
     invalidateSwr('/cron');
+    invalidateSwr('/jobs');
     return data;
   }
   const key = path + (opts.cacheKey || '');
@@ -91,7 +92,7 @@ export const api = {
   saveProjectMounts: (projectIds) => request('/projects/mounts', { method: 'PUT', body: JSON.stringify({ projectIds }) }),
   getProject: (id) => request(`/projects/${id}`),
   getProjectActivity: (id) => request(`/projects/${id}/activity`),
-  listJobs: (limit = 20) => request(`/jobs?limit=${limit}`),
+  listJobs: (limit = 20) => request(`/jobs?limit=${limit}`, { cacheable: true }),
   getJob: (id) => request(`/jobs/${id}`),
   streamJobUpdates: (jobId, onFrame, signal) => {
     return fetch(`${BASE}/jobs/${jobId}/stream`, { signal }).then(async (res) => {
@@ -205,7 +206,7 @@ export const api = {
   getNotifications: () => request('/personal/notifications'),
   saveNotifications: (payload) => request('/personal/notifications', { method: 'PUT', body: JSON.stringify(payload) }),
   testNotifications: (payload) => request('/personal/notifications/test', { method: 'POST', body: JSON.stringify(payload) }),
-  getOperations: () => request('/personal/operations'),
+  getOperations: () => request('/personal/operations', { cacheable: true }),
   getDockerUsage: () => request('/personal/maintenance/usage'),
   pruneDocker: (payload) => request('/personal/maintenance/prune', { method: 'POST', body: JSON.stringify(payload) }),
   getUpdateSettings: () => request('/personal/updates'),
