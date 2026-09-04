@@ -172,12 +172,23 @@
         </div>
       </div>
     </div>
+
+    <ConfirmDialog
+      :show="showDeleteDialog"
+      title="删除自定义模板"
+      message="确定删除此模板？"
+      tone="danger"
+      confirm-text="删除"
+      @confirm="confirmDelete"
+      @cancel="showDeleteDialog = false; pendingDeleteId = null"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useToastStore } from '../stores/toast.js';
+import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 
 const toast = useToastStore();
 
@@ -200,6 +211,9 @@ const formData = ref({
   description: '',
   defaultCompose: ''
 });
+
+const showDeleteDialog = ref(false);
+const pendingDeleteId = ref(null);
 
 async function loadStats() {
   try {
@@ -293,8 +307,14 @@ async function saveTemplate() {
   }
 }
 
-async function deleteTemplate(id) {
-  if (!confirm('确定删除此模板？')) return;
+function deleteTemplate(id) {
+  pendingDeleteId.value = id;
+  showDeleteDialog.value = true;
+}
+
+async function confirmDelete() {
+  const id = pendingDeleteId.value;
+  showDeleteDialog.value = false;
 
   try {
     await fetch(`/api/v1/marketplace/templates/custom/${id}`, { method: 'DELETE' });
@@ -302,6 +322,8 @@ async function deleteTemplate(id) {
     await Promise.all([loadTemplates(), loadStats()]);
   } catch (err) {
     toast.error(err.message || '删除失败');
+  } finally {
+    pendingDeleteId.value = null;
   }
 }
 

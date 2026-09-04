@@ -121,13 +121,35 @@
         </div>
       </aside>
     </div>
+
+    <ConfirmDialog
+      :show="showDeleteDialog"
+      title="删除诊断会话"
+      message="删除该诊断会话?"
+      tone="warning"
+      confirm-text="删除"
+      @confirm="confirmDeleteSession"
+      @cancel="showDeleteDialog = false"
+    />
+
+    <ConfirmDialog
+      :show="showClearDialog"
+      title="清空全部历史"
+      message="确认清空全部 AI 对话历史?"
+      tone="danger"
+      confirm-text="清空"
+      @confirm="confirmClearHistory"
+      @cancel="showClearDialog = false"
+    />
   </div>
 </template>
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { Bot, Check, ChevronLeft, ChevronRight, Globe, History, LoaderCircle, RefreshCw, ScrollText, Search, Send, Sparkles, Square, Stethoscope, TerminalSquare, Trash2 } from 'lucide-vue-next';
-import { useAiStore } from '../stores/ai.js'; import { api, streamSse } from '../api/client.js';
+import { useAiStore } from '../stores/ai.js'; 
+import { api, streamSse } from '../api/client.js';
+import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 const route = useRoute(); const store = useAiStore(); const projects = ref([]); const projectId = ref(route.query.projectId || ''); const containerId = ref(route.query.containerId || ''); const messages = ref([]); const input = ref(''); const streaming = ref(false); const buffer = ref(''); const boxEl = ref(null); const inputEl = ref(null); let controller; let nextId = 0;
 const webSearch = ref(false);
 const activeSessionId = ref('');
@@ -137,6 +159,9 @@ const logLoading = ref(false);
 const logLevel = ref('');
 const logQuery = ref('');
 const selectedLogIds = ref([]);
+const showDeleteDialog = ref(false);
+const showClearDialog = ref(false);
+const pendingDeleteSessionId = ref('');
 const logLevels = [
   { value: 'error', label: 'ERROR' },
   { value: 'warn', label: 'WARN' },
@@ -193,12 +218,27 @@ onMounted(async () => {
 async function loadHistory() { await store.loadHistory(activeSessionId.value || null); messages.value = store.history.map((m) => ({ id: m.id || ++nextId, role: m.role, content: m.content, sources: m.sources, probes: m.probes })); scroll(); }
 async function onSessionChange() { messages.value = []; await loadHistory(); }
 async function deleteSession(sessionId) {
-  if (!confirm('删除该诊断会话?')) return;
+  pendingDeleteSessionId.value = sessionId;
+  showDeleteDialog.value = true;
+}
+async function confirmDeleteSession() {
+  const sessionId = pendingDeleteSessionId.value;
+  showDeleteDialog.value = false;
   await api.clearAiHistory(sessionId);
   if (activeSessionId.value === sessionId) activeSessionId.value = '';
   await store.loadSessions(); await loadHistory();
+  pendingDeleteSessionId.value = '';
 }
-async function clearHistory() { if (!confirm('确认清空全部 AI 对话历史?')) return; await store.clearHistory(); messages.value = []; activeSessionId.value = ''; await store.loadSessions(); }
+async function clearHistory() {
+  showClearDialog.value = true;
+}
+async function confirmClearHistory() {
+  showClearDialog.value = false;
+  await store.clearHistory();
+  messages.value = [];
+  activeSessionId.value = '';
+  await store.loadSessions();
+}
 async function send() {
   const text = input.value.trim(); if (!text || streaming.value) return;
   const mount = selectedLogLines.value.map((log) => log.data).join('\n');

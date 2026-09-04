@@ -148,7 +148,7 @@
               <button class="btn-secondary !px-2 !py-1 !text-[10px]" :disabled="exporting" @click="exportAgentData"><Download v-if="!exporting" class="h-3 w-3" /><LoaderCircle v-else class="h-3 w-3 animate-spin" />导出</button>
             </div>
           </div>
-          <div class="max-h-44 space-y-1 overflow-y-auto">
+          <div class="max-h-72 space-y-1 overflow-y-auto">
             <div v-for="plan in history" :key="plan.id" class="rounded border border-zinc-800 p-2">
               <div class="flex items-center justify-between text-xs"><span class="truncate text-zinc-300">{{ plan.user_message || plan.userMessage || '—' }}</span><span class="ml-2 shrink-0 text-zinc-600">{{ plan.status }}</span></div>
               <div class="mt-1 flex items-center gap-2 text-xs">
@@ -173,10 +173,13 @@
 import { computed, onMounted, ref } from 'vue';
 import { AlertTriangle, Bot, CheckCircle2, Download, History, ListChecks, LoaderCircle, Play, RefreshCw, ShieldAlert, Sparkles, XCircle, Zap } from 'lucide-vue-next';
 import { api } from '../api/client.js';
+import { useToastStore } from '../stores/toast.js';
 import WorkflowDAG from '../components/agent/WorkflowDAG.vue';
 import BatchConfirmModal from '../components/agent/BatchConfirmModal.vue';
 import ToolCategoriesPanel from '../components/ToolCategoriesPanel.vue';
 import ToolConfirmModal from '../components/agent/ToolConfirmModal.vue';
+
+const toast = useToastStore();
 
 const projects = ref([]);
 const projectId = ref('');
@@ -479,7 +482,9 @@ function cancelStepwise(message) {
 }
 
 async function ratePlan(plan, rating) {
-  try { await api.agentFeedback({ planId: plan.id, rating }); plan.rating = rating; } catch {}
+  try { await api.agentFeedback({ planId: plan.id, rating }); plan.rating = rating; } catch (e) {
+    toast.error(`评分失败: ${e.message}`);
+  }
 }
 
 async function exportAgentData() {

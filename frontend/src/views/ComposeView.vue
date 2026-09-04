@@ -81,6 +81,46 @@
 </template></pre>
         </div></div>
     </div>
+
+    <ConfirmDialog
+      :show="showHostChangedDialog"
+      title="节点已切换"
+      message="节点已切换,当前未保存的修改将丢失,确认继续?"
+      tone="warning"
+      confirm-text="继续"
+      @confirm="confirmHostChanged"
+      @cancel="showHostChangedDialog = false"
+    />
+
+    <ConfirmDialog
+      :show="showLeaveDialog"
+      title="配置尚未保存"
+      message="配置尚未保存,确认离开?"
+      tone="warning"
+      confirm-text="离开"
+      @confirm="confirmLeave"
+      @cancel="showLeaveDialog = false; leaveCallback = null"
+    />
+
+    <ConfirmDialog
+      :show="showSaveErrorDialog"
+      title="存在语义校验错误"
+      :message="`语义校验发现 ${semanticIssues.filter((i) => i.level === 'error').length} 个错误,仍要保存?`"
+      tone="warning"
+      confirm-text="仍要保存"
+      @confirm="confirmSaveWithErrors"
+      @cancel="showSaveErrorDialog = false"
+    />
+
+    <ConfirmDialog
+      :show="showRestoreDialog"
+      title="恢复配置备份"
+      message="恢复该备份?当前配置也会先自动备份。"
+      tone="warning"
+      confirm-text="恢复"
+      @confirm="confirmRestore"
+      @cancel="showRestoreDialog = false; pendingBackup = null"
+    />
   </div>
 </template>
 
@@ -94,6 +134,7 @@ import Skeleton from '../components/common/Skeleton.vue';
 import { diffLines } from '../lib/diff.js';
 import { composeTemplates } from '../lib/composeTemplates.js';
 import EmptyState from '../components/common/EmptyState.vue';
+import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 import * as YAML from 'yaml';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 import 'monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution';
@@ -114,6 +155,12 @@ const showPreview = ref(false);
 const previewLoading = ref(false);
 const templateId = ref('');
 const templates = composeTemplates;
+const showHostChangedDialog = ref(false);
+const showLeaveDialog = ref(false);
+const showSaveErrorDialog = ref(false);
+const showRestoreDialog = ref(false);
+const pendingBackup = ref(null);
+const leaveCallback = ref(null);
 let editor;
 const project = computed(() => projects.value.find((p) => p.id === projectId.value));
 const dirty = computed(() => content.value !== original.value);
@@ -130,11 +177,26 @@ onMounted(async () => {
 });
 async function reloadProjects() { projects.value = (await api.getProjects()).projects.filter((p) => p.editable); }
 function onHostChanged() {
-  if (dirty.value && !window.confirm('节点已切换,当前未保存的修改将丢失,确认继续?')) return;
+  if (dirty.value) {
+    showHostChangedDialog.value = true;
+    return;
+  }
+  void reloadProjects().then(() => { if (projectId.value && !projects.value.some((p) => p.id === projectId.value)) { projectId.value = ''; selectProject(); } });
+}
+function confirmHostChanged() {
+  showHostChangedDialog.value = false;
   void reloadProjects().then(() => { if (projectId.value && !projects.value.some((p) => p.id === projectId.value)) { projectId.value = ''; selectProject(); } });
 }
 onBeforeUnmount(() => { editor?.dispose(); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('composeops:host-changed', onHostChanged); });
-onBeforeRouteLeave(() => !dirty.value || window.confirm('配置尚未保存，确认离开？'));
+onBeforeRouteLeave((to, from, next) => {
+  if (!dirty.value) { next(); return; }
+  leaveCallback.value = next;
+  showLeaveDialog.value = true;
+});
+function confirmLeave() {
+  showLeaveDialog.value = false;
+  if (leaveCallback.value) { leaveCallback.value(); leaveCallback.value = null; }
+}
 function beforeUnload(event) { if (dirty.value) { event.preventDefault(); event.returnValue = ''; } }
 function createEditor() {
   if (!editorEl.value || editor) return;
@@ -160,7 +222,10 @@ async function save() {
   error.value = '';
   await validateSemantics();
   const hasError = semanticIssues.value.some((issue) => issue.level === 'error');
-  if (hasError && !window.confirm(`语义校验发现 ${semanticIssues.value.filter((i) => i.level === 'error').length} 个错误,仍要保存?`)) return;
+  if (hasError) {
+    showSaveErrorDialog.value = true;
+    return;
+  }
   // 保存前展示变更预览(影响哪些容器会被重建/重启)
   previewLoading.value = true;
   try {
@@ -171,6 +236,19 @@ async function save() {
   } catch { changePreview.value = null; }
   finally { previewLoading.value = false; }
   await confirmSave(); // 无影响或预览失败时直接保存
+}
+function confirmSaveWithErrors() {
+  showSaveErrorDialog.value = false;
+  previewLoading.value = true;
+  api.previewCompose(projectId.value, content.value)
+    .then((result) => {
+      changePreview.value = result;
+      const preview = changePreview.value || {};
+      const impactful = (preview.added || []).length + (preview.changed || []).length + (preview.restarted || []).length + (preview.removed || []).length;
+      if (impactful) { showPreview.value = true; } else { void confirmSave(); }
+    })
+    .catch(() => { changePreview.value = null; void confirmSave(); })
+    .finally(() => { previewLoading.value = false; });
 }
 async function confirmSave() {
   saving.value = true; error.value = '';
@@ -202,7 +280,25 @@ function insertTemplate() {
 function formatYaml() { try { const next = YAML.stringify(YAML.parse(content.value), { indent: 2, lineWidth: 0 }); editor.setValue(next); } catch (e) { error.value = e.message; } }
 async function loadBackups() { backups.value = (await api.getBackups(projectId.value)).backups || []; showBackups.value = true; }
 async function previewBackup(backup) { comparison.value = await api.getBackup(projectId.value, backup.id); }
-async function restore(backup) { if (!confirm('恢复该备份?当前配置也会先自动备份。')) return; try { await api.restoreBackup(projectId.value, backup.id); showBackups.value = false; await load(); toast.success('配置版本已成功回滚并生效'); message.value = '备份已恢复'; } catch (e) { error.value = e.message; } }
+async function restore(backup) {
+  pendingBackup.value = backup;
+  showRestoreDialog.value = true;
+}
+async function confirmRestore() {
+  const backup = pendingBackup.value;
+  showRestoreDialog.value = false;
+  try {
+    await api.restoreBackup(projectId.value, backup.id);
+    showBackups.value = false;
+    await load();
+    toast.success('配置版本已成功回滚并生效');
+    message.value = '备份已恢复';
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    pendingBackup.value = null;
+  }
+}
 function shortName(file) { return file.split('/').pop(); }
 function formatTime(value) { return new Date(`${value}Z`).toLocaleString(); }
 </script>
