@@ -120,9 +120,22 @@ const route = useRoute();
 const router = useRouter();
 const operations = ref([]); const jobs = ref([]); const loading = ref(false);
 const selectedOperation = ref(null); const selectedJob = ref(null); const selectedJobItem = ref(null); const diagnosis = ref(null);
+
+const STORAGE_KEY_FILTERS = 'composeops:operations:filters';
+function loadFilters() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_FILTERS);
+    return stored ? JSON.parse(stored) : {};
+  } catch { return {}; }
+}
+function saveFilters(filters) {
+  try { localStorage.setItem(STORAGE_KEY_FILTERS, JSON.stringify(filters)); } catch {}
+}
+
+const savedFilters = loadFilters();
 const query = ref(''); const jobQuery = ref('');
-const statusFilter = ref(route.query.status === 'failed' ? 'failed' : 'all');
-const jobStatusFilter = ref('all');
+const statusFilter = ref(savedFilters.statusFilter || (route.query.status === 'failed' ? 'failed' : 'all'));
+const jobStatusFilter = ref(savedFilters.jobStatusFilter || 'all');
 const activeTab = ref(route.query.tab === 'jobs' || route.query.job ? 'jobs' : 'operations');
 let jobPollTimer;
 let jobStreamController = null;
@@ -241,6 +254,9 @@ function actionLabel(action) {
   return labels[action] || labels[String(action).split('.').pop()] || action;
 }
 
+watch([statusFilter, jobStatusFilter], () => {
+  saveFilters({ statusFilter: statusFilter.value, jobStatusFilter: jobStatusFilter.value });
+});
 watch(() => route.query.job, (id) => {
   if (id && selectedJob.value?.id !== String(id)) void openJob(String(id), false);
   if (!id && selectedJob.value) {
