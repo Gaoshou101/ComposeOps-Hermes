@@ -12,7 +12,7 @@
         </select>
         <button class="btn-secondary" :disabled="!content" @click="formatYaml"><AlignLeft class="w-4 h-4" />格式化</button>
         <button class="btn-secondary" :disabled="!projectId" @click="loadBackups"><History class="w-4 h-4" />备份</button>
-        <button class="btn-primary" :disabled="saving || !dirty" @click="save"><Save class="w-4 h-4" />{{ saving ? '校验中...' : '保存' }}</button>
+        <button class="btn-primary" :disabled="saving || previewLoading || !dirty" @click="save"><Save class="w-4 h-4" />{{ saving || previewLoading ? '校验中...' : '保存' }}</button>
       </div>
     </div>
     <div v-if="filePath" class="text-muted font-mono truncate">{{ filePath }}<span v-if="dirty" class="text-amber-400 ml-2">● 未保存</span></div>
@@ -169,7 +169,7 @@ async function save() {
     const impactful = (preview.added || []).length + (preview.changed || []).length + (preview.restarted || []).length + (preview.removed || []).length;
     if (impactful) { showPreview.value = true; return; } // 有影响,等用户确认
   } catch { changePreview.value = null; }
-  previewLoading.value = false;
+  finally { previewLoading.value = false; }
   await confirmSave(); // 无影响或预览失败时直接保存
 }
 async function confirmSave() {

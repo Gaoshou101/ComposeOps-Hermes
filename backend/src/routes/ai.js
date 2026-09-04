@@ -764,13 +764,14 @@ ${evidence}`;
           executionId: { type: 'string', maxLength: 128 },
           toolCallId: { type: 'string', maxLength: 128 },
           approved: { type: 'boolean' },
+          input: { type: 'object' },
         },
       },
     },
   }, async (request, reply) => {
-    const { executionId, toolCallId, approved } = request.body || {};
+    const { executionId, toolCallId, approved, input } = request.body || {};
     const agent = getAgent();
-    const success = agent.approveToolCall(executionId, toolCallId, approved);
+    const success = agent.approveToolCall(executionId, toolCallId, approved, input);
     if (!success) {
       return reply.code(404).send({ error: 'execution_not_found', message: '执行会话不存在或已完成' });
     }

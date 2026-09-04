@@ -29,7 +29,7 @@
             <span class="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">{{ category.toolCount }}</span>
           </div>
           <div class="flex items-center gap-2">
-            <span v-if="category.risk" :class="getRiskClass(category.risk)" class="risk-badge">{{ getRiskLabel(category.risk) }}</span>
+            <RiskBadge v-if="category.risk" :risk="category.risk" size="xs" />
             <ChevronDown
               :class="{ 'rotate-180': expandedCategory === category.key }"
               class="h-4 w-4 text-zinc-500 transition-transform"
@@ -86,6 +86,7 @@ import {
   Zap,
   AlertTriangle
 } from 'lucide-vue-next';
+import RiskBadge from './common/RiskBadge.vue';
 
 const props = defineProps({
   tools: { type: Array, default: () => [] },
@@ -131,18 +132,6 @@ function getToolIcon(tool) {
     return AlertTriangle;
   }
   return Zap;
-}
-
-function getRiskLabel(risk) {
-  const labels = { low: '低风险', medium: '中风险', high: '高风险', critical: '极高' };
-  return labels[risk] || risk;
-}
-
-function getRiskClass(risk) {
-  if (risk === 'critical') return 'bg-rose-500/20 text-rose-300';
-  if (risk === 'high') return 'bg-orange-500/20 text-orange-300';
-  if (risk === 'medium') return 'bg-amber-500/20 text-amber-300';
-  return 'bg-blue-500/20 text-blue-300';
 }
 
 function toggleCategory(key) {
@@ -193,9 +182,5 @@ watch(() => props.projectSelected, () => {
 
 .tool-item:disabled {
   @apply cursor-not-allowed opacity-50;
-}
-
-.risk-badge {
-  @apply rounded px-1.5 py-0.5 text-[10px] font-medium;
 }
 </style>

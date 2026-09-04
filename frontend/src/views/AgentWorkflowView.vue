@@ -165,6 +165,7 @@
 
     <!-- Batch Confirm Modal -->
     <BatchConfirmModal :show="showBatchConfirm" :steps="batchConfirmSteps" @confirm="handleBatchConfirm" @cancel="cancelBatchConfirm" />
+    <ToolConfirmModal :show="showToolConfirm" :tool="pendingToolConfirm?.tool" @confirm="handleToolConfirm" @cancel="handleToolCancel" />
   </div>
 </template>
 
@@ -175,6 +176,7 @@ import { api } from '../api/client.js';
 import WorkflowDAG from '../components/agent/WorkflowDAG.vue';
 import BatchConfirmModal from '../components/agent/BatchConfirmModal.vue';
 import ToolCategoriesPanel from '../components/ToolCategoriesPanel.vue';
+import ToolConfirmModal from '../components/agent/ToolConfirmModal.vue';
 
 const projects = ref([]);
 const projectId = ref('');
@@ -195,6 +197,8 @@ const exporting = ref(false);
 const quickRunning = ref('');
 const showBatchConfirm = ref(false);
 const batchConfirmSteps = ref([]);
+const showToolConfirm = ref(false);
+const pendingToolConfirm = ref(null);
 let nextId = 0;
 
 const presets = ['重启 web 服务', '查看项目容器状态', '清理旧镜像和悬空卷', '校验 Compose 配置', '分析容器为什么异常退出'];
@@ -303,28 +307,35 @@ async function executePlan(message) {
       },
       async (event) => {
         switch (event.type) {
+          case 'loop_started':
+            // 捕获 Phase 2 执行会话 ID
+            executionId = event.planId;
+            break;
+            
           case 'thought':
             // 实时显示 LLM 推理过程
             thoughts.value.push({ phase: 'thinking', content: event.content });
             break;
             
-          case 'confirmation_required':
+          case 'confirmation_required': {
             // 单步确认:暂停并等待用户批准
-            pendingApproval = event;
-            executionId = event.executionId;
+            const tool = {
+              name: event.tool,
+              description: event.description,
+              risk: event.risk,
+              input: event.params,
+            };
+            const input = await showToolConfirmation(tool);
             
-            // 弹出确认对话框
-            const tool = event.tool;
-            const approved = await showToolConfirmation(tool);
-            
-            // 发送批准结果
+            // 发送批准结果(input 为 null = 拒绝)
             await api.agentApprove({
-              executionId: executionId,
-              toolCallId: tool.id,
-              approved: approved,
+              executionId,
+              toolCallId: event.toolCallId,
+              approved: input !== null,
+              input,
             });
-            pendingApproval = null;
             break;
+          }
             
           case 'executing':
             // 显示工具执行状态
@@ -379,10 +390,26 @@ async function executePlan(message) {
 // 显示工具确认对话框的辅助函数
 function showToolConfirmation(tool) {
   return new Promise((resolve) => {
-    // 使用简单的 confirm 对话框(后续可替换为更精美的模态框)
-    const msg = `即将执行高风险操作:\n\n工具: ${tool.name}\n风险等级: ${riskLabel(tool.risk)}\n参数: ${JSON.stringify(tool.input, null, 2)}\n\n是否继续?`;
-    resolve(confirm(msg));
+    pendingToolConfirm.value = { tool, resolve };
+    showToolConfirm.value = true;
   });
+}
+
+// 处理模态框确认/取消
+function handleToolConfirm(input) {
+  if (pendingToolConfirm.value) {
+    pendingToolConfirm.value.resolve(input);
+    pendingToolConfirm.value = null;
+  }
+  showToolConfirm.value = false;
+}
+
+function handleToolCancel() {
+  if (pendingToolConfirm.value) {
+    pendingToolConfirm.value.resolve(null);
+    pendingToolConfirm.value = null;
+  }
+  showToolConfirm.value = false;
 }
 
 async function doExecutePlan(message, confirmedSteps) {

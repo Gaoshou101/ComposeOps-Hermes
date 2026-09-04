@@ -511,7 +511,7 @@ export class OperationsAgent {
       }));
 
       this.addThought('loop_started', `开始 Tool Loop 执行,角色:${roleMeta.label}`, { tools: tools.length });
-      onEvent({ type: 'loop_started', role: roleMeta.label, toolsAvailable: tools.length });
+      onEvent({ type: 'loop_started', planId, role: roleMeta.label, toolsAvailable: tools.length });
 
       let loopCount = 0;
       const maxLoops = 20; // 防止无限循环
@@ -605,9 +605,9 @@ export class OperationsAgent {
               });
               
               // 等待前端确认(通过 Promise 机制)
-              const approved = await this._waitForApproval(planId, toolCall.id, abortController.signal);
-              
-              if (!approved) {
+              const approval = await this._waitForApproval(planId, toolCall.id, abortController.signal);
+
+              if (!approval || !approval.approved) {
                 // 用户拒绝
                 const rejectMsg = `用户拒绝执行 ${toolName}`;
                 messages.push({
@@ -618,14 +618,20 @@ export class OperationsAgent {
                 this.addThought('tool_rejected', rejectMsg, {});
                 continue; // 让 LLM 看到拒绝消息后重新决策
               }
+
+              // 支持确认弹窗中编辑参数:有输入则覆盖原参数
+              const effectiveParams =
+                approval.input && typeof approval.input === 'object' && Object.keys(approval.input).length
+                  ? approval.input
+                  : toolParams;
             }
 
             // 执行工具
-            onEvent({ type: 'tool_executing', tool: toolName });
-            this.addThought('tool_executing', `正在执行 ${toolName}`, { params: toolParams });
+            onEvent({ type: 'tool_executing', tool: toolName, params: effectiveParams });
+            this.addThought('tool_executing', `正在执行 ${toolName}`, { params: effectiveParams });
 
             try {
-              const result = await this.executeTool(toolName, toolParams, context);
+              const result = await this.executeTool(toolName, effectiveParams, context);
               
               // 将工具结果回喂给 LLM
               messages.push({
@@ -682,9 +688,9 @@ export class OperationsAgent {
    * @private
    */
   async _waitForApproval(planId, toolCallId, signal) {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        resolve(false); // 30 秒未确认视为拒绝
+        resolve({ approved: false }); // 30 秒未确认视为拒绝
       }, 30000);
 
       // 保存 resolve 函数供外部调用
@@ -695,21 +701,21 @@ export class OperationsAgent {
       if (signal) {
         signal.addEventListener('abort', () => {
           clearTimeout(timeout);
-          resolve(false);
+          resolve({ approved: false });
         });
       }
     });
   }
 
   /**
-   * 外部调用:批准工具执行。
+   * 外部调用:批准工具执行。input 为确认弹窗中用户编辑后的参数(可选)。
    */
-  approveToolCall(planId, toolCallId, approved = true) {
+  approveToolCall(planId, toolCallId, approved = true, input = null) {
     const key = `${planId}:${toolCallId}`;
     const pending = this.pendingApprovals?.get(key);
     if (pending) {
       clearTimeout(pending.timeout);
-      pending.resolve(approved);
+      pending.resolve({ approved, input });
       this.pendingApprovals.delete(key);
       return true;
     }
