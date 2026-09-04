@@ -1,15 +1,16 @@
-# ComposeOps
-
 <div align="center">
 
-**AI-Powered Docker Compose Operations Dashboard**
+# ComposeOps
 
-Lightweight · Real-time · Self-hosted
+**Lightweight Docker Compose Operations Dashboard for Personal Servers**
 
-[中文文档](./README.md) | [Demo](#-screenshots) | [Quick Start](#-quick-start)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org/)
+[![Docker](https://img.shields.io/badge/docker-compose-2496ED.svg?logo=docker)](https://docs.docker.com/compose/)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://hub.docker.com/r/composeops/opsdash)
+Auto-discover Compose projects, manage services, edit configs, stream logs, diagnose with AI, and monitor resources — all in a single web interface
+
+[Features](#-features) • [Quick Start](#-quick-start) • [Security Model](#-security-model) • [Contributing](CONTRIBUTING.md) • [中文文档](README.md)
 
 </div>
 
@@ -17,50 +18,98 @@ Lightweight · Real-time · Self-hosted
 
 ## ✨ Features
 
-### 🎯 Core Management
-- **Auto-discovery**: Automatically finds all Docker Compose projects on the host
-- **Unified Dashboard**: Manage services, logs, configs, and resources in one place
-- **Real-time Operations**: Start/stop/restart with live streaming output
-- **Configuration Editor**: Edit Compose files with YAML validation and semantic checks
-- **Version Control**: Auto-backup (20 versions), diff comparison, one-click rollback
+<table>
+<tr>
+<td width="50%">
 
-### 🤖 AI-Powered Automation
-- **AI Agent Workflow**: Natural language → automated operations (28 tools)
-  - Service lifecycle (start/stop/restart/scale)
-  - Configuration management (env vars, volumes, networks)
-  - Security audit & health checks
-  - Alert management & scheduled tasks
-- **AI Diagnostics**: Automatic context attachment (configs + logs + container probes)
-- **Multi-role Collaboration**: Planning, execution, monitoring with rollback capability
-- **Risk Assessment**: 4-level risk system (low/medium/high/critical) with step-by-step confirmation
+**🎯 Project Management**
+- 🔍 Auto-discover Compose projects (via container labels)
+- 📁 Group by `myops.owner`, support favorites and notes
+- 🎯 Explicit management: read-only by default, manual authorization for control
+- 🔐 Two-tier permissions: Managed (container control) + Compose (config editing)
 
-### 📊 Monitoring & Observability
-- **Real-time Metrics**: CPU, memory, network, and Docker storage usage
-- **Live Logs**: Streaming logs with search, filtering (ERROR/WARN), and smart highlighting
-- **Event Center**: Alert persistence, WebSocket push, anomaly detection
-- **Batch Operations**: Multi-project actions with SSE streaming progress
+</td>
+<td width="50%">
+
+**✏️ Configuration Editing**
+- ✏️ Multi-file YAML editor (Monaco Editor)
+- ✅ Real-time syntax validation (depends_on / port conflicts / missing images)
+- 💾 Auto-backup last 20 versions, diff and restore support
+- 🔍 Preview containers to be recreated/restarted before saving
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**📊 Real-time Monitoring**
+- 📈 System metrics: CPU, memory, disk, network
+- 🐳 Docker metrics: image/container/volume count, storage usage
+- 💰 Cost estimate: vCPU + RAM allocation cost simulation
+- ⚡ Health scores: service availability scoring
+
+</td>
+<td width="50%">
+
+**📜 Logs & Terminal**
+- 🔄 Live log streaming (SSE), auto-scroll, level filtering
+- 🔍 Full-text search, highlight ERROR/WARN, export to file
+- 💻 Web shell (xterm.js), restricted to managed containers
+- 📦 Batch operations: multi-project parallel execution
+
+</td>
+</tr>
+</table>
+
+### 🤖 AI Enhancement
+
+<table>
+<tr>
+<td width="50%">
+
+**🔍 Diagnostic Assistant**
+- One-click diagnosis: auto-attach configs + recent logs + container probes
+- Multi-turn Q&A: follow-up questions for complex issues
+- Context-aware: understands Docker/Compose specifics
+
+</td>
+<td width="50%">
+
+**⚡ Agent Workflow**
+- Natural language → automated operations (28 tools)
+- Risk-aware: 4-level classification (Low/Medium/High/Critical)
+- Step-by-step confirmation: batch review for high-risk actions
+- Auto-rollback: restore configs on failure
+
+</td>
+</tr>
+</table>
 
 ### 🔔 Alerts & Notifications
-- **Multi-channel**: Bark, Telegram, WeChat Work, SMTP, Generic Webhook
-- **Triggers**: Container exit, memory threshold, disk space
-- **Smart Suppression**: Priority levels and read/mute status
 
-### 🔒 Security
-- **Explicit Project Management**: Discovered projects require manual approval for operations
-- **Scoped Access**: Per-project directory mounting with auto-cleanup
-- **Web Shell**: Restricted to managed containers only
-- **Session Security**: HttpOnly cookies, CSRF protection, Origin validation
+- **Multi-channel push**: Bark, Telegram, WeChat Work, SMTP, Generic Webhook
+- **Trigger types**: Container exit, memory threshold, disk space, custom rules
+- **Smart management**: Priority levels, read/mute status, WebSocket real-time push
+- **Event persistence**: Alert history with full-text search
+
+### 🛠️ Operations Tools
+
+- **Resource management**: Images (prune unused), volumes (cleanup), networks (list/remove)
+- **Batch operations**: Multi-project parallel execution with SSE streaming progress
+- **Health checks**: Service availability monitoring with scoring
+- **Backup & restore**: Config versioning with diff comparison
 
 ---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - Docker 20.10+ & Docker Compose v2
 - Linux/macOS/Windows (WSL2)
 - 1GB RAM minimum
 
-### One-Command Deploy
+### Installation
 
 ```bash
 git clone https://github.com/YourUsername/ComposeOps.git
@@ -68,105 +117,124 @@ cd ComposeOps
 docker compose up -d --build
 ```
 
-Open <http://localhost:3001> in your browser. First-time setup will prompt for an admin password (min 10 characters).
+Open **http://localhost:3001** in your browser. First-time setup will prompt for an admin password (min 10 characters).
 
-### Remote Access (Recommended)
+### Remote Access
 
-**Option 1: Tailscale** (Zero-config VPN)
+ComposeOps manages Docker Engine via `/var/run/docker.sock` — **exposing port 3001 to the internet = granting root access to your server**. Use one of these secure access methods:
+
+**Option 1: Tailscale** (Recommended - Zero-config VPN)
 ```bash
 tailscale serve --bg http://127.0.0.1:3001
+# Access via https://your-machine.your-tailnet.ts.net
 ```
 
-**Option 2: Reverse Proxy** (Caddy/Nginx with HTTPS)
-```bash
-# Set TRUST_PROXY=1 in docker-compose.yml environment
-# Configure your reverse proxy to forward to 127.0.0.1:3001
+**Option 2: Reverse Proxy** (Caddy/Nginx with HTTPS + authentication)
+```yaml
+# docker-compose.yml - add to environment:
+TRUST_PROXY=1
 ```
 
-⚠️ **Never expose port 3001 directly to the public internet** — Docker socket access = root privileges.
+⚠️ **Security Warning**: Never expose port 3001 directly to the public internet without authentication and HTTPS.
 
 ---
 
-## 📸 Screenshots
+## 🔒 Security Model
 
-<details>
-<summary><b>Dashboard Overview</b></summary>
+### 🔐 Authentication & Authorization
 
-![Dashboard](docs/screenshots/dashboard.png)
-*Service status, health scores, and quick actions*
+- ✅ Scrypt password hashing (Node.js native crypto)
+- ✅ Session-based authentication (30-day HttpOnly, SameSite=Strict cookies)
+- ✅ API key management for programmatic access
+- ✅ CSRF protection via Origin header validation
 
-</details>
+### 📂 File & Operation Isolation
 
-<details>
-<summary><b>AI Agent Workflow</b></summary>
+- ✅ Workspace containers: on-demand mounting of project directories
+- ✅ Auto-cleanup after operations (30s timeout)
+- ✅ Read-only discovery mode by default
+- ✅ Explicit management authorization required for write operations
 
-![AI Agent](docs/screenshots/agent-workflow.png)
-*Natural language → automated multi-step operations*
+### 🔑 API Key Protection
 
-</details>
+- ✅ AI provider keys stored in database, never in browser
+- ✅ Server-side proxy for all AI API calls
+- ✅ Keys never exposed in frontend code or network traffic
 
-<details>
-<summary><b>Real-time Logs</b></summary>
+### ⚠️ Threat Model
 
-![Logs](docs/screenshots/logs-view.png)
-*Live streaming logs with smart filtering and highlighting*
+**What we assume you trust:**
+- Your Docker host and its file system
+- Network between browser and ComposeOps (use Tailscale/HTTPS)
+- The admin account holder
 
-</details>
+**What we protect against:**
+- ✅ Accidental destructive operations (confirmation dialogs)
+- ✅ Container escape via shell (restricted to managed containers)
+- ✅ Unauthorized project access (explicit management required)
+- ✅ Session hijacking (HttpOnly + SameSite cookies)
 
-<details>
-<summary><b>Configuration Editor</b></summary>
-
-![Editor](docs/screenshots/config-editor.png)
-*YAML editing with validation and change preview*
-
-</details>
-
----
-
-## 📖 Documentation
-
-- [Installation Guide](docs/installation.md)
-- [Project Management](docs/project-management.md)
-- [AI Agent Usage](docs/ai-agent.md)
-- [API Reference](docs/api.md)
-- [Development Guide](docs/development.md)
-- [Security Best Practices](docs/security.md)
+**Design boundaries (out of scope):**
+- ❌ Multi-user RBAC (planned for v1.2)
+- ❌ Audit logging (planned for v1.2)
+- ❌ Protection against compromised Docker daemon
+- ❌ Network segmentation between containers
 
 ---
 
-## 🏗️ Architecture
+## 📦 Project Management
 
-```
-┌─────────────────┐
-│   Vue 3 SPA     │  Frontend: Vite + Tailwind CSS
-│   (Port 5173)   │  State: SWR caching (12s TTL)
-└────────┬────────┘  Real-time: SSE streaming
-         │
-    HTTP + WS
-         │
-┌────────┴────────┐
-│  Fastify API    │  Backend: Node.js 22 + Fastify
-│   (Port 3001)   │  Database: SQLite3
-└────────┬────────┘  Container: Dockerode
-         │
-   Docker Socket
-         │
-┌────────┴────────┐
-│  Docker Engine  │  Compose projects on host
-└─────────────────┘
+### Permission Levels
+
+| Permission Level | Description | Allowed Operations |
+|-----------------|-------------|-------------------|
+| **Managed** | Container control | Start/stop/restart, logs, terminal, AI diagnostics |
+| **Compose** | Config editing & pulling | Edit YAML, create missing services, pull images |
+
+### Workspace Container Mechanism
+
+ComposeOps uses temporary workspace containers to access project directories safely:
+
+```yaml
+# Auto-created when editing configs for project "myapp"
+services:
+  composeops-workspace-myapp:
+    image: alpine:latest
+    volumes:
+      - /path/to/myapp:/workspace:rw
+    command: sleep 30
 ```
 
-**Key Technologies:**
-- **Frontend**: Vue 3 Composition API, Vite, Tailwind CSS, SWR caching
-- **Backend**: Node.js 22 ESM, Fastify, Dockerode, better-sqlite3
-- **Real-time**: Server-Sent Events (SSE), WebSocket
-- **Testing**: Vitest (59 tests), Node.js test runner
+After operations complete, the workspace container is automatically removed. This ensures:
+- ✅ Scoped access: only the target project directory is mounted
+- ✅ Time-limited: auto-cleanup after 30 seconds
+- ✅ Traceable: labeled with `myops.workspace=true`
 
 ---
 
-## 🛠️ Development
+## 📊 Metrics Guide
+
+### Cost Estimation
+
+The dashboard displays estimated monthly costs based on:
+- **vCPU allocation**: $0.04 per vCPU per month
+- **RAM allocation**: $0.005 per MB per month
+
+**Note**: These are approximate values for cost awareness, not actual billing. Adjust rates in Settings if needed.
+
+### Health Scores
+
+Service health is scored 0-100 based on:
+- **Running state** (50 points): Container is running
+- **Health checks** (30 points): Docker health check passing
+- **Recent restarts** (20 points): No restarts in last 24 hours
+
+---
+
+## 🛠️ Development & Testing
 
 ### Prerequisites
+
 - Node.js 22+
 - Docker 20.10+
 - npm 10+
@@ -174,145 +242,92 @@ tailscale serve --bg http://127.0.0.1:3001
 ### Setup
 
 ```bash
-# Install all dependencies (frontend + backend)
+# Install dependencies
 npm run install:all
 
 # Run tests
-npm test
+npm test                  # All tests
+npm run test:backend      # Backend only
+npm run test:frontend     # Frontend only
 
 # Development mode
-npm run dev:backend   # Backend on :3001
-npm run dev:frontend  # Frontend on :5173 (proxies to :3001)
+npm run dev:backend       # Backend on :3001
+npm run dev:frontend      # Frontend on :5173 (proxies API to :3001)
 
-# Build for production
-npm run build
+# Production build
+npm run build             # Outputs to frontend/dist
 ```
 
-### Project Structure
+### Testing Commands
+
+```bash
+# Backend tests (Node.js test runner)
+cd backend && npm test
+
+# Frontend tests (Vitest)
+cd frontend && npm test
+
+# Type checking & linting
+cd frontend && npm run build  # Vite build includes type checking
+```
+
+**Note**: No dedicated lint script — linting runs automatically during the build process via ESLint 9.
+
+---
+
+## 💾 Data Storage
+
+All persistent data is stored in SQLite databases under `./data/`:
 
 ```
-ComposeOps/
-├── backend/              # Fastify API server
-│   ├── src/
-│   │   ├── routes/      # API endpoints
-│   │   ├── services/    # Business logic
-│   │   ├── db/          # SQLite schema
-│   │   └── index.js     # Entry point
-│   └── test/            # Backend tests
-├── frontend/            # Vue 3 SPA
-│   ├── src/
-│   │   ├── views/       # Page components
-│   │   ├── components/  # Reusable components
-│   │   ├── api/         # API client + SWR
-│   │   └── stores/      # State management
-│   └── tests/           # Vitest tests
-├── docker-compose.yml   # Deployment config
-├── Dockerfile           # Multi-stage build
-└── docs/                # Documentation
+data/
+├── composeops.db         # Main database (users, sessions, projects)
+├── ai_sessions.db        # AI chat history and diagnostics
+└── backups/              # Compose config backups (last 20 per project)
 ```
+
+**Backup recommendation**: Regularly backup the `./data/` directory to prevent data loss.
+
+---
+
+## 📜 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+**You are free to**:
+- ✅ Use commercially
+- ✅ Modify and distribute
+- ✅ Use privately
+
+**You must**:
+- ✅ Include the original license and copyright notice
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting PRs.
 
-### Development Workflow
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Run tests (`npm test`)
-5. Commit with conventional commits (`feat:`, `fix:`, `docs:`)
-6. Push and create a Pull Request
-
-### Areas for Contribution
-
-- 🌍 **i18n**: Add translations (currently Chinese only)
-- 📝 **Documentation**: Improve guides and examples
-- 🧪 **Testing**: Increase test coverage
-- 🎨 **UI/UX**: Enhance design and accessibility
-- 🔌 **Integrations**: Add notification channels or monitoring systems
+**Quick links**:
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Architecture Documentation](docs/architecture/README.md)
+- [Development Guide](CONTRIBUTING.md#development-guide)
 
 ---
 
-## 🗺️ Roadmap
+## 🔗 Related Links
 
-### v1.1 (Q4 2026)
-- [ ] Multi-language support (i18n)
-- [ ] Agent Marketplace (installable plugins)
-- [ ] Prometheus/Grafana integration
-- [ ] Migration tool from Portainer/Rancher
-
-### v1.2 (Q1 2027)
-- [ ] Multi-user support with RBAC
-- [ ] Audit log export (CSV/JSON)
-- [ ] Kubernetes support
-- [ ] Mobile-responsive UI
-
----
-
-## 🆚 Comparison
-
-| Feature | ComposeOps | Portainer | Rancher | Lazydocker |
-|---------|------------|-----------|---------|------------|
-| **Lightweight** | ✅ 3.5MB build | ❌ 200MB+ | ❌ 500MB+ | ✅ 10MB |
-| **AI Agent** | ✅ 28 tools | ❌ | ❌ | ❌ |
-| **Batch Ops** | ✅ SSE streaming | ✅ | ✅ | ❌ |
-| **Cost Analysis** | ✅ | ❌ | ✅ | ❌ |
-| **Self-hosted** | ✅ | ✅ | ✅ | ✅ |
-| **Learning Curve** | Low | Medium | High | Low |
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
-
-### What This Means
-
-✅ **You can:**
-- Use commercially
-- Modify and distribute
-- Use privately
-- Sublicense
-
-❌ **You must:**
-- Include the original license and copyright notice
-- State changes made to the code
-
-❌ **No warranty:** The software is provided "as is" without liability
-
----
-
-## 🙏 Acknowledgments
-
-- **Docker** for the containerization platform
-- **Vue.js** team for the reactive framework
-- **Fastify** for the performant web server
-- **Anthropic** for Claude AI integration
-- **Community** for feedback and contributions
-
----
-
-## 📬 Contact & Support
-
-- **Issues**: [GitHub Issues](https://github.com/YourUsername/ComposeOps/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/YourUsername/ComposeOps/discussions)
-- **Email**: your-email@example.com
-
----
-
-## ⭐ Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=YourUsername/ComposeOps&type=Date)](https://star-history.com/#YourUsername/ComposeOps&Date)
+- [English Documentation](README.en.md)
+- [Security Policy](SECURITY.md)
+- [Changelog](CHANGELOG.md)
+- [Issue Templates](.github/ISSUE_TEMPLATE/)
 
 ---
 
 <div align="center">
 
-**If you find ComposeOps useful, please consider giving it a ⭐️!**
+**Built with ❤️ · Designed for personal servers**
 
-Made with ❤️ by the ComposeOps team
+If this project helps you, please consider giving it a ⭐ Star
 
 </div>
