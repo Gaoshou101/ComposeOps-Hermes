@@ -192,6 +192,7 @@
     <ToolConfirmModal :show="showToolConfirm" :tool="pendingToolConfirm?.tool" @confirm="handleToolConfirm" @cancel="handleToolCancel" />
     <StepDetailModal :show="showStepDetail" :step="currentStepDetail" @close="showStepDetail = false" />
     <CustomizePresetsModal :show="showCustomize" :presets="presets" :quick-tools="quickTools" @save="handleCustomizeSave" @close="showCustomize = false" />
+    <CommandPalette :show="showCommandPalette" :commands="agentCommands" @execute="handleCommandExecute" @close="showCommandPalette = false" />
   </div>
 </template>
 
@@ -206,6 +207,7 @@ import ToolCategoriesPanel from '../components/ToolCategoriesPanel.vue';
 import ToolConfirmModal from '../components/agent/ToolConfirmModal.vue';
 import StepDetailModal from '../components/agent/StepDetailModal.vue';
 import CustomizePresetsModal from '../components/agent/CustomizePresetsModal.vue';
+import CommandPalette from '../components/common/CommandPalette.vue';
 
 const toast = useToastStore();
 
@@ -233,6 +235,7 @@ const pendingToolConfirm = ref(null);
 const showStepDetail = ref(false);
 const currentStepDetail = ref(null);
 const showCustomize = ref(false);
+const showCommandPalette = ref(false);
 let nextId = 0;
 
 function showStepDetailHandler(node) {
@@ -659,6 +662,56 @@ function removeStep(message, idx) {
   message.plan.steps.splice(idx, 1);
   message.content = `已移除步骤:${step.tool},当前计划剩余 ${message.plan.steps.length} 步`;
   toast.success(`已移除步骤:${step.tool}`);
+}
+
+const agentCommands = computed(() => {
+  const commands = [
+    { id: 'execute-plan', label: '执行当前计划', description: '执行最新的待执行计划', icon: 'Play', category: 'workflow' },
+    { id: 'clear-plan', label: '清除计划', description: '清除当前计划并重新规划', icon: 'XCircle', category: 'workflow' },
+    { id: 'export-data', label: '导出 Agent 数据', description: '导出执行历史和计划数据', icon: 'Download', category: 'data' },
+    { id: 'view-history', label: '查看执行历史', description: '跳转到执行历史页面', icon: 'History', category: 'navigation' },
+    { id: 'refresh-tools', label: '刷新工具列表', description: '重新加载可用工具', icon: 'RefreshCw', category: 'data' },
+    { id: 'customize-presets', label: '自定义预设', description: '编辑快捷预设和快速操作', icon: 'Settings', category: 'settings' },
+  ];
+
+  // 仅当有未执行计划时显示执行和清除计划命令
+  const hasPendingPlan = messages.value.some((m) => m.plan && !m.executed);
+  
+  return commands.filter((cmd) => {
+    if (cmd.id === 'execute-plan' || cmd.id === 'clear-plan') {
+      return hasPendingPlan;
+    }
+    return true;
+  });
+});
+
+function handleCommandExecute(command) {
+  showCommandPalette.value = false;
+  
+  switch (command.id) {
+    case 'execute-plan': {
+      const message = messages.value.find((m) => m.plan && !m.executed);
+      if (message) executePlan(message);
+      break;
+    }
+    case 'clear-plan': {
+      const message = messages.value.find((m) => m.plan && !m.executed);
+      if (message) clearPlan(message);
+      break;
+    }
+    case 'export-data':
+      exportAgentData();
+      break;
+    case 'view-history':
+      window.location.href = '/#/agent/history';
+      break;
+    case 'refresh-tools':
+      loadTools();
+      break;
+    case 'customize-presets':
+      showCustomize.value = true;
+      break;
+  }
 }
 
 onMounted(async () => { await Promise.all([loadProjects(), loadTools(), loadHistory(), loadSuggestions()]); });
