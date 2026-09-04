@@ -45,6 +45,9 @@
                 >
                   <Sparkles class="h-3.5 w-3.5 text-cyan-400" />{{ preset }}
                 </button>
+                <button class="preset-chip !border-zinc-700 !bg-zinc-800/60 !text-zinc-400" @click="showCustomize = true">
+                  <Settings class="h-3.5 w-3.5" />自定义
+                </button>
               </div>
             </div>
           </template>
@@ -180,12 +183,13 @@
     <BatchConfirmModal :show="showBatchConfirm" :steps="batchConfirmSteps" @confirm="handleBatchConfirm" @cancel="cancelBatchConfirm" />
     <ToolConfirmModal :show="showToolConfirm" :tool="pendingToolConfirm?.tool" @confirm="handleToolConfirm" @cancel="handleToolCancel" />
     <StepDetailModal :show="showStepDetail" :step="currentStepDetail" @close="showStepDetail = false" />
+    <CustomizePresetsModal :show="showCustomize" :presets="presets" :quick-tools="quickTools" @save="handleCustomizeSave" @close="showCustomize = false" />
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { AlertTriangle, Bot, CheckCircle2, Download, History, ListChecks, LoaderCircle, Play, RefreshCw, ShieldAlert, Sparkles, XCircle, Zap } from 'lucide-vue-next';
+import { AlertTriangle, Bot, CheckCircle2, Download, History, ListChecks, LoaderCircle, Play, RefreshCw, Settings, ShieldAlert, Sparkles, XCircle, Zap } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import { useToastStore } from '../stores/toast.js';
 import WorkflowDAG from '../components/agent/WorkflowDAG.vue';
@@ -193,6 +197,7 @@ import BatchConfirmModal from '../components/agent/BatchConfirmModal.vue';
 import ToolCategoriesPanel from '../components/ToolCategoriesPanel.vue';
 import ToolConfirmModal from '../components/agent/ToolConfirmModal.vue';
 import StepDetailModal from '../components/agent/StepDetailModal.vue';
+import CustomizePresetsModal from '../components/agent/CustomizePresetsModal.vue';
 
 const toast = useToastStore();
 
@@ -219,6 +224,7 @@ const showToolConfirm = ref(false);
 const pendingToolConfirm = ref(null);
 const showStepDetail = ref(false);
 const currentStepDetail = ref(null);
+const showCustomize = ref(false);
 let nextId = 0;
 
 function showStepDetailHandler(node) {
@@ -226,14 +232,50 @@ function showStepDetailHandler(node) {
   showStepDetail.value = true;
 }
 
-const presets = ['重启 web 服务', '查看项目容器状态', '清理旧镜像和悬空卷', '校验 Compose 配置', '分析容器为什么异常退出'];
-const presetsNeedProject = new Set(['重启 web 服务', '查看项目容器状态', '校验 Compose 配置', '分析容器为什么异常退出']);
-const quickTools = [
+const STORAGE_KEY_PRESETS = 'composeops.agent.presets';
+const STORAGE_KEY_QUICKTOOLS = 'composeops.agent.quickTools';
+
+const defaultPresets = ['重启 web 服务', '查看项目容器状态', '清理旧镜像和悬空卷', '校验 Compose 配置', '分析容器为什么异常退出'];
+const defaultQuickTools = [
   { name: 'compose.ps', label: '容器状态', params: {} },
   { name: 'metrics.query', label: '资源指标', params: {} },
   { name: 'maintenance.update', label: '镜像更新', params: {} },
   { name: 'compose.logs', label: '最近日志', params: { tail: 100 } },
 ];
+
+function loadPresets() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_PRESETS);
+    return stored ? JSON.parse(stored) : defaultPresets;
+  } catch {
+    return defaultPresets;
+  }
+}
+
+function savePresets(list) {
+  try {
+    localStorage.setItem(STORAGE_KEY_PRESETS, JSON.stringify(list));
+  } catch {}
+}
+
+function loadQuickTools() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY_QUICKTOOLS);
+    return stored ? JSON.parse(stored) : defaultQuickTools;
+  } catch {
+    return defaultQuickTools;
+  }
+}
+
+function saveQuickTools(list) {
+  try {
+    localStorage.setItem(STORAGE_KEY_QUICKTOOLS, JSON.stringify(list));
+  } catch {}
+}
+
+const presets = ref(loadPresets());
+const presetsNeedProject = new Set(['重启 web 服务', '查看项目容器状态', '校验 Compose 配置', '分析容器为什么异常退出']);
+const quickTools = ref(loadQuickTools());
 
 const containers = computed(() => projects.value.find((p) => p.id === projectId.value)?.containers || []);
 
@@ -592,6 +634,15 @@ async function quickInvoke(tool) {
   } finally {
     quickRunning.value = '';
   }
+}
+
+function handleCustomizeSave({ presets: newPresets, quickTools: newQuickTools }) {
+  presets.value = newPresets;
+  quickTools.value = newQuickTools;
+  savePresets(newPresets);
+  saveQuickTools(newQuickTools);
+  showCustomize.value = false;
+  toast.success('自定义设置已保存');
 }
 
 onMounted(async () => { await Promise.all([loadProjects(), loadTools(), loadHistory(), loadSuggestions()]); });
