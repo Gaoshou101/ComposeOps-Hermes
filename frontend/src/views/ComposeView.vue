@@ -208,6 +208,34 @@ configureMonacoYaml(monaco, {
     }
   ]
 });
+
+// Popular Docker images for intelligent suggestions
+const popularImages = [
+  { label: 'postgres:16-alpine', detail: 'PostgreSQL 16', description: '轻量级 PostgreSQL 数据库' },
+  { label: 'postgres:15-alpine', detail: 'PostgreSQL 15', description: 'PostgreSQL 数据库' },
+  { label: 'redis:7-alpine', detail: 'Redis 7', description: '内存数据库和缓存' },
+  { label: 'redis:6-alpine', detail: 'Redis 6', description: 'Redis 缓存服务器' },
+  { label: 'mysql:8', detail: 'MySQL 8', description: 'MySQL 数据库服务器' },
+  { label: 'mysql:5.7', detail: 'MySQL 5.7', description: 'MySQL 数据库' },
+  { label: 'mariadb:11', detail: 'MariaDB 11', description: 'MariaDB 数据库' },
+  { label: 'mongo:7', detail: 'MongoDB 7', description: 'NoSQL 文档数据库' },
+  { label: 'mongo:6', detail: 'MongoDB 6', description: 'MongoDB 数据库' },
+  { label: 'nginx:alpine', detail: 'Nginx', description: 'Web 服务器和反向代理' },
+  { label: 'nginx:latest', detail: 'Nginx', description: '高性能 Web 服务器' },
+  { label: 'node:20-alpine', detail: 'Node.js 20', description: 'Node.js 运行时' },
+  { label: 'node:18-alpine', detail: 'Node.js 18', description: 'Node.js LTS' },
+  { label: 'python:3.12-slim', detail: 'Python 3.12', description: 'Python 运行时' },
+  { label: 'python:3.11-slim', detail: 'Python 3.11', description: 'Python 解释器' },
+  { label: 'golang:1.22-alpine', detail: 'Go 1.22', description: 'Go 编译器和运行时' },
+  { label: 'openjdk:21-jdk-slim', detail: 'OpenJDK 21', description: 'Java JDK' },
+  { label: 'rabbitmq:3-management', detail: 'RabbitMQ 3', description: '消息队列服务器' },
+  { label: 'elasticsearch:8.11.0', detail: 'Elasticsearch 8', description: '搜索和分析引擎' },
+  { label: 'kibana:8.11.0', detail: 'Kibana 8', description: 'Elasticsearch 可视化' },
+  { label: 'grafana/grafana:latest', detail: 'Grafana', description: '监控数据可视化' },
+  { label: 'prom/prometheus:latest', detail: 'Prometheus', description: '监控和告警系统' },
+  { label: 'traefik:v2.10', detail: 'Traefik', description: '现代反向代理和负载均衡' },
+  { label: 'caddy:alpine', detail: 'Caddy', description: '自动 HTTPS Web 服务器' },
+];
 const route = useRoute(); const router = useRouter();
 const editorEl = ref(null); const editorReady = ref(false); const projects = ref([]); const projectId = ref(route.query.projectId || '');
 const fileIndex = ref(0); const filePath = ref(''); const content = ref(''); const original = ref('');
@@ -274,7 +302,82 @@ function createEditor() {
   if (!editorEl.value || editor) return;
   editor = monaco.editor.create(editorEl.value, { value: '', language: 'yaml', theme: 'vs-dark', automaticLayout: true, fontSize: 13, minimap: { enabled: false }, tabSize: 2, scrollBeyondLastLine: false });
   editor.onDidChangeModelContent(() => { content.value = editor.getValue(); message.value = ''; });
+  
+  // Register custom completion provider for intelligent suggestions
+  monaco.languages.registerCompletionItemProvider('yaml', {
+    provideCompletionItems: (model, position) => {
+      const textUntilPosition = model.getValueInRange({
+        startLineNumber: position.lineNumber,
+        startColumn: 1,
+        endLineNumber: position.lineNumber,
+        endColumn: position.column,
+      });
+      
+      const suggestions = [];
+      
+      // Suggest popular Docker images when typing after "image:"
+      if (/image:\s*['"]?[\w/-]*$/.test(textUntilPosition)) {
+        const word = model.getWordUntilPosition(position);
+        const range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        };
+        
+        popularImages.forEach((image) => {
+          suggestions.push({
+            label: image.label,
+            kind: monaco.languages.CompletionItemKind.Value,
+            detail: image.detail,
+            documentation: image.description,
+            insertText: image.label,
+            range: range,
+          });
+        });
+      }
+      
+      // Suggest existing service names for depends_on, links, etc.
+      if (/(?:depends_on|links):\s*$/.test(textUntilPosition) || /(?:depends_on|links):\s*-\s*$/.test(textUntilPosition)) {
+        const serviceNames = extractServiceNames(model.getValue());
+        const word = model.getWordUntilPosition(position);
+        const range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        };
+        
+        serviceNames.forEach((serviceName) => {
+          suggestions.push({
+            label: serviceName,
+            kind: monaco.languages.CompletionItemKind.Reference,
+            detail: '现有服务',
+            documentation: `引用服务: ${serviceName}`,
+            insertText: serviceName,
+            range: range,
+          });
+        });
+      }
+      
+      return { suggestions };
+    },
+  });
+  
   editorReady.value = true;
+}
+
+// Extract service names from YAML content
+function extractServiceNames(yamlContent) {
+  try {
+    const parsed = YAML.parse(yamlContent);
+    if (parsed?.services) {
+      return Object.keys(parsed.services);
+    }
+  } catch {
+    // If parsing fails, return empty array
+  }
+  return [];
 }
 async function selectProject() { fileIndex.value = 0; await router.replace({ query: projectId.value ? { projectId: projectId.value } : {} }); await nextTick(); createEditor(); if (projectId.value) load(); }
 async function load() {
