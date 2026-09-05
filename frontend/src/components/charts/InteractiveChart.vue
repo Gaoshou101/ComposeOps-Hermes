@@ -26,10 +26,17 @@
            @mouseleave="onMouseLeave"
            @wheel.prevent="onWheel">
         <defs>
-          <!-- Area gradient -->
+          <!-- Area gradient (单指标) -->
           <linearGradient :id="gradientId" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" :stop-color="color" stop-opacity="0.3" />
             <stop offset="100%" :stop-color="color" stop-opacity="0.05" />
+          </linearGradient>
+          
+          <!-- Phase 2: 多指标渐变 -->
+          <linearGradient v-for="(dataset, idx) in activeDatasets" :key="`grad-${idx}`"
+                          :id="`grad-${idx}-${gradientId}`" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" :stop-color="dataset.color" stop-opacity="0.3" />
+            <stop offset="100%" :stop-color="dataset.color" stop-opacity="0.05" />
           </linearGradient>
           
           <!-- Anomaly pattern -->
@@ -59,42 +66,78 @@
                 fill="url(#anomaly-pattern)" />
         </g>
 
-        <!-- Area chart -->
-        <path v-if="chartType === 'area' && areaPath"
-              :d="areaPath"
-              :fill="`url(#${gradientId})`"
-              class="chart-area" />
+        <!-- Phase 2: 多指标模式 -->
+        <template v-if="compareMode && multiLinePaths.length > 0">
+          <!-- Multi-metric area charts -->
+          <path v-for="(areaData, idx) in multiAreaPaths" :key="`area-${idx}`"
+                v-if="chartType === 'area'"
+                :d="areaData.path"
+                :fill="`url(#${areaData.gradientId})`"
+                class="chart-area" />
 
-        <!-- Line chart -->
-        <path v-if="(chartType === 'line' || chartType === 'area') && linePath"
-              :d="linePath"
-              fill="none"
-              :stroke="color"
-              stroke-width="2"
-              stroke-linejoin="round"
-              stroke-linecap="round"
-              class="chart-line" />
+          <!-- Multi-metric line charts -->
+          <path v-for="(lineData, idx) in multiLinePaths" :key="`line-${idx}`"
+                v-if="chartType === 'line' || chartType === 'area'"
+                :d="lineData.path"
+                fill="none"
+                :stroke="lineData.color"
+                stroke-width="2"
+                stroke-linejoin="round"
+                stroke-linecap="round"
+                class="chart-line" />
 
-        <!-- Bar chart -->
-        <g v-if="chartType === 'bar'">
-          <rect v-for="(point, idx) in visiblePoints" :key="`bar-${idx}`"
-                :x="getX(idx) - barWidth / 2"
-                :y="getY(point.value)"
-                :width="barWidth"
-                :height="Math.max(0, height - padding.bottom - getY(point.value))"
-                :fill="color"
-                opacity="0.8"
-                class="chart-bar" />
-        </g>
+          <!-- Multi-metric hover crosshair -->
+          <g v-if="hoverIndex !== null" class="crosshair">
+            <line :x1="getX(hoverIndex)" :y1="padding.top"
+                  :x2="getX(hoverIndex)" :y2="height - padding.bottom"
+                  class="crosshair-line" />
+            <circle v-for="(dataset, idx) in visibleDatasets" :key="`dot-${idx}`"
+                    v-if="dataset.visibleData[hoverIndex]"
+                    :cx="getX(hoverIndex)"
+                    :cy="getYForScale(dataset.visibleData[hoverIndex].value, yScales[idx])"
+                    r="4" :fill="dataset.color" class="crosshair-dot" />
+          </g>
+        </template>
 
-        <!-- Hover crosshair -->
-        <g v-if="hoverIndex !== null" class="crosshair">
-          <line :x1="getX(hoverIndex)" :y1="padding.top"
-                :x2="getX(hoverIndex)" :y2="height - padding.bottom"
-                class="crosshair-line" />
-          <circle :cx="getX(hoverIndex)" :cy="getY(visiblePoints[hoverIndex].value)"
-                  r="4" :fill="color" class="crosshair-dot" />
-        </g>
+        <!-- 单指标模式 -->
+        <template v-else>
+          <!-- Area chart -->
+          <path v-if="chartType === 'area' && areaPath"
+                :d="areaPath"
+                :fill="`url(#${gradientId})`"
+                class="chart-area" />
+
+          <!-- Line chart -->
+          <path v-if="(chartType === 'line' || chartType === 'area') && linePath"
+                :d="linePath"
+                fill="none"
+                :stroke="color"
+                stroke-width="2"
+                stroke-linejoin="round"
+                stroke-linecap="round"
+                class="chart-line" />
+
+          <!-- Bar chart -->
+          <g v-if="chartType === 'bar'">
+            <rect v-for="(point, idx) in visiblePoints" :key="`bar-${idx}`"
+                  :x="getX(idx) - barWidth / 2"
+                  :y="getY(point.value)"
+                  :width="barWidth"
+                  :height="Math.max(0, height - padding.bottom - getY(point.value))"
+                  :fill="color"
+                  opacity="0.8"
+                  class="chart-bar" />
+          </g>
+
+          <!-- Hover crosshair -->
+          <g v-if="hoverIndex !== null" class="crosshair">
+            <line :x1="getX(hoverIndex)" :y1="padding.top"
+                  :x2="getX(hoverIndex)" :y2="height - padding.bottom"
+                  class="crosshair-line" />
+            <circle :cx="getX(hoverIndex)" :cy="getY(visiblePoints[hoverIndex].value)"
+                    r="4" :fill="color" class="crosshair-dot" />
+          </g>
+        </template>
 
         <!-- Zoom selection -->
         <rect v-if="isDragging && dragStart && dragEnd"
@@ -104,11 +147,25 @@
       </svg>
 
       <!-- Hover tooltip -->
-      <div v-if="hoverIndex !== null && visiblePoints[hoverIndex]"
+      <div v-if="hoverIndex !== null"
            class="chart-tooltip"
            :style="{ left: `${tooltipX}px`, top: `${tooltipY}px` }">
-        <div class="tooltip-time">{{ formatTime(visiblePoints[hoverIndex].timestamp) }}</div>
-        <div class="tooltip-value">{{ formatValue(visiblePoints[hoverIndex].value) }}</div>
+        <template v-if="compareMode && visibleDatasets.length > 0">
+          <!-- Multi-metric tooltip -->
+          <div class="tooltip-time">{{ formatTime(visibleDatasets[0].visibleData[hoverIndex]?.timestamp) }}</div>
+          <div v-for="(dataset, idx) in visibleDatasets" :key="`tooltip-${idx}`"
+               v-if="dataset.visibleData[hoverIndex]"
+               class="tooltip-metric">
+            <span class="tooltip-metric-dot" :style="{ backgroundColor: dataset.color }"></span>
+            <span class="tooltip-metric-label">{{ dataset.label }}:</span>
+            <span class="tooltip-metric-value">{{ formatValue(dataset.visibleData[hoverIndex].value) }} {{ dataset.unit }}</span>
+          </div>
+        </template>
+        <template v-else-if="visiblePoints[hoverIndex]">
+          <!-- Single-metric tooltip -->
+          <div class="tooltip-time">{{ formatTime(visiblePoints[hoverIndex].timestamp) }}</div>
+          <div class="tooltip-value">{{ formatValue(visiblePoints[hoverIndex].value) }}</div>
+        </template>
       </div>
     </div>
 
@@ -129,7 +186,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
-import { TrendingUp, BarChart3, Activity, ZoomIn, ZoomOut, Maximize2 } from 'lucide-vue-next';
+import { TrendingUp, BarChart3, Activity, ZoomIn, ZoomOut, Maximize2, Download } from 'lucide-vue-next';
 
 const props = defineProps({
   data: { type: Array, default: () => [] }, // [{ timestamp, value }]
@@ -138,6 +195,12 @@ const props = defineProps({
   anomalies: { type: Array, default: () => [] }, // [{ start, end }] timestamps
   width: { type: Number, default: 800 },
   height: { type: Number, default: 300 },
+  // Phase 2: 新增多指标支持
+  datasets: { type: Array, default: () => [] }, // [{ label, data: [{timestamp, value}], color, unit }]
+  compareMode: { type: Boolean, default: false },
+  // Phase 2: 可访问性
+  ariaLabel: { type: String, default: '交互式图表' },
+  ariaDescription: { type: String, default: '' },
 });
 
 const chartTypes = [
@@ -145,6 +208,8 @@ const chartTypes = [
   { key: 'area', label: '面积图', icon: Activity },
   { key: 'bar', label: '柱状图', icon: BarChart3 },
 ];
+
+const emit = defineEmits(['export']);
 
 const chartType = ref('area');
 const padding = { top: 20, right: 20, bottom: 30, left: 50 };
@@ -165,8 +230,29 @@ const dragEnd = ref(null);
 const wrapperRef = ref(null);
 const canvasWrapper = ref(null);
 
+// Phase 2: Touch gesture support
+const touchStartDistance = ref(0);
+const lastTouchCenter = ref(null);
+
+// Phase 2: Keyboard navigation
+const focusedPointIndex = ref(null);
+
 const plotWidth = computed(() => props.width - padding.left - padding.right);
 const plotHeight = computed(() => props.height - padding.top - padding.bottom);
+
+// Phase 2: 多指标模式下的数据集
+const activeDatasets = computed(() => {
+  if (props.compareMode && props.datasets.length > 0) {
+    return props.datasets;
+  }
+  // 单指标模式：包装为数据集格式
+  return [{
+    label: '指标',
+    data: props.data,
+    color: props.color,
+    unit: props.unit,
+  }];
+});
 
 // Visible data range based on zoom and pan
 const visiblePoints = computed(() => {
@@ -176,6 +262,21 @@ const visiblePoints = computed(() => {
   const startIdx = Math.max(0, Math.min(totalPoints - visibleCount, Math.floor(panOffset.value)));
   const endIdx = Math.min(totalPoints, startIdx + visibleCount);
   return props.data.slice(startIdx, endIdx);
+});
+
+// Phase 2: 多数据集的可见范围
+const visibleDatasets = computed(() => {
+  return activeDatasets.value.map(dataset => {
+    if (dataset.data.length === 0) return { ...dataset, visibleData: [] };
+    const totalPoints = dataset.data.length;
+    const visibleCount = Math.ceil(totalPoints / zoomLevel.value);
+    const startIdx = Math.max(0, Math.min(totalPoints - visibleCount, Math.floor(panOffset.value)));
+    const endIdx = Math.min(totalPoints, startIdx + visibleCount);
+    return {
+      ...dataset,
+      visibleData: dataset.data.slice(startIdx, endIdx),
+    };
+  });
 });
 
 // Statistics
@@ -210,7 +311,26 @@ const yScale = computed(() => {
   };
 });
 
-// Chart paths
+// Phase 2: 双Y轴支持（多指标比较模式）
+const yScales = computed(() => {
+  if (!props.compareMode || visibleDatasets.value.length === 0) {
+    return [yScale.value];
+  }
+  
+  return visibleDatasets.value.map(dataset => {
+    if (dataset.visibleData.length === 0) return { min: 0, max: 100 };
+    const values = dataset.visibleData.map(p => p.value);
+    const min = Math.min(...values, 0);
+    const max = Math.max(...values, 1);
+    const range = max - min;
+    return {
+      min: min - range * 0.1,
+      max: max + range * 0.1,
+    };
+  });
+});
+
+// Chart paths (单指标)
 const linePath = computed(() => {
   if (visiblePoints.value.length < 2) return '';
   return visiblePoints.value.map((point, i) => {
@@ -230,6 +350,38 @@ const areaPath = computed(() => {
 const barWidth = computed(() => {
   if (visiblePoints.value.length === 0) return 0;
   return Math.max(2, Math.min(20, plotWidth.value / visiblePoints.value.length * 0.8));
+});
+
+// Phase 2: 多指标路径
+const multiLinePaths = computed(() => {
+  if (!props.compareMode) return [];
+  return visibleDatasets.value.map((dataset, dsIdx) => {
+    if (dataset.visibleData.length < 2) return null;
+    const scale = yScales.value[dsIdx];
+    const path = dataset.visibleData.map((point, i) => {
+      const x = getXForDataset(i, dataset.visibleData.length);
+      const y = getYForScale(point.value, scale);
+      return `${i === 0 ? 'M' : 'L'}${x},${y}`;
+    }).join(' ');
+    return { path, color: dataset.color };
+  }).filter(Boolean);
+});
+
+const multiAreaPaths = computed(() => {
+  if (!props.compareMode) return [];
+  return visibleDatasets.value.map((dataset, dsIdx) => {
+    if (dataset.visibleData.length < 2) return null;
+    const scale = yScales.value[dsIdx];
+    const linePath = dataset.visibleData.map((point, i) => {
+      const x = getXForDataset(i, dataset.visibleData.length);
+      const y = getYForScale(point.value, scale);
+      return `${i === 0 ? 'M' : 'L'}${x},${y}`;
+    }).join(' ');
+    const lastX = getXForDataset(dataset.visibleData.length - 1, dataset.visibleData.length);
+    const bottomY = props.height - padding.bottom;
+    const path = `${linePath} L${lastX},${bottomY} L${padding.left},${bottomY} Z`;
+    return { path, gradientId: `grad-${dsIdx}-${gradientId}` };
+  }).filter(Boolean);
 });
 
 // Visible anomalies
@@ -262,6 +414,19 @@ function getX(index) {
 
 function getY(value) {
   const { min, max } = yScale.value;
+  const range = max - min;
+  if (range === 0) return props.height - padding.bottom;
+  return padding.top + plotHeight.value * (1 - (value - min) / range);
+}
+
+// Phase 2: 多指标坐标辅助函数
+function getXForDataset(index, dataLength) {
+  if (dataLength <= 1) return padding.left;
+  return padding.left + (plotWidth.value * index) / (dataLength - 1);
+}
+
+function getYForScale(value, scale) {
+  const { min, max } = scale;
   const range = max - min;
   if (range === 0) return props.height - padding.bottom;
   return padding.top + plotHeight.value * (1 - (value - min) / range);
@@ -549,6 +714,31 @@ watch(() => props.data.length, () => {
   font-size: 0.875rem;
   font-weight: 600;
   color: #38BDF8;
+}
+
+.tooltip-metric {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.tooltip-metric-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tooltip-metric-label {
+  color: #a1a1aa;
+  font-weight: 500;
+}
+
+.tooltip-metric-value {
+  color: #e4e4e7;
+  font-weight: 600;
 }
 
 .zoom-controls {
