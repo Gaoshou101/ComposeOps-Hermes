@@ -336,4 +336,30 @@ export const metricsApi = {
     request('/metrics/alerts', { method: 'POST', body: JSON.stringify(config) }),
   deleteAlert: (ruleId) => 
     request(`/metrics/alerts/${ruleId}`, { method: 'DELETE' }),
+  
+  // Phase 1: 新增的指标 API
+  getHistoricalMetrics: ({ containerId, metricType, startTime, endTime, aggregation = 'auto' }) => {
+    const params = new URLSearchParams();
+    if (containerId) params.append('containerId', containerId);
+    if (metricType) params.append('metricType', metricType);
+    if (startTime) params.append('startTime', startTime);
+    if (endTime) params.append('endTime', endTime);
+    if (aggregation) params.append('aggregation', aggregation);
+    return request(`/metrics/historical?${params.toString()}`);
+  },
+  
+  getMetricsStats: (containerId, metricType, hours = 24) => 
+    request(`/metrics/stats/${containerId}/${metricType}?hours=${hours}`),
+  
+  detectAnomalies: ({ containerId, metricType, hours = 24, algorithms = ['z_score', 'moving_average', 'trend'] }) => 
+    request('/metrics/anomalies', { 
+      method: 'POST', 
+      body: JSON.stringify({ containerId, metricType, hours, algorithms }) 
+    }),
+  
+  evaluateAlerts: (containerId) => 
+    request(`/metrics/evaluate-alerts/${containerId}`),
+  
+  applyRetentionPolicy: () => 
+    request('/metrics/retention-policy', { method: 'POST' }),
 };

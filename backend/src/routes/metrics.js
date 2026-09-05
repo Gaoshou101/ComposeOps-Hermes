@@ -1,4 +1,11 @@
 import { queryContainerMetrics, configureAlert, listAlerts, deleteAlert } from '../services/agent-metrics.js';
+import {
+  queryHistoricalMetrics,
+  getMetricsStats,
+  detectAnomalies,
+  evaluateAlertRules,
+  applyRetentionPolicy,
+} from '../services/metrics.js';
 
 /**
  * 容器资源监控 API 路由
@@ -97,6 +104,161 @@ export default async function metricsRoutes(fastify) {
       const { ruleId } = request.params;
       const result = await deleteAlert(ruleId);
       return result;
+    }
+  );
+
+  // 查询历史指标数据（新增）
+  fastify.get(
+    '/historical',
+    {
+      schema: {
+        querystring: {
+          type: 'object',
+          properties: {
+            containerId: { type: 'string', description: '容器 ID' },
+            metricType: { type: 'string', description: '指标类型' },
+            startTime: { type: 'integer', description: '开始时间戳（秒）' },
+            endTime: { type: 'integer', description: '结束时间戳（秒）' },
+            aggregation: { type: 'string', description: '聚合方式（auto 或秒数）', default: 'auto' },
+          }
+        }
+      }
+    },
+    async (request) => {
+      const { containerId, metricType, startTime, endTime, aggregation = 'auto' } = request.query;
+      
+      const metrics = queryHistoricalMetrics({
+        containerId,
+        metricType,
+        startTime: startTime ? parseInt(startTime, 10) : undefined,
+        endTime: endTime ? parseInt(endTime, 10) : undefined,
+        aggregation: aggregation === 'auto' ? 'auto' : parseInt(aggregation, 10),
+      });
+
+      return { 
+        metrics,
+        count: metrics.length,
+      };
+    }
+  );
+
+  // 获取指标统计信息（新增）
+  fastify.get(
+    '/stats/:containerId/:metricType',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['containerId', 'metricType'],
+          properties: {
+            containerId: { type: 'string', description: '容器 ID' },
+            metricType: { type: 'string', description: '指标类型' },
+          }
+        },
+        querystring: {
+          type: 'object',
+          properties: {
+            hours: { type: 'integer', description: '统计小时数', default: 24 },
+          }
+        }
+      }
+    },
+    async (request) => {
+      const { containerId, metricType } = request.params;
+      const { hours = 24 } = request.query;
+
+      const stats = getMetricsStats(containerId, metricType, parseInt(hours, 10));
+      
+      if (!stats) {
+        return { 
+          error: 'No data available',
+          stats: null,
+        };
+      }
+
+      return { stats };
+    }
+  );
+
+  // 异常检测（新增）
+  fastify.post(
+    '/anomalies',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['containerId', 'metricType'],
+          properties: {
+            containerId: { type: 'string', description: '容器 ID' },
+            metricType: { type: 'string', description: '指标类型' },
+            hours: { type: 'integer', description: '检测小时数', default: 24 },
+            algorithms: { 
+              type: 'array', 
+              items: { type: 'string', enum: ['z_score', 'moving_average', 'trend'] },
+              description: '使用的算法',
+              default: ['z_score', 'moving_average', 'trend'],
+            },
+          }
+        }
+      }
+    },
+    async (request) => {
+      const { containerId, metricType, hours = 24, algorithms = ['z_score', 'moving_average', 'trend'] } = request.body;
+
+      const endTime = Math.floor(Date.now() / 1000);
+      const startTime = endTime - hours * 3600;
+
+      const metrics = queryHistoricalMetrics({
+        containerId,
+        metricType,
+        startTime,
+        endTime,
+      });
+
+      const anomalies = detectAnomalies(metrics, algorithms);
+
+      return {
+        anomalies,
+        count: anomalies.length,
+        timeRange: { start: startTime, end: endTime, hours },
+      };
+    }
+  );
+
+  // 评估智能告警规则（新增）
+  fastify.get(
+    '/evaluate-alerts/:containerId',
+    {
+      schema: {
+        params: {
+          type: 'object',
+          required: ['containerId'],
+          properties: {
+            containerId: { type: 'string', description: '容器 ID' },
+          }
+        }
+      }
+    },
+    async (request) => {
+      const { containerId } = request.params;
+      const alerts = evaluateAlertRules(containerId);
+
+      return {
+        alerts,
+        count: alerts.length,
+      };
+    }
+  );
+
+  // 执行数据保留策略（新增，管理员接口）
+  fastify.post(
+    '/retention-policy',
+    async () => {
+      const result = applyRetentionPolicy();
+      return {
+        success: true,
+        result,
+      };
     }
   );
 }
