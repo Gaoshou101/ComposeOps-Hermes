@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Visual Compose Editor**: Dual-mode editing (code/visual) for docker-compose files
+  - Service card view showing name, image, ports, volumes, environment variables, restart policy
+  - Form-based service editor (ServiceEditor.vue) for adding/editing services without writing YAML
+  - Bidirectional synchronization between YAML content and visual service representation
+  - Add, edit, and delete services through intuitive UI
+- **Docker Run Converter**: Convert `docker run` commands to docker-compose YAML format
+  - Dedicated converter view at `/converter` route
+  - Parses complex docker run commands with port mappings, volumes, environment variables, networks
+  - One-click copy to clipboard for generated YAML
+  - Integration with compose editor via custom events
+- **Container Terminal Component**: Terminal emulator using xterm.js
+  - WebSocket-based terminal connection to containers
+  - Fit addon for responsive terminal sizing
+  - Ready for integration into container detail pages
 - Open source foundation documentation (README.en.md, LICENSE, CONTRIBUTING.md)
 - Security policy (SECURITY.md) with best practices and vulnerability reporting
 - GitHub issue templates (bug report, feature request, question)
@@ -18,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependabot configuration for automated dependency updates (weekly schedule, grouped updates)
 - ESLint 9 flat config for frontend with Vue 3 + Composition API enforcement
 - Prettier configuration for consistent code formatting
+
+### Changed
+- Compose editor (ComposeView.vue) now supports toggling between Monaco code editor and visual service list view
+- Added xterm.js and xterm-addon-fit dependencies to frontend package.json
 
 ## [1.0.0] - 2026-09-04
 
