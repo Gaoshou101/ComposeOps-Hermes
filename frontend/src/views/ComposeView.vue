@@ -10,6 +10,8 @@
         <select v-model="templateId" class="input w-40" title="常用服务模板" @change="insertTemplate">
           <option value="">插入模板...</option>
           <option v-for="template in templates" :key="template.id" :value="template.id">{{ template.label }} · {{ template.description }}</option>
+          <option value="" disabled>──────────</option>
+          <option value="__goto_marketplace__">📦 前往模板市场</option>
         </select>
         <button class="btn-secondary" :disabled="!content" @click="formatYaml"><AlignLeft class="w-4 h-4" />格式化</button>
         <button class="btn-secondary" :disabled="!projectId" @click="loadBackups"><History class="w-4 h-4" />备份</button>
@@ -174,7 +176,7 @@ import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { AlignLeft, Eye, FileCode2, HardDrive, History, Layout, Network, Pencil, Plus, RotateCw, Save, ShieldAlert, ShieldCheck, Trash2, Undo2, Variable, X } from 'lucide-vue-next';
 import Skeleton from '../components/common/Skeleton.vue';
 import { diffLines } from '../lib/diff.js';
-import { composeTemplates } from '../lib/composeTemplates.js';
+// 移除硬编码模板,改用模板市场 API
 import EmptyState from '../components/common/EmptyState.vue';
 import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 import ServiceEditor from '../components/compose/ServiceEditor.vue';
@@ -248,7 +250,7 @@ const changePreview = ref(null);
 const showPreview = ref(false);
 const previewLoading = ref(false);
 const templateId = ref('');
-const templates = composeTemplates;
+const templates = ref([]); // 动态加载的模板列表(收藏+内置)
 const showHostChangedDialog = ref(false);
 const showLeaveDialog = ref(false);
 const showSaveErrorDialog = ref(false);
@@ -270,12 +272,36 @@ useEscapeKey({ active: computed(() => showPreview.value), onClose: closePreview,
 useEscapeKey({ active: showServiceEditor, onClose: () => { showServiceEditor.value = false; }, layer: 'modal', lockBody: true });
 
 onMounted(async () => {
-  await reloadProjects();
+  await Promise.all([reloadProjects(), loadTemplates()]);
   await nextTick(); createEditor(); if (projectId.value) await load();
   window.addEventListener('beforeunload', beforeUnload);
   window.addEventListener('composeops:host-changed', onHostChanged);
 });
 async function reloadProjects() { projects.value = (await api.getProjects()).projects.filter((p) => p.editable); }
+async function loadTemplates() {
+  try {
+    const [favoriteResult, builtinResult] = await Promise.all([
+      api.searchMarketplaceTemplates({ source: 'all', limit: 20 }),
+      api.searchMarketplaceTemplates({ source: 'builtin', limit: 10 })
+    ]);
+    const favorites = (favoriteResult.templates || []).filter(t => t.isFavorite);
+    const builtins = (builtinResult.templates || []).slice(0, 5);
+    const merged = [...favorites];
+    for (const tpl of builtins) {
+      if (!merged.find(m => m.id === tpl.id)) merged.push(tpl);
+    }
+    templates.value = merged.map(t => ({
+      id: t.id,
+      label: t.name,
+      description: t.description,
+      source: t.source,
+      compose: t.defaultCompose,
+      isFavorite: t.isFavorite
+    }));
+  } catch (e) {
+    console.warn('加载模板失败:', e);
+  }
+}
 function onHostChanged() {
   if (dirty.value) {
     showHostChangedDialog.value = true;
@@ -574,20 +600,53 @@ async function confirmSave() {
 }
 function closePreview() { showPreview.value = false; changePreview.value = null; }
 function insertTemplate() {
-  const template = templates.find((item) => item.id === templateId.value);
+  // 处理"前往模板市场"选项
+  if (templateId.value === '__goto_marketplace__') {
+    templateId.value = '';
+    router.push('/marketplace');
+    return;
+  }
+  
+  const template = templates.value.find((item) => item.id === templateId.value);
   templateId.value = '';
   if (!template || !editor) return;
   const current = editor.getValue();
-  const snippet = `\n${template.insert}\n`;
-  // 定位到 services 段末(在第一个顶层 key 之前插入服务);简单策略:追加到文件末尾
+  
+  // 模板市场的模板使用 compose 字段(完整 YAML),需要提取 services 部分
+  let servicesToInsert = '';
+  try {
+    if (template.compose) {
+      const parsed = YAML.parse(template.compose);
+      if (parsed?.services) {
+        // 提取所有服务定义,转为 YAML 字符串
+        const servicesYaml = YAML.stringify({ services: parsed.services }, { indent: 2, lineWidth: 0 });
+        // 去掉外层的 "services:\n" 前缀,只保留服务内容
+        servicesToInsert = servicesYaml.replace(/^services:\n/, '').split('\n').map(line => line ? '  ' + line : '').join('\n');
+      }
+    } else if (template.insert) {
+      // 兼容旧的硬编码模板格式(如果还有的话)
+      servicesToInsert = template.insert;
+    }
+  } catch (e) {
+    error.value = `模板解析失败: ${e.message}`;
+    return;
+  }
+  
+  if (!servicesToInsert) {
+    error.value = '模板内容为空';
+    return;
+  }
+  
+  const snippet = `\n${servicesToInsert}\n`;
   const hasServices = /^services:/m.test(current);
-  const insertAt = hasServices ? current.length : current.length;
   const next = hasServices
     ? current.replace(/(^services:\n)/, `$1${snippet}`)
-    : `${current}${current ? '\n' : ''}services:\n${template.insert}\n`;
+    : `${current}${current ? '\n' : ''}services:\n${servicesToInsert}\n`;
   editor.setValue(next);
   editor.trigger('keyboard', 'editor.action.formatDocument', {});
-  message.value = `已插入模板「${template.label}」,请按需修改`;
+  
+  const sourceLabel = template.source === 'builtin' ? '内置' : template.source === 'community' ? '社区' : '自定义';
+  message.value = `已插入${sourceLabel}模板「${template.label}」,请按需修改`;
 }
 function formatYaml() { try { const next = YAML.stringify(YAML.parse(content.value), { indent: 2, lineWidth: 0 }); editor.setValue(next); } catch (e) { error.value = e.message; } }
 async function loadBackups() { backups.value = (await api.getBackups(projectId.value)).backups || []; showBackups.value = true; }
