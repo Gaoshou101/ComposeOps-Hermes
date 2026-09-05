@@ -301,7 +301,11 @@ function beforeUnload(event) { if (dirty.value) { event.preventDefault(); event.
 function createEditor() {
   if (!editorEl.value || editor) return;
   editor = monaco.editor.create(editorEl.value, { value: '', language: 'yaml', theme: 'vs-dark', automaticLayout: true, fontSize: 13, minimap: { enabled: false }, tabSize: 2, scrollBeyondLastLine: false });
-  editor.onDidChangeModelContent(() => { content.value = editor.getValue(); message.value = ''; });
+  editor.onDidChangeModelContent(() => { 
+    content.value = editor.getValue(); 
+    message.value = ''; 
+    validateInlineErrors();
+  });
   
   // Register custom completion provider for intelligent suggestions
   monaco.languages.registerCompletionItemProvider('yaml', {
@@ -364,6 +368,11 @@ function createEditor() {
     },
   });
   
+  // Watch for content changes to update inline error markers
+  editor.onDidChangeModelContent(() => {
+    validateInlineErrors();
+  });
+  
   editorReady.value = true;
 }
 
@@ -378,6 +387,134 @@ function extractServiceNames(yamlContent) {
     // If parsing fails, return empty array
   }
   return [];
+}
+
+// Validate YAML and set inline error markers
+function validateInlineErrors() {
+  if (!editor) return;
+  
+  const model = editor.getModel();
+  if (!model) return;
+  
+  const markers = [];
+  const yamlContent = model.getValue();
+  
+  // Basic YAML syntax validation
+  try {
+    const parsed = YAML.parse(yamlContent);
+    
+    // Check for common Docker Compose errors
+    if (parsed?.services) {
+      Object.entries(parsed.services).forEach(([serviceName, serviceConfig]) => {
+        // Find line number for this service (approximate)
+        const lines = yamlContent.split('\n');
+        let serviceLine = 0;
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].includes(serviceName + ':')) {
+            serviceLine = i + 1;
+            break;
+          }
+        }
+        
+        // Check for missing image
+        if (!serviceConfig.image && !serviceConfig.build) {
+          markers.push({
+            severity: monaco.MarkerSeverity.Error,
+            startLineNumber: serviceLine,
+            startColumn: 1,
+            endLineNumber: serviceLine,
+            endColumn: 999,
+            message: `服务 "${serviceName}" 缺少 image 或 build 字段`,
+          });
+        }
+        
+        // Check for invalid port format
+        if (serviceConfig.ports) {
+          serviceConfig.ports.forEach((port, idx) => {
+            const portStr = String(port);
+            if (!/^\d+:\d+$/.test(portStr) && !/^\d+$/.test(portStr) && !/^[\d.]+:\d+:\d+$/.test(portStr)) {
+              const portLine = findLineByContent(yamlContent, portStr, serviceLine);
+              markers.push({
+                severity: monaco.MarkerSeverity.Warning,
+                startLineNumber: portLine,
+                startColumn: 1,
+                endLineNumber: portLine,
+                endColumn: 999,
+                message: `端口格式可能不正确: "${portStr}" (建议格式: "8080:80" 或 "3000")`,
+              });
+            }
+          });
+        }
+        
+        // Check for invalid depends_on references
+        if (serviceConfig.depends_on) {
+          const allServices = Object.keys(parsed.services);
+          const deps = Array.isArray(serviceConfig.depends_on) ? serviceConfig.depends_on : Object.keys(serviceConfig.depends_on);
+          deps.forEach((dep) => {
+            if (!allServices.includes(dep)) {
+              const depLine = findLineByContent(yamlContent, dep, serviceLine);
+              markers.push({
+                severity: monaco.MarkerSeverity.Error,
+                startLineNumber: depLine,
+                startColumn: 1,
+                endLineNumber: depLine,
+                endColumn: 999,
+                message: `depends_on 引用的服务 "${dep}" 不存在`,
+              });
+            }
+          });
+        }
+        
+        // Check for volumes with potentially wrong syntax
+        if (serviceConfig.volumes) {
+          serviceConfig.volumes.forEach((volume) => {
+            const volStr = String(volume);
+            // Named volumes or bind mounts should have ":" or be named volumes
+            if (!volStr.includes(':') && !volStr.startsWith('/') && volStr.includes(' ')) {
+              const volLine = findLineByContent(yamlContent, volStr, serviceLine);
+              markers.push({
+                severity: monaco.MarkerSeverity.Warning,
+                startLineNumber: volLine,
+                startColumn: 1,
+                endLineNumber: volLine,
+                endColumn: 999,
+                message: `卷路径可能包含空格,建议使用引号包裹: "${volStr}"`,
+              });
+            }
+          });
+        }
+      });
+    }
+  } catch (e) {
+    // YAML parse error - show syntax error
+    if (e instanceof Error) {
+      // Try to extract line number from YAML parse error
+      const lineMatch = e.message.match(/line (\d+)/i);
+      const line = lineMatch ? parseInt(lineMatch[1]) : 1;
+      
+      markers.push({
+        severity: monaco.MarkerSeverity.Error,
+        startLineNumber: line,
+        startColumn: 1,
+        endLineNumber: line,
+        endColumn: 999,
+        message: `YAML 语法错误: ${e.message}`,
+      });
+    }
+  }
+  
+  monaco.editor.setModelMarkers(model, 'yaml-validator', markers);
+}
+
+// Helper function to find approximate line number by content
+function findLineByContent(yamlContent, searchText, startLine = 0) {
+  const lines = yamlContent.split('\n');
+  for (let i = startLine; i < lines.length; i++) {
+    if (lines[i].includes(searchText)) {
+      return i + 1;
+    }
+  }
+  return startLine || 1;
 }
 async function selectProject() { fileIndex.value = 0; await router.replace({ query: projectId.value ? { projectId: projectId.value } : {} }); await nextTick(); createEditor(); if (projectId.value) load(); }
 async function load() {
