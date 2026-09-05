@@ -45,13 +45,14 @@
               <th v-else-if="activeTab === 'volumes'">卷名</th>
               <th v-else>网络</th>
               <th>状态</th>
+              <th>创建时间</th>
               <th class="text-right">大小</th>
               <th class="text-right min-w-24">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="!filteredRows.length">
-              <td :colspan="6" class="text-center text-muted py-6">
+              <td :colspan="7" class="text-center text-muted py-6">
                 {{ (searchQuery || filterStatus) ? '未找到匹配的资源' : (activeTab === 'networks' ? '没有可清理的网络' : `没有${tabLabel}可清理,系统很干净`) }}
               </td>
             </tr>
@@ -61,6 +62,7 @@
               </td>
               <td class="max-w-xs truncate font-mono tabular-nums" :title="row.title">{{ row.primary }}<span v-if="row.note" class="ml-2 text-muted text-xs">{{ row.note }}</span></td>
               <td><span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium" :class="row.toneCls">{{ row.statusLabel }}</span></td>
+              <td class="text-muted text-sm">{{ row.createdAt ? formatTime(row.createdAt) : '—' }}</td>
               <td class="text-right font-mono tabular-nums whitespace-nowrap">{{ formatBytes(row.size) }}</td>
               <td class="text-right">
                 <button v-if="row.deletable" :class="pendingKey === row.key ? 'btn-danger' : 'btn-secondary'" :disabled="busy" @click="confirmRemove(row)">{{ pendingKey === row.key ? '确认删除?' : '删除' }}</button>
@@ -143,6 +145,7 @@ const rows = computed(() => {
       statusLabel: img.dangling ? '悬空' : img.inUse ? '使用中' : '未使用',
       statusValue: img.dangling ? 'dangling' : img.inUse ? 'inUse' : 'unused',
       size: img.size,
+      createdAt: img.created,
       deletable: !img.inUse,
       undeletableReason: img.inUse ? '被容器引用' : '',
     })).sort((a, b) => (a.deletable === b.deletable ? b.size - a.size : a.deletable ? -1 : 1));
@@ -157,6 +160,7 @@ const rows = computed(() => {
       statusLabel: vol.orphan ? '孤儿' : `被引用 ×${vol.refCount}`,
       statusValue: vol.orphan ? 'orphan' : 'referenced',
       size: vol.size,
+      createdAt: vol.createdAt,
       deletable: vol.orphan,
       undeletableReason: '被容器挂载',
     })).sort((a, b) => (a.deletable === b.deletable ? b.size - a.size : a.deletable ? -1 : 1));
@@ -170,6 +174,7 @@ const rows = computed(() => {
     statusLabel: net.builtin ? '内置' : net.unused ? '闲置' : `接入 ${net.attached}`,
     statusValue: net.builtin ? 'builtin' : net.unused ? 'unused' : 'attached',
     size: 0,
+    createdAt: net.createdAt,
     deletable: net.unused,
     undeletableReason: net.builtin ? 'Docker 内置' : `被 ${net.attached} 个容器使用`,
   })).sort((a, b) => Number(a.deletable) - Number(b.deletable));
@@ -312,6 +317,10 @@ function formatBytes(value = 0) {
   let n = value, i = 0;
   while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
   return `${n.toFixed(i ? 1 : 0)} ${units[i]}`;
+}
+
+function formatTime(value) {
+  return value ? new Date(value).toLocaleString() : '—';
 }
 
 watch(activeTab, () => {

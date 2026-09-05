@@ -40,6 +40,7 @@ async function normalizeVolumes(docker, listResult = {}) {
     }
     const refCount = Number(usage?.RefCount) || 0;
     const size = Number(usage?.Size) || 0;
+    const createdAt = volume.CreatedAt ? new Date(volume.CreatedAt).getTime() : null;
     return {
       name,
       driver: String(volume.Driver || ''),
@@ -48,6 +49,7 @@ async function normalizeVolumes(docker, listResult = {}) {
       size,
       refCount,
       orphan: refCount <= 0,
+      createdAt,
     };
   }));
 }
@@ -58,6 +60,7 @@ function normalizeNetwork(network = {}) {
   const containers = network.Containers && typeof network.Containers === 'object' ? network.Containers : {};
   const attached = Object.keys(containers).length;
   const builtin = ['bridge', 'host', 'none'].includes(driver);
+  const createdAt = network.Created ? new Date(network.Created).getTime() : null;
   return {
     id: String(network.Id || ''),
     name: String(network.Name || ''),
@@ -67,6 +70,7 @@ function normalizeNetwork(network = {}) {
     attached,
     builtin,
     unused: attached === 0 && !builtin,
+    createdAt,
   };
 }
 
