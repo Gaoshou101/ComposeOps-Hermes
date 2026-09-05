@@ -5,6 +5,7 @@
       <div class="page-actions">
         <select v-model="projectId" class="input min-w-52" @change="selectProject"><option value="">选择项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
         <select v-if="project?.composeFiles.length > 1" v-model.number="fileIndex" class="input" @change="load"><option v-for="(file, i) in project.composeFiles" :key="file" :value="i">{{ shortName(file) }}</option></select>
+        <button class="btn-secondary" :disabled="!content" @click="toggleEditorMode"><Layout class="w-4 h-4" />{{ editorMode === 'code' ? '可视化' : '代码' }}</button>
         <button class="btn-secondary" :disabled="!content" @click="validateSemantics"><ShieldCheck class="w-4 h-4" />语义校验</button>
         <select v-model="templateId" class="input w-40" title="常用服务模板" @change="insertTemplate">
           <option value="">插入模板...</option>
@@ -25,9 +26,50 @@
       </p>
     </div>
     <EmptyState v-if="!projectId" icon="FileCode2" title="请先选择一个已挂载的项目" description="选择项目后即可查看与编辑 Compose 配置" class="flex-1" />
-    <div v-else class="card relative flex-1 min-h-[420px] overflow-hidden ring-1 ring-black/10">
+    <div v-else-if="editorMode === 'code'" class="card relative flex-1 min-h-[420px] overflow-hidden ring-1 ring-black/10">
       <Skeleton v-if="!editorReady" class="skeleton-workspace" rows="10" label="编辑器加载中" />
       <div ref="editorEl" class="absolute inset-0" :class="{ invisible: !editorReady }"></div>
+    </div>
+    <div v-else class="card flex-1 min-h-[420px] overflow-auto">
+      <div class="p-4 space-y-3">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-sm font-semibold">服务列表</h3>
+          <button class="btn-primary" @click="addService"><Plus class="w-4 h-4" />新增服务</button>
+        </div>
+        <EmptyState v-if="!visualServices.length" icon="Layers" compact title="暂无服务" description="点击上方「新增服务」按钮创建" />
+        <div v-for="service in visualServices" :key="service.name" class="card p-4 space-y-3 border border-surface-700 hover:border-surface-600 transition-colors">
+          <div class="flex items-start justify-between">
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-1">
+                <h4 class="font-semibold text-surface-100">{{ service.name }}</h4>
+                <span class="text-xs px-2 py-0.5 rounded-full bg-surface-800 text-surface-300">{{ service.image || '未指定镜像' }}</span>
+              </div>
+              <div class="flex flex-wrap gap-2 text-xs text-surface-400">
+                <span v-if="service.ports?.length" class="flex items-center gap-1"><Network class="w-3 h-3" />{{ service.ports.length }} 个端口</span>
+                <span v-if="service.volumes?.length" class="flex items-center gap-1"><HardDrive class="w-3 h-3" />{{ service.volumes.length }} 个卷</span>
+                <span v-if="service.environment?.length" class="flex items-center gap-1"><Variable class="w-3 h-3" />{{ service.environment.length }} 个环境变量</span>
+                <span v-if="service.restart" class="flex items-center gap-1"><RotateCw class="w-3 h-3" />{{ service.restart }}</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button class="icon-btn" @click="editService(service)"><Pencil class="w-4 h-4" /></button>
+              <button class="icon-btn text-rose-400 hover:text-rose-300" @click="deleteService(service.name)"><Trash2 class="w-4 h-4" /></button>
+            </div>
+          </div>
+          <div v-if="service.ports?.length" class="pt-2 border-t border-surface-800">
+            <div class="text-xs font-medium text-surface-300 mb-1.5">端口映射</div>
+            <div class="flex flex-wrap gap-2">
+              <span v-for="(port, idx) in service.ports" :key="idx" class="text-xs px-2 py-1 rounded bg-surface-900 text-emerald-300 font-mono">{{ port }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showServiceEditor" class="modal-backdrop z-[55]" @click.self="showServiceEditor = false">
+      <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-2xl max-h-[85vh] overflow-auto">
+        <ServiceEditor :model-value="currentService" :is-new="isNewService" @save="saveServiceFromEditor" @close="showServiceEditor = false" />
+      </div>
     </div>
 
     <div v-if="showBackups" class="modal-backdrop z-[55]" @click.self="showBackups = false">
@@ -125,16 +167,17 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useToastStore } from '../stores/toast.js';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
-import { AlignLeft, Eye, FileCode2, History, Save, ShieldAlert, ShieldCheck, Undo2, X } from 'lucide-vue-next';
+import { AlignLeft, Eye, FileCode2, HardDrive, History, Layout, Network, Pencil, Plus, RotateCw, Save, ShieldAlert, ShieldCheck, Trash2, Undo2, Variable, X } from 'lucide-vue-next';
 import Skeleton from '../components/common/Skeleton.vue';
 import { diffLines } from '../lib/diff.js';
 import { composeTemplates } from '../lib/composeTemplates.js';
 import EmptyState from '../components/common/EmptyState.vue';
 import ConfirmDialog from '../components/common/ConfirmDialog.vue';
+import ServiceEditor from '../components/compose/ServiceEditor.vue';
 import * as YAML from 'yaml';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 import 'monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution';
@@ -161,6 +204,11 @@ const showSaveErrorDialog = ref(false);
 const showRestoreDialog = ref(false);
 const pendingBackup = ref(null);
 const leaveCallback = ref(null);
+const editorMode = ref('code');
+const visualServices = ref([]);
+const showServiceEditor = ref(false);
+const currentService = ref(null);
+const isNewService = ref(false);
 let editor;
 const project = computed(() => projects.value.find((p) => p.id === projectId.value));
 const dirty = computed(() => content.value !== original.value);
@@ -168,6 +216,7 @@ const toast = useToastStore();
 useEscapeKey({ active: showBackups, onClose: () => { showBackups.value = false; }, layer: 'modal', lockBody: true });
 useEscapeKey({ active: computed(() => !!comparison.value), onClose: () => { comparison.value = null; }, layer: 'modal', lockBody: true });
 useEscapeKey({ active: computed(() => showPreview.value), onClose: closePreview, layer: 'modal', lockBody: true });
+useEscapeKey({ active: showServiceEditor, onClose: () => { showServiceEditor.value = false; }, layer: 'modal', lockBody: true });
 
 onMounted(async () => {
   await reloadProjects();
@@ -301,4 +350,83 @@ async function confirmRestore() {
 }
 function shortName(file) { return file.split('/').pop(); }
 function formatTime(value) { return new Date(`${value}Z`).toLocaleString(); }
+
+function toggleEditorMode() {
+  editorMode.value = editorMode.value === 'code' ? 'visual' : 'code';
+  if (editorMode.value === 'visual') {
+    parseYamlToServices();
+  }
+}
+
+function parseYamlToServices() {
+  visualServices.value = [];
+  if (!content.value.trim()) return;
+  try {
+    const parsed = YAML.parse(content.value);
+    if (!parsed?.services) return;
+    visualServices.value = Object.entries(parsed.services).map(([name, service]) => ({
+      name,
+      ...service,
+    }));
+  } catch (e) {
+    error.value = `YAML 解析失败: ${e.message}`;
+  }
+}
+
+function syncServicesToYaml() {
+  try {
+    const parsed = content.value.trim() ? YAML.parse(content.value) : {};
+    const services = {};
+    visualServices.value.forEach((service) => {
+      const { name, ...serviceConfig } = service;
+      services[name] = serviceConfig;
+    });
+    parsed.services = services;
+    const newYaml = YAML.stringify(parsed, { indent: 2, lineWidth: 0 });
+    content.value = newYaml;
+    editor?.setValue(newYaml);
+  } catch (e) {
+    error.value = `YAML 生成失败: ${e.message}`;
+  }
+}
+
+function addService() {
+  currentService.value = null;
+  isNewService.value = true;
+  showServiceEditor.value = true;
+}
+
+function editService(service) {
+  currentService.value = { ...service };
+  isNewService.value = false;
+  showServiceEditor.value = true;
+}
+
+function deleteService(serviceName) {
+  visualServices.value = visualServices.value.filter((s) => s.name !== serviceName);
+  syncServicesToYaml();
+  message.value = `已删除服务 ${serviceName}`;
+}
+
+function saveServiceFromEditor({ name, service }) {
+  if (isNewService.value) {
+    visualServices.value.push({ name, ...service });
+    message.value = `已添加服务 ${name}`;
+  } else {
+    const index = visualServices.value.findIndex((s) => s.name === (currentService.value?.name || name));
+    if (index !== -1) {
+      const oldName = visualServices.value[index].name;
+      visualServices.value[index] = { name, ...service };
+      message.value = oldName !== name ? `已重命名服务 ${oldName} → ${name}` : `已更新服务 ${name}`;
+    }
+  }
+  syncServicesToYaml();
+  showServiceEditor.value = false;
+}
+
+watch(editorMode, (newMode) => {
+  if (newMode === 'visual') {
+    parseYamlToServices();
+  }
+});
 </script>
