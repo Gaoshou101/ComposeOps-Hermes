@@ -180,11 +180,34 @@ import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 import ServiceEditor from '../components/compose/ServiceEditor.vue';
 import * as YAML from 'yaml';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
-import 'monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution';
+import { configureMonacoYaml } from 'monaco-yaml';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
+import YamlWorker from 'monaco-yaml/yaml.worker?worker';
 import { api } from '../api/client.js';
 
-self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
+self.MonacoEnvironment = { 
+  getWorker: (moduleId, label) => {
+    if (label === 'yaml') {
+      return new YamlWorker();
+    }
+    return new EditorWorker();
+  }
+};
+
+// Configure Docker Compose schema for YAML validation
+configureMonacoYaml(monaco, {
+  enableSchemaRequest: true,
+  hover: true,
+  completion: true,
+  validate: true,
+  format: true,
+  schemas: [
+    {
+      uri: 'https://raw.githubusercontent.com/compose-spec/compose-spec/master/schema/compose-spec.json',
+      fileMatch: ['*'],
+    }
+  ]
+});
 const route = useRoute(); const router = useRouter();
 const editorEl = ref(null); const editorReady = ref(false); const projects = ref([]); const projectId = ref(route.query.projectId || '');
 const fileIndex = ref(0); const filePath = ref(''); const content = ref(''); const original = ref('');
