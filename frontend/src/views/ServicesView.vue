@@ -51,7 +51,8 @@ import { AlertTriangle, Boxes, CircleCheckBig, Container, Gauge, Keyboard, Refre
 import { useServicesStore } from '../stores/services.js';
 import { useToastStore } from '../stores/toast.js';
 import { useKeyboardNavigation } from '../composables/useKeyboardNavigation.js';
-import { api, streamComposeControl } from '../api/client.js';
+import { useWebSocket } from '../composables/useWebSocket.js';
+import { api, streamComposeControl, wsUrl } from '../api/client.js';
 import ProjectActivityDrawer from '../components/ProjectActivityDrawer.vue';
 import ProjectEnvModal from '../components/services/ProjectEnvModal.vue';
 import ServiceProjectCard from '../components/services/ServiceProjectCard.vue';
@@ -62,6 +63,7 @@ import BatchOperationsBar from '../components/services/BatchOperationsBar.vue';
 import OperationOutputDrawer from '../components/services/OperationOutputDrawer.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import Skeleton from '../components/common/Skeleton.vue';
+import StatusBadge from '../components/StatusBadge.vue';
 
 const store = useServicesStore();
 const route = useRoute();
@@ -227,9 +229,51 @@ async function openEnvFromQuery() {
   envProject.value = project;
 }
 watch(() => route.query.env, openEnvFromQuery);
-watch(autoRefresh, async (value) => { if (!value) return store.stopAutoRefresh(); const preferences = await api.getPreferences(); store.startAutoRefresh(preferences.refreshInterval * 1000); });
+watch(autoRefresh, async (value) => {
+  if (!value) {
+    store.stopAutoRefresh();
+    store.stopWebSocket();
+    return;
+  }
+  const preferences = await api.getPreferences();
+  // 优先使用 WebSocket,失败降级到轮询
+  const socket = useWebSocket(
+    () => wsUrl('/ws/containers'),
+    {
+      onMessage: (event) => {
+        // WebSocket 消息统一由 store 处理
+      },
+      onOpen: ({ resumed }) => {
+        if (!resumed) void store.refresh(false);
+      },
+    }
+  );
+  store.startWebSocket(() => socket);
+});
 watch([() => route.query.focus, () => store.projects], focusProject, { deep: true });
-onMounted(async () => { const [preferences, updates] = await Promise.all([api.getPreferences(), api.getUpdateSettings()]); updateSettings.value = updates; store.startAutoRefresh(preferences.refreshInterval * 1000); if (route.query.job) void pollJob(String(route.query.job)); void openEnvFromQuery(); });
+onMounted(async () => {
+  const [preferences, updates] = await Promise.all([api.getPreferences(), api.getUpdateSettings()]);
+  updateSettings.value = updates;
+  
+  // 自动刷新开启时使用 WebSocket
+  if (autoRefresh.value) {
+    const socket = useWebSocket(
+      () => wsUrl('/ws/containers'),
+      {
+        onMessage: (event) => {
+          // WebSocket 消息统一由 store 处理
+        },
+        onOpen: ({ resumed }) => {
+          if (!resumed) void store.refresh(false);
+        },
+      }
+    );
+    store.startWebSocket(() => socket);
+  }
+  
+  if (route.query.job) void pollJob(String(route.query.job));
+  void openEnvFromQuery();
+});
 watch(() => route.query.job, (job) => { if (job) void pollJob(String(job)); else { activeJobId = ''; clearTimeout(jobPollTimer); } });
 watch(kbFocusId, (id) => {
   if (!id) return;
@@ -269,5 +313,10 @@ function handleRestored() {
   refresh();
   useToastStore().success('配置版本已成功回滚并生效');
 }
-onUnmounted(() => { activeJobId = ''; clearTimeout(jobPollTimer); store.stopAutoRefresh(); });
+onUnmounted(() => {
+  activeJobId = '';
+  clearTimeout(jobPollTimer);
+  store.stopAutoRefresh();
+  store.stopWebSocket();
+});
 </script>

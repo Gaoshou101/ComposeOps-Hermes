@@ -23,10 +23,13 @@
       </div>
       <div>
         <label class="mb-1 block text-sm font-medium text-zinc-300">容器</label>
-        <select v-model="containerId" @change="loadMetrics" :disabled="!projectId" class="input">
-          <option value="">选择容器</option>
-          <option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option>
-        </select>
+        <div class="flex gap-2">
+          <select v-model="containerId" @change="loadMetrics" :disabled="!projectId" class="input flex-1">
+            <option value="">选择容器</option>
+            <option v-for="c in containers" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
+          <StatusBadge v-if="currentContainer" :status="currentContainer.state" :health="currentContainer.health" show-icon />
+        </div>
       </div>
     </div>
 
@@ -176,6 +179,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { Activity, AlertTriangle, Bell, Cpu, Database, HardDrive, Minus, Network, RefreshCw, TrendingDown, TrendingUp, X } from 'lucide-vue-next';
 import { api, metricsApi } from '../api/client.js';
+import StatusBadge from '../components/StatusBadge.vue';
 
 const projects = ref([]);
 const projectId = ref('');
@@ -209,6 +213,7 @@ const periods = [
 ];
 
 const containers = computed(() => projects.value.find(p => p.id === projectId.value)?.containers || []);
+const currentContainer = computed(() => containers.value.find(c => c.id === containerId.value));
 const containerAlerts = computed(() => alerts.value.filter(a => a.container === containerId.value));
 
 const chartWidth = 800;

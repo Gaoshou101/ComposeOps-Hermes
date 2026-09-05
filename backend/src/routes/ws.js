@@ -17,6 +17,26 @@ import { subscribeEvents } from '../services/events.js';
  * 这些路由挂在 /ws 前缀（不经过 /api/v1），方便 nginx 反代区分。
  */
 export default async function wsRoutes(fastify) {
+  // ---- 容器状态实时推送 ----
+  fastify.get('/containers', { websocket: true }, async (socket) => {
+    const { subscribeContainerEvents, getContainersSnapshot } = await import('../services/container-events.js');
+    
+    // 先发送当前快照,避免客户端连接时机导致状态丢失
+    try {
+      const snapshot = await getContainersSnapshot();
+      safeSend(socket, snapshot);
+    } catch (e) {
+      safeSend(socket, { type: 'error', data: e.message });
+    }
+
+    // 订阅实时事件
+    const unsubscribe = subscribeContainerEvents((event) => {
+      safeSend(socket, event);
+    });
+    
+    socket.on('close', unsubscribe);
+  });
+
   // ---- 告警事件实时流 ----
   fastify.get('/events', { websocket: true }, async (socket) => {
     const unsubscribe = subscribeEvents((event) => {
