@@ -71,25 +71,14 @@
             </button>
           </div>
         </div>
-        <div class="chart-container">
-          <svg :viewBox="`0 0 ${chartWidth} ${chartHeight}`" class="w-full">
-            <!-- Grid lines -->
-            <g v-for="i in 5" :key="`grid-${i}`">
-              <line :x1="chartPadding" :y1="chartPadding + (chartHeight - 2 * chartPadding) * i / 5"
-                    :x2="chartWidth - chartPadding" :y2="chartPadding + (chartHeight - 2 * chartPadding) * i / 5"
-                    stroke="#27272a" stroke-width="1" />
-            </g>
-            <!-- Chart path -->
-            <path v-if="chartPath" :d="chartPath" fill="none" stroke="url(#chart-gradient)" stroke-width="2" />
-            <!-- Gradient -->
-            <defs>
-              <linearGradient id="chart-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stop-color="#10b981" />
-                <stop offset="100%" stop-color="#06b6d4" />
-              </linearGradient>
-            </defs>
-          </svg>
-        </div>
+        <InteractiveChart 
+          :data="chartData"
+          :color="metricTypes.find(m => m.key === selectedMetric)?.chartColor || '#38BDF8'"
+          :unit="metricTypes.find(m => m.key === selectedMetric)?.unit || ''"
+          :anomalies="chartAnomalies"
+          :width="800"
+          :height="300"
+        />
       </div>
 
       <!-- Alerts -->
@@ -180,6 +169,7 @@ import { computed, onMounted, ref } from 'vue';
 import { Activity, AlertTriangle, Bell, Cpu, Database, HardDrive, Minus, Network, RefreshCw, TrendingDown, TrendingUp, X } from 'lucide-vue-next';
 import { api, metricsApi } from '../api/client.js';
 import StatusBadge from '../components/StatusBadge.vue';
+import InteractiveChart from '../components/charts/InteractiveChart.vue';
 
 const projects = ref([]);
 const projectId = ref('');
@@ -199,10 +189,10 @@ const alertForm = ref({
 });
 
 const metricTypes = [
-  { key: 'cpu', label: 'CPU', icon: Cpu, color: 'text-cyan-400' },
-  { key: 'memory', label: '内存', icon: Database, color: 'text-emerald-400' },
-  { key: 'network', label: '网络', icon: Network, color: 'text-amber-400' },
-  { key: 'disk', label: '磁盘 I/O', icon: HardDrive, color: 'text-rose-400' }
+  { key: 'cpu', label: 'CPU', icon: Cpu, color: 'text-cyan-400', chartColor: '#06B6D4', unit: '%' },
+  { key: 'memory', label: '内存', icon: Database, color: 'text-emerald-400', chartColor: '#10B981', unit: '%' },
+  { key: 'network', label: '网络', icon: Network, color: 'text-amber-400', chartColor: '#F59E0B', unit: 'MB/s' },
+  { key: 'disk', label: '磁盘 I/O', icon: HardDrive, color: 'text-rose-400', chartColor: '#EF4444', unit: 'MB/s' }
 ];
 
 const periods = [
@@ -216,30 +206,26 @@ const containers = computed(() => projects.value.find(p => p.id === projectId.va
 const currentContainer = computed(() => containers.value.find(c => c.id === containerId.value));
 const containerAlerts = computed(() => alerts.value.filter(a => a.container === containerId.value));
 
-const chartWidth = 800;
-const chartHeight = 300;
-const chartPadding = 40;
-
-const chartPath = computed(() => {
+const chartData = computed(() => {
   const metric = metricsData.value?.[selectedMetric.value];
-  if (!metric?.trend) return '';
+  if (!metric?.trend) return [];
   
   // 模拟历史数据点
-  const points = Array.from({ length: 20 }, (_, i) => {
+  const now = Date.now();
+  return Array.from({ length: 60 }, (_, i) => {
     const base = metric.current;
     const variance = Math.random() * 10 - 5;
-    return Math.max(0, Math.min(100, base + variance));
+    const value = Math.max(0, Math.min(100, base + variance));
+    return {
+      timestamp: now - (60 - i) * 2000, // 2秒间隔
+      value
+    };
   });
-  
-  const maxY = Math.max(...points, 1);
-  const stepX = (chartWidth - 2 * chartPadding) / (points.length - 1);
-  const scaleY = (chartHeight - 2 * chartPadding) / maxY;
-  
-  return points.map((y, i) => {
-    const x = chartPadding + i * stepX;
-    const py = chartHeight - chartPadding - y * scaleY;
-    return `${i === 0 ? 'M' : 'L'} ${x} ${py}`;
-  }).join(' ');
+});
+
+const chartAnomalies = computed(() => {
+  // 暂无异常检测，返回空数组
+  return [];
 });
 
 function formatMetricValue(metric) {

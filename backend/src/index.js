@@ -20,7 +20,7 @@ const start = async () => {
     startHealthAlerter();
     startCronScheduler();
     initGitOps();
-    startMetricsCollection(30); // 每 30 秒采集一次容器指标
+    startMetricsCollection(2); // 每 2 秒采集一次容器指标（Netdata 风格高频更新）
     fastify.log.info(`OpsDash backend listening on http://${HOST}:${PORT}`);
   } catch (err) {
     fastify.log.error(err);
