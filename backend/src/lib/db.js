@@ -177,6 +177,26 @@ const MIGRATIONS = [
       addColumn(database, 'agent_plans', 'container_id', 'TEXT');
     },
   },
+  {
+    version: 4,
+    name: '容器资源指标历史记录',
+    up(database) {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS container_metrics (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          container_id TEXT NOT NULL,
+          metric_type TEXT NOT NULL,
+          value REAL NOT NULL,
+          value_json TEXT,
+          unit TEXT,
+          timestamp INTEGER NOT NULL,
+          created_at TEXT DEFAULT (datetime('now'))
+        )
+      `);
+      database.exec(`CREATE INDEX IF NOT EXISTS idx_metrics_container_time ON container_metrics(container_id, timestamp DESC)`);
+      database.exec(`CREATE INDEX IF NOT EXISTS idx_metrics_type_time ON container_metrics(metric_type, timestamp DESC)`);
+    },
+  },
 ];
 
 /** 幂等加列:列已存在时直接返回 false,不抛错。 */

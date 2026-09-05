@@ -100,16 +100,51 @@ function formatBytes(bytes) {
 }
 
 /**
- * 获取历史指标数据（简化版，实际应该对接时序数据库）
+ * 获取历史指标数据
  */
-async function getHistoricalMetrics(_containerIdOrName, _metric, _period) {
-  // TODO: 集成 Prometheus/InfluxDB
-  // 当前返回模拟数据
+async function getHistoricalMetrics(containerIdOrName, metric, period) {
+  const db = (await import('../lib/db.js')).default;
+  
+  // 解析时间窗口
+  const periodMs = parsePeriod(period);
+  const startTime = Date.now() - periodMs;
+  
+  // 查询历史数据
+  const rows = db.prepare(`
+    SELECT value, timestamp
+    FROM container_metrics
+    WHERE container_id = ? AND metric_type = ? AND timestamp >= ?
+    ORDER BY timestamp ASC
+  `).all(containerIdOrName, metric, startTime);
+  
+  if (rows.length === 0) {
+    return { avg: null, max: null, data: [] };
+  }
+  
+  const values = rows.map(r => r.value);
   return {
-    avg: null,
-    max: null,
-    data: []
+    avg: Math.round((values.reduce((sum, v) => sum + v, 0) / values.length) * 100) / 100,
+    max: Math.max(...values),
+    data: values
   };
+}
+
+/**
+ * 解析时间周期字符串为毫秒
+ */
+function parsePeriod(period) {
+  const match = period.match(/^(\d+)(m|h|d)$/);
+  if (!match) return 5 * 60 * 1000; // 默认 5 分钟
+  
+  const [, num, unit] = match;
+  const value = parseInt(num, 10);
+  
+  switch (unit) {
+    case 'm': return value * 60 * 1000;
+    case 'h': return value * 60 * 60 * 1000;
+    case 'd': return value * 24 * 60 * 60 * 1000;
+    default: return 5 * 60 * 1000;
+  }
 }
 
 /**

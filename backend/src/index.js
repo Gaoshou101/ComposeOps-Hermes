@@ -4,6 +4,7 @@ import { startHealthAlerter } from './services/health-alerter.js';
 import { startCronScheduler } from './services/cron-scheduler.js';
 import { initializeBackgroundJobs } from './services/background-jobs.js';
 import { initGitOps } from './services/gitops.js';
+import { startMetricsCollection } from './services/metrics-collector.js';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -19,6 +20,7 @@ const start = async () => {
     startHealthAlerter();
     startCronScheduler();
     initGitOps();
+    startMetricsCollection(30); // 每 30 秒采集一次容器指标
     fastify.log.info(`OpsDash backend listening on http://${HOST}:${PORT}`);
   } catch (err) {
     fastify.log.error(err);
