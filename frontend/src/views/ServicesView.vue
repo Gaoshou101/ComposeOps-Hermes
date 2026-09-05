@@ -63,7 +63,6 @@ import BatchOperationsBar from '../components/services/BatchOperationsBar.vue';
 import OperationOutputDrawer from '../components/services/OperationOutputDrawer.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import Skeleton from '../components/common/Skeleton.vue';
-import StatusBadge from '../components/StatusBadge.vue';
 
 const store = useServicesStore();
 const route = useRoute();

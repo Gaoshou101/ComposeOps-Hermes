@@ -14,7 +14,7 @@ const routes = [
   { path: '/metrics', name: 'metrics', component: () => import('./views/ResourceMonitorView.vue') },
   { path: '/resources', name: 'resources', component: () => import('./views/ResourcesView.vue') },
   { path: '/operations', name: 'operations', component: () => import('./views/OperationsView.vue') },
-  { path: '/blueprints', name: 'blueprints', component: () => import('./views/BlueprintsView.vue') },
+  { path: '/blueprints', redirect: '/marketplace' },
   { path: '/cron', name: 'cron', component: () => import('./views/CronTasksView.vue') },
   { path: '/gitops', name: 'gitops', component: () => import('./views/GitOpsView.vue') },
   { path: '/cost', name: 'cost', component: () => import('./views/CostAnalysisView.vue') },

@@ -8,34 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Visual Compose Editor**: Dual-mode editing (code/visual) for docker-compose files
-  - Service card view showing name, image, ports, volumes, environment variables, restart policy
-  - Form-based service editor (ServiceEditor.vue) for adding/editing services without writing YAML
-  - Bidirectional synchronization between YAML content and visual service representation
-  - Add, edit, and delete services through intuitive UI
+- **Container Terminal Component**: Terminal emulator using xterm.js
+  - WebSocket-based terminal connection to containers
+  - Fit addon for responsive terminal sizing
+  - Ready for integration into container detail pages
 - **Docker Run Converter**: Convert `docker run` commands to docker-compose YAML format
   - Dedicated converter view at `/converter` route
   - Parses complex docker run commands with port mappings, volumes, environment variables, networks
   - One-click copy to clipboard for generated YAML
   - Integration with compose editor via custom events
-- **Container Terminal Component**: Terminal emulator using xterm.js
-  - WebSocket-based terminal connection to containers
-  - Fit addon for responsive terminal sizing
-  - Ready for integration into container detail pages
-- Open source foundation documentation (README.en.md, LICENSE, CONTRIBUTING.md)
-- Security policy (SECURITY.md) with best practices and vulnerability reporting
-- GitHub issue templates (bug report, feature request, question)
-- Code of Conduct (Contributor Covenant 2.1)
-- Architecture documentation (docs/architecture/README.md) with component breakdown, data flow diagrams, security model, AI Agent architecture, and design decisions
-- CI/CD workflows: automated testing, linting, Docker builds on push/PR
-- Release automation workflow: multi-arch Docker images (amd64/arm64) with GitHub releases
-- Dependabot configuration for automated dependency updates (weekly schedule, grouped updates)
-- ESLint 9 flat config for frontend with Vue 3 + Composition API enforcement
-- Prettier configuration for consistent code formatting
-
-### Changed
-- Compose editor (ComposeView.vue) now supports toggling between Monaco code editor and visual service list view
-- Added xterm.js and xterm-addon-fit dependencies to frontend package.json
 
 ## [1.0.0] - 2026-09-04
 
@@ -45,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Project grouping by `myops.owner` label with favorites and notes
   - Real-time container logs with search, filtering, and ERROR/WARN highlighting
   - Multi-file Compose editor with YAML formatting and validation
+  - **Visual Compose Editor**: Dual-mode editing (code/visual) for docker-compose files with service card view and form-based editing
   - Automatic backup (last 20 revisions) with line-by-line diff and restore
   - Change preview showing containers to be recreated/restarted before save
   - Web shell (sh/bash only) scoped to managed project containers
@@ -52,15 +34,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Trend charts with localStorage persistence and alert threshold lines
   - Event center with alert prioritization, read/unread states, and muting
   - Operations history tracking with audit trail export
+  - **InteractiveChart Component**: Multi-metric comparison with export functionality (Phase 2 completed)
 
 - **AI Features**
   - AI diagnosis assistant with automatic context (Compose config + 200 lines logs)
   - Container read-only probe and internet search capabilities
   - Session-isolated context with conversation history
-  - AI Agent workflow automation (28 tools: start/stop/scale/config/env/network/volume/security/diagnostics/alerts/scheduling/maintenance/metrics)
+  - AI Agent workflow automation (31 tools: start/stop/scale/config/env/network/volume/security/diagnostics/alerts/scheduling/maintenance/metrics)
   - Risk-level classification with step-by-step confirmation
-  - Multi-role collaboration with rollback capability
+  - Multi-role collaboration (planner/executor/validator/incident_responder) with rollback capability
   - Real-time alert evaluation with execution history and feedback export
+  - Streaming execution with live thought process display and step-by-step confirmation
 
 - **Monitoring & Alerts**
   - Service cards with status timestamps and Compose dependency visualization

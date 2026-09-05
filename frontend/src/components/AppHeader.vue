@@ -155,11 +155,11 @@ const commands = computed(() => {
   const blueprintCommands = asArray(appBlueprints.value)
     .slice(0, 12)
     .map((blueprint) => ({
-      to: '/blueprints',
-      label: `App Store: ${blueprint.name}`,
+      to: '/marketplace',
+      label: `应用市场: ${blueprint.name}`,
       description: `一键部署 ${blueprint.name} (${blueprint.category})`,
       icon: Store,
-      keywords: `app store blueprint deploy 部署 应用市场 ${blueprint.name}`,
+      keywords: `app store blueprint deploy marketplace 部署 应用市场 模板市场 ${blueprint.name}`,
     }));
   const actionCommands = asArray(allProjects.value)
     .filter((project) => project.managed)

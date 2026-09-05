@@ -1,7 +1,7 @@
 <template>
   <div class="marketplace-view">
     <header class="page-header">
-      <h1>模板市场</h1>
+      <h1>应用市场</h1>
       <div class="actions">
         <button @click="showCreateModal = true" class="btn-primary">
           <span class="icon">+</span>

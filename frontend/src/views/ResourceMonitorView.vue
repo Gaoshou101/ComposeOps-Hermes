@@ -168,7 +168,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { Activity, AlertTriangle, Bell, Cpu, Database, HardDrive, Minus, Network, RefreshCw, TrendingDown, TrendingUp, X } from 'lucide-vue-next';
 import { api, metricsApi } from '../api/client.js';
-import StatusBadge from '../components/StatusBadge.vue';
+import StatusBadge from '../components/common/StatusBadge.vue';
 import InteractiveChart from '../components/charts/InteractiveChart.vue';
 
 const projects = ref([]);

@@ -40,6 +40,11 @@
     <!-- Main Chart Canvas -->
     <div class="chart-canvas-wrapper" ref="canvasWrapper">
       <svg :viewBox="`0 0 ${width} ${height}`" class="chart-canvas"
+           role="img"
+           :aria-label="ariaLabel"
+           :aria-describedby="ariaDescription ? 'chart-desc' : undefined"
+           tabindex="0"
+           @focus="enableKeyboardNav"
            @mousedown="onMouseDown"
            @mousemove="onMouseMove"
            @mouseleave="onMouseLeave"
@@ -115,6 +120,12 @@
                     :cx="getX(hoverIndex)"
                     :cy="getYForScale(dataset.visibleData[hoverIndex].value, yScales[idx])"
                     r="4" :fill="dataset.color" class="crosshair-dot" />
+            <!-- Keyboard focus indicators -->
+            <circle v-for="(dataset, idx) in visibleDatasets" :key="`focus-${idx}`"
+                    v-if="keyboardEnabled && focusedPointIndex === hoverIndex && dataset.visibleData[hoverIndex]"
+                    :cx="getX(hoverIndex)"
+                    :cy="getYForScale(dataset.visibleData[hoverIndex].value, yScales[idx])"
+                    r="8" fill="none" stroke="#38BDF8" stroke-width="2" class="keyboard-focus-ring" />
           </g>
         </template>
 
@@ -155,6 +166,10 @@
                   class="crosshair-line" />
             <circle :cx="getX(hoverIndex)" :cy="getY(visiblePoints[hoverIndex].value)"
                     r="4" :fill="color" class="crosshair-dot" />
+            <!-- Keyboard focus indicator -->
+            <circle v-if="keyboardEnabled && focusedPointIndex === hoverIndex"
+                    :cx="getX(hoverIndex)" :cy="getY(visiblePoints[hoverIndex].value)"
+                    r="8" fill="none" stroke="#38BDF8" stroke-width="2" class="keyboard-focus-ring" />
           </g>
         </template>
 
@@ -255,6 +270,7 @@ const lastTouchCenter = ref(null);
 
 // Phase 2: Keyboard navigation
 const focusedPointIndex = ref(null);
+const keyboardEnabled = ref(false);
 
 // Export functionality
 const showExportMenu = ref(false);
@@ -672,12 +688,77 @@ function handleClickOutside(event) {
   }
 }
 
+// Phase 2: Keyboard navigation
+function handleKeyDown(event) {
+  if (!keyboardEnabled.value) return;
+  
+  const visibleLength = props.compareMode && visibleDatasets.value.length > 0
+    ? visibleDatasets.value[0].visibleData.length
+    : visiblePoints.value.length;
+  
+  if (visibleLength === 0) return;
+  
+  switch (event.key) {
+    case 'ArrowLeft':
+      event.preventDefault();
+      if (focusedPointIndex.value === null) {
+        focusedPointIndex.value = Math.floor(visibleLength / 2);
+      } else {
+        focusedPointIndex.value = Math.max(0, focusedPointIndex.value - 1);
+      }
+      hoverIndex.value = focusedPointIndex.value;
+      break;
+      
+    case 'ArrowRight':
+      event.preventDefault();
+      if (focusedPointIndex.value === null) {
+        focusedPointIndex.value = Math.floor(visibleLength / 2);
+      } else {
+        focusedPointIndex.value = Math.min(visibleLength - 1, focusedPointIndex.value + 1);
+      }
+      hoverIndex.value = focusedPointIndex.value;
+      break;
+      
+    case '+':
+    case '=':
+      event.preventDefault();
+      zoomIn();
+      break;
+      
+    case '-':
+    case '_':
+      event.preventDefault();
+      zoomOut();
+      break;
+      
+    case 'r':
+    case 'R':
+      event.preventDefault();
+      resetZoom();
+      focusedPointIndex.value = null;
+      hoverIndex.value = null;
+      break;
+      
+    case 'Escape':
+      event.preventDefault();
+      keyboardEnabled.value = false;
+      focusedPointIndex.value = null;
+      hoverIndex.value = null;
+      break;
+  }
+}
+
+function enableKeyboardNav() {
+  keyboardEnabled.value = true;
+}
+
 // Mount/unmount
 onMounted(() => {
   if (wrapperRef.value) {
     wrapperRef.value.addEventListener('mouseup', onMouseUp);
   }
   document.addEventListener('click', handleClickOutside);
+  document.addEventListener('keydown', handleKeyDown);
 });
 
 onBeforeUnmount(() => {
@@ -685,6 +766,7 @@ onBeforeUnmount(() => {
     wrapperRef.value.removeEventListener('mouseup', onMouseUp);
   }
   document.removeEventListener('click', handleClickOutside);
+  document.removeEventListener('keydown', handleKeyDown);
 });
 
 // Watch for data changes and reset zoom if needed
@@ -928,5 +1010,18 @@ watch(() => props.data.length, () => {
 .export-icon {
   font-size: 1rem;
   line-height: 1;
+}
+
+.keyboard-focus-ring {
+  animation: focus-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes focus-pulse {
+  0%, 100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 </style>
