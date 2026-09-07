@@ -669,11 +669,8 @@ ${evidence}`;
     });
 
     const send = (event) => {
-      try {
-        reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
-      } catch (error) {
-        console.error('[agent:execute-stream] Failed to write event:', error.message);
-      }
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
+      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
     };
 
     const agent = getAgent();

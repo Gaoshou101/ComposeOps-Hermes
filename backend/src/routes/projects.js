@@ -393,7 +393,8 @@ export default async function projectRoutes(fastify) {
       'X-Accel-Buffering': 'no',
     });
     const send = (type, data) => {
-      if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
+      reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
     };
     let output = '';
     let finished = false;
@@ -437,7 +438,8 @@ export default async function projectRoutes(fastify) {
       'X-Accel-Buffering': 'no',
     });
     const send = (frame) => {
-      if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify(frame)}\n\n`);
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
+      reply.raw.write(`data: ${JSON.stringify(frame)}\n\n`);
     };
     let running = true;
     let timer = null;
@@ -495,7 +497,8 @@ export default async function projectRoutes(fastify) {
       'X-Accel-Buffering': 'no',
     });
     const send = (type, data) => {
-      if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
+      reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
     };
     let output = '';
     let finished = false;
@@ -547,7 +550,8 @@ export default async function projectRoutes(fastify) {
       'X-Accel-Buffering': 'no',
     });
     const send = (type, data) => {
-      if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
+      reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
     };
     let output = '';
     let finished = false;
@@ -585,7 +589,8 @@ export default async function projectRoutes(fastify) {
       'X-Accel-Buffering': 'no',
     });
     const send = (type, data) => {
-      if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
+      reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
     };
     let finished = false;
     const finish = (payload) => {

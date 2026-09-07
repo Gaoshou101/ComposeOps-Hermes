@@ -6,6 +6,13 @@ import { getActivityDocker } from '../services/docker-hosts.js';
 import { aggregateProjectLogs } from '../services/log-aggregator.js';
 import { subscribeEvents } from '../services/events.js';
 
+/** Web Shell 会话上限与超时(防连接泄漏 / 占坑不操作)。 */
+const MAX_EXEC_SESSIONS = 20;
+const EXEC_SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 分钟无活动自动回收
+const activeExecSessions = new Map(); // socket -> { idleTimer, destroyed }
+
+export { MAX_EXEC_SESSIONS, EXEC_SESSION_TIMEOUT_MS, activeExecSessions };
+
 /**
  * WebSocket 路由：实时日志流与容器 Web Shell。
  *
@@ -171,6 +178,10 @@ export default async function wsRoutes(fastify) {
       socket.send(JSON.stringify({ type: 'error', data: 'Web Shell 未启用' }));
       return socket.close();
     }
+    if (activeExecSessions.size >= MAX_EXEC_SESSIONS) {
+      socket.send(JSON.stringify({ type: 'error', data: `Web Shell 会话数已达上限(${MAX_EXEC_SESSIONS}),请先关闭其它会话` }));
+      return socket.close();
+    }
     const { projectId, containerId, cmd = 'sh' } = request.query;
     if (!projectId || !containerId) {
       socket.send(JSON.stringify({ type: 'error', data: 'missing projectId or containerId' }));
@@ -190,6 +201,27 @@ export default async function wsRoutes(fastify) {
       return socket.close();
     }
     const container = getActivityDocker().getContainer(match.container.id);
+
+    // 会话上限 + 空闲看门狗:连接成功后占坑,任何活动都刷新空闲计时。
+    activeExecSessions.set(socket, { idleTimer: null, destroyed: false });
+    const refreshIdle = () => {
+      const session = activeExecSessions.get(socket);
+      if (!session || session.destroyed) return;
+      if (session.idleTimer) clearTimeout(session.idleTimer);
+      session.idleTimer = setTimeout(() => {
+        if (session.destroyed) return;
+        safeSend(socket, { type: 'error', data: '会话因超过 30 分钟无操作已自动关闭' });
+        try { socket.close(); } catch {}
+      }, EXEC_SESSION_TIMEOUT_MS);
+    };
+    const teardown = () => {
+      const session = activeExecSessions.get(socket);
+      if (!session) return;
+      session.destroyed = true;
+      if (session.idleTimer) clearTimeout(session.idleTimer);
+      activeExecSessions.delete(socket);
+    };
+    refreshIdle();
 
     let exec;
     try {
@@ -221,6 +253,7 @@ export default async function wsRoutes(fastify) {
       safeSend(socket, { type: 'error', data: e.message });
     });
     stream.on('end', () => {
+      teardown();
       try { socket.close(); } catch {}
     });
 
@@ -234,6 +267,7 @@ export default async function wsRoutes(fastify) {
             const msg = JSON.parse(text);
             if (msg.type === 'resize' && msg.cols && msg.rows) {
               exec.resize({ h: msg.rows, w: msg.cols }).catch(() => {});
+              refreshIdle();
               return;
             }
             // 其它未知控制帧忽略，不写入 stdin
@@ -243,12 +277,14 @@ export default async function wsRoutes(fastify) {
           }
         }
       }
+      refreshIdle();
       try {
         if (stream.writable) stream.write(Buffer.isBuffer(data) ? data : Buffer.from(data));
       } catch {}
     });
 
     socket.on('close', () => {
+      teardown();
       try { stream.destroy(); } catch {}
     });
   });
