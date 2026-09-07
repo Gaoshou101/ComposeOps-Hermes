@@ -64,12 +64,15 @@ export default async function jobRoutes(fastify) {
     });
 
     // 立即发送当前快照
-    reply.raw.write(`data: ${JSON.stringify({ type: 'snapshot', job })}\n\n`);
+    if (!reply.raw.destroyed && !reply.raw.writableEnded) {
+      reply.raw.write(`data: ${JSON.stringify({ type: 'snapshot', job })}\n\n`);
+    }
 
     const unsubscribe = subscribeJobEvents((payload) => {
       if (payload.jobId !== jobId) return;
       const updatedJob = getBackgroundJob(jobId);
       if (!updatedJob) return;
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
       reply.raw.write(`data: ${JSON.stringify({ type: 'update', event: payload.event, job: updatedJob })}\n\n`);
     });
 

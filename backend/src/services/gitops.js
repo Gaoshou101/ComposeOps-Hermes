@@ -18,7 +18,19 @@ const GITOPS_CONFIG_KEY = 'gitops.repositories';
 const POLL_INTERVAL_KEY = 'gitops.poll_interval';
 const DEFAULT_POLL_INTERVAL = 300; // 5 分钟
 
-const activeWatchers = new Map(); // repoId -> { interval, process }
+const activeWatchers = new Map(); // repoId -> { interval, syncing }
+
+/** 防止同一仓库的自动同步在上一轮未结束时被下一轮并发触发(git 操作竞态)。 */
+function withSyncGuard(repoId, fn) {
+  const watcher = activeWatchers.get(repoId);
+  if (watcher?.syncing) return null;
+  if (watcher) watcher.syncing = true;
+  return Promise.resolve()
+    .then(fn)
+    .finally(() => {
+      if (watcher) watcher.syncing = false;
+    });
+}
 
 /**
  * 读取 GitOps 配置
@@ -256,19 +268,23 @@ function startRepoWatcher(repo) {
 
   const pollInterval = Number(getSetting(POLL_INTERVAL_KEY, String(DEFAULT_POLL_INTERVAL))) * 1000;
 
-  const interval = setInterval(async () => {
-    try {
-      const result = await syncGitOpsRepo(repo.id);
-      if (result.ok && result.commit !== repo.lastCommit) {
-        await sendNotification(
-          'GitOps 自动同步',
-          `仓库 ${repo.name} 检测到新提交 ${result.commit.slice(0, 7)}: ${result.message}`
-        );
+  const interval = setInterval(() => {
+    withSyncGuard(repo.id, async () => {
+      try {
+        const result = await syncGitOpsRepo(repo.id);
+        if (result.ok && result.commit !== repo.lastCommit) {
+          await sendNotification(
+            'GitOps 自动同步',
+            `仓库 ${repo.name} 检测到新提交 ${result.commit.slice(0, 7)}: ${result.message}`
+          );
+        }
+      } catch (error) {
+        console.error(`[GitOps] 自动同步失败 (${repo.name}):`, error.message);
       }
-    } catch (error) {
-      console.error(`[GitOps] 自动同步失败 (${repo.name}):`, error.message);
-    }
+    });
   }, pollInterval);
+  // 让 interval 不阻塞进程退出;真正的同步由 setTimeout 调度,不复用该 interval。
+  interval.unref();
 
   activeWatchers.set(repo.id, { interval });
 }

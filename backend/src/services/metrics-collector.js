@@ -7,6 +7,17 @@
 import { getActivityDocker } from './docker-hosts.js';
 import db from '../lib/db.js';
 
+/** 给一个 Promise 加超时,避免 Docker API 调用挂起时采集循环无限堆积。 */
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} 超时(${ms}ms)`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+const STATS_TIMEOUT = 10000; // container.stats 单次最多等 10 秒
+
 /**
  * 采集所有运行中容器的指标
  */
@@ -38,7 +49,7 @@ export async function collectAllMetrics() {
 async function collectContainerMetrics(containerId) {
   const docker = await getActivityDocker();
   const container = docker.getContainer(containerId);
-  const stats = await container.stats({ stream: false });
+  const stats = await withTimeout(container.stats({ stream: false }), STATS_TIMEOUT, `容器 ${containerId} stats`);
   
   const timestamp = Date.now();
   const metrics = [];

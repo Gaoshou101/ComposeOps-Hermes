@@ -14,9 +14,9 @@ import { assertEnvAccess, readProjectEnv, saveProjectEnv, applyProjectEnv } from
 import { getNotificationConfig, sendNotification } from './notifications.js';
 import { createJob } from './cron-scheduler.js';
 import { queryContainerMetrics, configureAlert, listAlerts, deleteAlert } from './agent-metrics.js';
+import { execReadonly, readContainerLogs } from '../lib/docker-exec.js';
 
-/** 只读探测命令白名单,与 AI 排障探针保持一致。curl/wget 已移除:可发起外部请求。 */
-const READONLY_EXEC = /^(env|printenv|ps|top\s+-b\s+-n\s+1|netstat|ss|cat|head|tail|ls|df|du|free|uptime|uname|hostname|date|whoami|id|ip\s+addr|ping\s+-c\s+\d+)/;
+/** 只读探测与日志读取:统一自 ../lib/docker-exec.js(白名单含 curl/wget 移除说明)。 */
 
 /**
  * 动态风险评估:根据项目上下文提升工具风险等级
@@ -51,48 +51,6 @@ export function assessRisk(toolName, params, context) {
   }
 
   return baseRisk;
-}
-
-async function execReadonly(container, cmdString) {
-  const parts = String(cmdString || '').trim().split(/\s+/);
-  if (!parts.length) throw new Error('命令为空');
-  if (!READONLY_EXEC.test(parts[0])) {
-    throw new Error('仅允许执行只读探测命令(env/ps/netstat/curl/cat/tail/ls/df/free 等)');
-  }
-  const started = Date.now();
-  const exec = await container.exec({ AttachStdout: true, AttachStderr: true, Cmd: parts });
-  const stream = await exec.start({ Tty: false });
-  const chunks = [];
-  for await (const chunk of stream) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  const output = Buffer.concat(chunks).toString('utf8');
-  const inspect = await exec.inspect().catch(() => null);
-  return { stdout: output.slice(0, 20000), exitCode: inspect?.ExitCode ?? null, durationMs: Date.now() - started };
-}
-
-async function readContainerLogs(container, tail = 200) {
-  try {
-    const inspection = await container.inspect().catch(() => null);
-    const logStream = await container.logs({ follow: false, stdout: true, stderr: true, tail, timestamps: false });
-    if (inspection?.Config?.Tty) {
-      return Buffer.isBuffer(logStream) ? logStream.toString('utf8') : '';
-    }
-    const { demuxStream } = await import('../lib/docker-streams.js');
-    const demux = demuxStream();
-    const chunks = [];
-    demux.stdout.on('data', (b) => chunks.push(b));
-    demux.stderr.on('data', (b) => chunks.push(b));
-    if (Buffer.isBuffer(logStream)) demux.end(logStream);
-    else logStream.pipe(demux);
-    await Promise.all([
-      new Promise((resolve) => demux.stdout.on('end', resolve)),
-      new Promise((resolve) => demux.stderr.on('end', resolve)),
-    ]);
-    return Buffer.concat(chunks).toString('utf8');
-  } catch (error) {
-    return `读取日志失败: ${error.message}`;
-  }
 }
 
 function collectOutput() {

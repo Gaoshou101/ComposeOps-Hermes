@@ -28,63 +28,9 @@ import { readCompose } from '../services/compose-runner.js';
 import { readWorkspaceCompose } from '../services/compose-workspace.js';
 import { getAgent } from '../services/agent.js';
 import { generateSmartSuggestions } from '../services/agent-suggestions.js';
+import { execReadonly, readContainerLogs } from '../lib/docker-exec.js';
 
-/** 只读探测命令白名单:仅允许不带副作用的信息类命令。 */
-const READONLY_EXEC = /^(env|printenv|ps|top\s+-b\s+-n\s+1|netstat|ss|curl|wget|cat|head|tail|ls|df|du|free|uptime|uname|hostname|date|whoami|id|ip\s+addr|ping\s+-c\s+\d+)/;
-
-/** 在容器内静默执行一条只读命令,返回 stdout/stderr/exitCode/durationMs。 */
-async function execReadonly(container, cmdString) {
-  const parts = String(cmdString || '').trim().split(/\s+/);
-  if (!parts.length) throw new Error('命令为空');
-  if (!READONLY_EXEC.test(parts[0])) {
-    throw new Error('仅允许执行只读探测命令(env/ps/netstat/curl/cat/tail/ls/df/free 等)');
-  }
-  const started = Date.now();
-  const exec = await container.exec({
-    AttachStdout: true,
-    AttachStderr: true,
-    Cmd: parts,
-  });
-  const stream = await exec.start({ Tty: false });
-  const chunks = [];
-  for await (const chunk of stream) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  const output = Buffer.concat(chunks).toString('utf8');
-  const inspect = await exec.inspect().catch(() => null);
-  return {
-    stdout: output.slice(0, 20000),
-    exitCode: inspect?.ExitCode ?? null,
-    durationMs: Date.now() - started,
-  };
-}
-
-
-/** 读取容器最近 tail 行日志(自动处理 TTY 单流与多路复用流)。失败时返回错误描述字符串,绝不抛出。 */
-async function readContainerLogs(container, tail = 200) {
-  try {
-    const inspection = await container.inspect().catch(() => null);
-    const logStream = await container.logs({ follow: false, stdout: true, stderr: true, tail, timestamps: false });
-    if (inspection?.Config?.Tty) {
-      return Buffer.isBuffer(logStream) ? logStream.toString('utf8') : '';
-    }
-    const { demuxStream } = await import('../lib/docker-streams.js');
-    const demux = demuxStream();
-    const chunks = [];
-    demux.stdout.on('data', (b) => chunks.push(b));
-    demux.stderr.on('data', (b) => chunks.push(b));
-    if (Buffer.isBuffer(logStream)) demux.end(logStream);
-    else logStream.pipe(demux);
-    await Promise.all([
-      new Promise((resolve) => demux.stdout.on('end', resolve)),
-      new Promise((resolve) => demux.stderr.on('end', resolve)),
-    ]);
-    return Buffer.concat(chunks).toString('utf8');
-  } catch (e) {
-    return `读取日志失败: ${e.message}`;
-  }
-}
-
+/** 统一的 exec/日志读写来自 ../lib/docker-exec.js,见其中实现与白名单说明。 */
 /**
  * 本文件的 schema 只挡"类型错/体积离谱"的载荷,不接管服务端已有语义:
  * 1. 长度上限一律取服务端 slice 值的数倍(apiKey slice 1000 → 上限 4096 等)——
@@ -334,7 +280,10 @@ export default async function aiRoutes(fastify) {
       'Cache-Control': 'no-cache',
       'X-Accel-Buffering': 'no',
     });
-    const send = (type, data) => reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+    const send = (type, data) => {
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
+      reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+    };
 
     const controller = new AbortController();
     let completed = false;
@@ -463,7 +412,10 @@ ${evidence}`;
       'Cache-Control': 'no-cache',
       'X-Accel-Buffering': 'no',
     });
-    const send = (type, data) => reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+    const send = (type, data) => {
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
+      reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+    };
 
     const resolvedSessionId = sessionId ? Number(sessionId) : null;
     addAiMessage('user', `诊断容器 ${match.container.name}`, { projectId, containerId: match.container.id }, resolvedSessionId);

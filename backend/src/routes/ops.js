@@ -127,7 +127,8 @@ export default async function opsRoutes(fastify) {
       'X-Accel-Buffering': 'no',
     });
     const send = (type, data) => {
-      if (!reply.raw.destroyed) reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
+      if (reply.raw.destroyed || reply.raw.writableEnded) return;
+      reply.raw.write(`data: ${JSON.stringify({ type, data })}\n\n`);
     };
     let output = '';
     let finished = false;

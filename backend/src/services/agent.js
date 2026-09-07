@@ -148,14 +148,15 @@ export class OperationsAgent {
 
   /**
    * 规划入口:理解意图 → 选择工具 → 生成步骤。
+   * @param {AbortSignal} [signal] - 可选的中断信号,传给底层 LLM 调用,使用户可中断规划阶段。
    * @returns {{ steps: Array<{tool:string, params:object, confirmationRequired:boolean}>, confirmations: string[] }}
    */
-  async plan(userMessage, context = {}) {
+  async plan(userMessage, context = {}, signal = null) {
     this.thoughts = [];
     this.addThought('understanding', '正在理解用户意图…', { message: String(userMessage || '') });
     const role = context.role && AGENT_ROLES[context.role] ? context.role : 'planner';
     this.addThought('planning', `使用「${AGENT_ROLES[role].label}」角色规划`, { role });
-    const steps = await this._planSteps(userMessage, { ...context, role });
+    const steps = await this._planSteps(userMessage, { ...context, role }, signal);
     const boundSteps = this._bindContext(steps, context);
     const confirmations = boundSteps
       .filter((step) => this.getTool(step.tool)?.confirmationRequired)
@@ -167,7 +168,7 @@ export class OperationsAgent {
     return { role, steps: boundSteps, confirmations: [...new Set(confirmations)] };
   }
 
-  async _planSteps(userMessage, context) {
+  async _planSteps(userMessage, context, signal = null) {
     const cfg = getAiConfig();
     if (!cfg.apiKey) {
       this.addThought('planning', '未配置 AI API Key,使用确定性规则规划', {});
@@ -194,6 +195,7 @@ export class OperationsAgent {
           },
         ],
         stream: false,
+        signal,
       });
       const parsed = parsePlanJson(text);
       if (parsed?.steps?.length) return parsed.steps;
@@ -285,7 +287,7 @@ export class OperationsAgent {
    * 执行多步工作流,逐步记录执行结果与思维链。
    * 任何一步失败即停止后续步骤(避免级联误操作),不自动回滚有副作用操作。
    */
-  async executeWorkflow(planId, steps, _context = {}) {
+  async executeWorkflow(planId, steps, _context = {}, signal = null) {
     this.thoughts = [];
     const results = [];
     this.addThought('planning', '开始执行工作流', { steps: steps.length });
@@ -361,7 +363,7 @@ export class OperationsAgent {
             projectId: _context.projectId,
             containerId: _context.containerId
           };
-          const replanResult = await this.plan(replanPrompt, replanContext);
+          const replanResult = await this.plan(replanPrompt, replanContext, signal);
 
           if (replanResult?.steps?.length > 0) {
             this.addThought('planning', `已生成 ${replanResult.steps.length} 步新计划`, { newSteps: replanResult.steps.map(s => s.tool) });
