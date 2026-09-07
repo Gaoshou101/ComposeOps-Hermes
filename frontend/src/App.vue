@@ -42,9 +42,12 @@ const servicesStore = useServicesStore();
 const toast = useToastStore();
 const cheatSheet = ref(false);
 const runtimeError = ref('');
-const density = ref(localStorage.getItem('composeops:density') || 'comfortable');
-function applyDensity() { document.body.dataset.density = density.value; localStorage.setItem('composeops:density', density.value); }
-function toggleDensity() { density.value = density.value === 'compact' ? 'comfortable' : 'compact'; applyDensity(); }
+// density 的读写只由 AppHeader 一处负责;这里仅在挂载时按已存偏好初始化 body 标记。
+function applyDensity() {
+  const value = localStorage.getItem('composeops:density') || 'comfortable';
+  document.body.dataset.density = value;
+  localStorage.setItem('composeops:density', value);
+}
 const expire = () => auth.expire();
 const refreshOnHostChange = () => { void servicesStore.refresh(); };
 

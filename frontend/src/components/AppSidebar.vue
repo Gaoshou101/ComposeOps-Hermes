@@ -29,6 +29,7 @@ const groups = [
   { label: '运行', items: [
     { to: '/services', icon: Boxes, label: '服务' },
     { to: '/compose', icon: FileCode2, label: '配置' },
+    { to: '/converter', icon: Package, label: '转换' },
   ] },
   { label: '排障', items: [
     { to: '/logs', icon: ScrollText, label: '日志' },
@@ -39,8 +40,7 @@ const groups = [
     { to: '/metrics', icon: Activity, label: '资源监控' },
   ] },
   { label: '扩展', items: [
-    { to: '/blueprints', icon: Store, label: '应用市场' },
-    { to: '/marketplace', icon: Package, label: '模板市场' },
+    { to: '/marketplace', icon: Store, label: '应用市场' },
     { to: '/cron', icon: Clock3, label: '定时任务' },
     { to: '/gitops', icon: GitBranch, label: 'GitOps' },
     { to: '/cost', icon: DollarSign, label: '成本分析' },

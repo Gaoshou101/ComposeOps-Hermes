@@ -20,6 +20,7 @@ const routes = [
   { path: '/cost', name: 'cost', component: () => import('./views/CostAnalysisView.vue') },
   { path: '/marketplace', name: 'marketplace', component: () => import('./views/MarketplaceView.vue') },
   { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
+  { path: '/:pathMatch(.*)*', redirect: '/services' },
 ];
 
 export default createRouter({

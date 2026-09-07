@@ -96,11 +96,13 @@ import EventCenter from './EventCenter.vue';
 import HostSwitcher from './HostSwitcher.vue';
 import { api } from '../api/client.js';
 import { useHostsStore } from '../stores/hosts.js';
+import { useToastStore } from '../stores/toast.js';
 import EmptyState from './common/EmptyState.vue';
 
 const route = useRoute();
 const router = useRouter();
 const hostsStore = useHostsStore();
+const toast = useToastStore();
 const backendOnline = ref(false);
 const currentTime = ref('');
 const commandOpen = ref(false);
@@ -186,7 +188,9 @@ async function runProjectAction(project, action) {
   try {
     await api.createProjectBatchJob([project.id], action);
     window.dispatchEvent(new CustomEvent('composeops:operation-started', { detail: { projectName: project.projectName, action } }));
-  } catch {}
+  } catch (error) {
+    toast.error(`操作提交失败:${error?.message || '未知错误'}`);
+  }
 }
 defineEmits(['logout']);
 let pingTimer; let clockTimer;
@@ -209,7 +213,9 @@ async function switchNode(host) {
   try {
     await hostsStore.switchHost(host.id);
     window.dispatchEvent(new CustomEvent('composeops:host-changed'));
-  } catch {}
+  } catch (error) {
+    toast.error(`切换到 ${host.name} 失败:${error?.message || '未知错误'}`);
+  }
 }
 function runSelected() { const item = filteredCommands.value[selectedCommand.value]; if (item) runCommand(item); }
 function moveSelection(delta) {
@@ -224,8 +230,11 @@ useEscapeKey({ active: commandOpen, onClose: closeCommand, layer: 'command' });
 watch(filteredCommands, () => { selectedCommand.value = 0; });
 onMounted(() => {
   if (!hostsStore.hosts.length) void hostsStore.load();
-  void api.getProjects().then((data) => { envProjects.value = asArray(data?.projects); }).catch(() => {});
-  void api.getProjects(true).then((data) => { allProjects.value = asArray(data?.projects); }).catch(() => {});
+  void api.getProjects(true).then((data) => {
+    const list = asArray(data?.projects);
+    envProjects.value = list.filter((project) => project.editable);
+    allProjects.value = list;
+  }).catch(() => {});
   void api.getBlueprints().then((data) => { appBlueprints.value = asArray(data?.blueprints); }).catch(() => {});
   ping();
   currentTime.value = new Date().toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
