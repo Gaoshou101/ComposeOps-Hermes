@@ -8,17 +8,23 @@
 /** 只读探测命令白名单:仅允许不带副作用的信息类命令。curl/wget 已移除:可发起外部请求。 */
 export const READONLY_EXEC = /^(env|printenv|ps|top\s+-b\s+-n\s+1|netstat|ss|cat|head|tail|ls|df|du|free|uptime|uname|hostname|date|whoami|id|ip\s+addr|ping\s+-c\s+\d+)/;
 
+/** 校验首个命令 token 是否命中只读白名单。失败抛错,不改执行。 */
+export function assertReadonlyExecutable(cmdString) {
+  const parts = String(cmdString || '').trim().split(/\s+/);
+  if (!parts.length) throw new Error('命令为空');
+  if (!READONLY_EXEC.test(parts[0])) {
+    throw new Error('仅允许执行只读探测命令(env/ps/netstat/cat/tail/ls/df/free 等)');
+  }
+}
+
 /**
  * 在容器内静默执行一条只读命令,返回 stdout/stderr/exitCode/durationMs。
  * @param {object} container - dockerode Container 实例
  * @param {string} cmdString - 完整命令字符串,首个 token 须命中 READONLY_EXEC 白名单
  */
 export async function execReadonly(container, cmdString) {
+  assertReadonlyExecutable(cmdString);
   const parts = String(cmdString || '').trim().split(/\s+/);
-  if (!parts.length) throw new Error('命令为空');
-  if (!READONLY_EXEC.test(parts[0])) {
-    throw new Error('仅允许执行只读探测命令(env/ps/netstat/cat/tail/ls/df/free 等)');
-  }
   const started = Date.now();
   const exec = await container.exec({ AttachStdout: true, AttachStderr: true, Cmd: parts });
   const stream = await exec.start({ Tty: false });

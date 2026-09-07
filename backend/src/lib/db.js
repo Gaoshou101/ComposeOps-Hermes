@@ -531,6 +531,21 @@ export function addOperation({ projectId = null, projectName = null, action, sta
   return Number(result.lastInsertRowid);
 }
 
+export function pruneOperationHistory(days = 30) {
+  const safeDays = Math.max(1, Math.min(Math.floor(Number(days) || 30), 3650));
+  return db.prepare(
+    "DELETE FROM operation_history WHERE julianday('now') - julianday(created_at) > ?"
+  ).run(safeDays);
+}
+
+/** 归档/清理过期告警事件:优先保留未读/未静音(详见 events.js)。 */
+export function pruneAgentPlans(days = 30) {
+  const safeDays = Math.max(1, Math.min(Math.floor(Number(days) || 30), 3650));
+  return db.prepare(
+    "DELETE FROM agent_plans WHERE julianday('now') - julianday(created_at) > ?"
+  ).run(safeDays);
+}
+
 export function listOperations(limit = 100) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 500));
   return db.prepare(`

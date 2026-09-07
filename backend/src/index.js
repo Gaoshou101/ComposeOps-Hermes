@@ -5,6 +5,7 @@ import { startCronScheduler } from './services/cron-scheduler.js';
 import { initializeBackgroundJobs } from './services/background-jobs.js';
 import { initGitOps } from './services/gitops.js';
 import { startMetricsCollection } from './services/metrics-collector.js';
+import { startDataMaintenance } from './services/maintenance.js';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -21,6 +22,7 @@ const start = async () => {
     startCronScheduler();
     initGitOps();
     startMetricsCollection(2); // 每 2 秒采集一次容器指标（Netdata 风格高频更新）
+    startDataMaintenance(); // 周期清理 ai_history / operation_history / agent_plans / compose_backups
     fastify.log.info(`OpsDash backend listening on http://${HOST}:${PORT}`);
   } catch (err) {
     fastify.log.error(err);
