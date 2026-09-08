@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -21,12 +21,18 @@ jobs:
           cache-dependency-path: |
             backend/package-lock.json
             frontend/package-lock.json
-      
+
       - name: Install backend dependencies
         run: npm --prefix backend install
-      
+
       - name: Lint backend
         run: npm --prefix backend run lint
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend install
+
+      - name: Lint frontend
+        run: npm --prefix frontend run lint
 
   test-backend:
     name: Test Backend
