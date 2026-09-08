@@ -1,12 +1,9 @@
 import { getAiConfig, callOpenAI } from './ai.js';
 import {
   createAgentPlan,
-  getAgentPlan,
   updateAgentPlan,
   recordAgentExecution,
   updateAgentExecution,
-  listAgentPlans,
-  listAgentExecutions,
 } from '../lib/db.js';
 import { registerAgentTools, assessRisk, RISK_LEVELS } from './agent-tools.js';
 import { findProject, findProjectContainer } from './scanner.js';
@@ -373,80 +370,8 @@ export class OperationsAgent {
     return { success: !failed && results.length > 0, status, results };
   }
 
-  /**
-   * 带原子回滚的工作流:任一步失败时,按反序调用已执行工具的 undo。
-   * 无 undo 实现的工具会被跳过,并在结果中标记需要人工介入。
-   */
-  async executeWorkflowWithRollback(planId, steps, context = {}) {
-    const completed = [];
-    this.thoughts = [];
-    this.addThought('planning', '开始执行带回滚能力的工作流', { steps: steps.length });
-    for (const step of steps) {
-      const toolName = step.tool;
-      const params = step.params || {};
-      const execId = recordAgentExecution(planId, toolName, params, 'executing');
-      const started = Date.now();
-      try {
-        const tool = this.getTool(toolName);
-        if (!tool) throw Object.assign(new Error(`未注册的工具:${toolName}`), { statusCode: 404 });
-        const resolved = await resolveToolContext(params);
-        await assertPermission(tool, resolved);
-        validateParams(tool.parameters, params);
-        const result = await tool.execute(params, resolved);
-        updateAgentExecution(execId, { status: 'success', result, durationMs: Date.now() - started });
-        completed.push({ toolName, params, result });
-        this.addThought('validating', `${toolName} 执行成功`, { execId });
-      } catch (error) {
-        updateAgentExecution(execId, { status: 'failed', error: error.message, durationMs: Date.now() - started });
-        this.addThought('validating', `${toolName} 执行失败,触发回滚`, { execId });
-        const rollback = await this._rollback(completed, context);
-        const status = 'failed';
-        updateAgentPlan(planId, {
-          status,
-          resultJson: { results: completed, error: error.message, rollback },
-          executedAt: new Date().toISOString(),
-        });
-        return { success: false, status, error: error.message, rollback, completed };
-      }
-    }
-    const status = 'completed';
-    updateAgentPlan(planId, { status, resultJson: { results: completed, rollback: [] }, executedAt: new Date().toISOString() });
-    this.addThought('done', '带回滚工作流执行完成', { results: completed });
-    return { success: true, status, rollback: [], results: completed };
-  }
-
-  async _rollback(completed, context = {}) {
-    const rollback = [];
-    for (const item of [...completed].reverse()) {
-      const tool = this.getTool(item.toolName);
-      if (typeof tool?.undo !== 'function') {
-        rollback.push({ tool: item.toolName, status: 'skipped', reason: '该工具未实现 undo,需人工介入' });
-        continue;
-      }
-      try {
-        const result = await tool.undo(item.params, item.result, context);
-        rollback.push({ tool: item.toolName, status: 'success', result });
-      } catch (error) {
-        rollback.push({ tool: item.toolName, status: 'failed', error: error.message });
-      }
-    }
-    return rollback;
-  }
-
   persistPlan(sessionId, userMessage, plan, context = {}) {
     return createAgentPlan(sessionId, userMessage, { steps: plan.steps, confirmations: plan.confirmations }, context.projectId, context.containerId);
-  }
-
-  getPlan(planId) {
-    return getAgentPlan(planId);
-  }
-
-  listExecutions(planId, limit) {
-    return listAgentExecutions(planId, limit);
-  }
-
-  listPlans(limit) {
-    return listAgentPlans(limit);
   }
 
   /**
