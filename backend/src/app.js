@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import serviceRoutes from './routes/services.js';
 import projectRoutes from './routes/projects.js';
 import aiRoutes from './routes/ai.js';
+import agentRoutes from './routes/agent.js';
 import systemRoutes from './routes/system.js';
 import wsRoutes from './routes/ws.js';
 import authRoutes from './routes/auth.js';
@@ -111,6 +112,7 @@ export async function buildApp({ logger = { level: process.env.LOG_LEVEL || 'inf
       await api.register(serviceRoutes, { prefix: '/services' });
       await api.register(projectRoutes, { prefix: '/projects' });
       await api.register(aiRoutes, { prefix: '/ai' });
+      await api.register(agentRoutes, { prefix: '/ai' });
       await api.register(systemRoutes, { prefix: '/system' });
       await api.register(personalRoutes, { prefix: '/personal' });
       await api.register(jobRoutes, { prefix: '/jobs' });

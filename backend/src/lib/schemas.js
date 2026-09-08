@@ -37,3 +37,21 @@ export const notificationConfigBody = {
     events: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 32 } },
   },
 };
+
+/**
+ * 以下为 AI 编排路由(ai.js / agent.js)共享的基础 schema。
+ * idField/numericId/limitField:仅挡畸形类型,越界/语义由各处理函数与 db clamp 兜住
+ * (见 ai.js 文件头说明)。agentStep 刻意不封键:计划步骤由 AI 规划产出并经前端回传,
+ * 可能携带 description 等展示字段,封死会被 removeAdditional 剥掉。
+ */
+export const idField = { type: 'string', maxLength: 128 };
+export const numericId = { anyOf: [{ type: 'integer' }, { type: 'string', maxLength: 32 }] };
+export const limitField = (maximum) => ({ type: 'integer', minimum: 1, maximum });
+export const agentStep = {
+  type: 'object',
+  properties: {
+    tool: { type: 'string', maxLength: 64 },
+    params: { type: 'object' },
+    confirmed: { type: 'boolean' },
+  },
+};
