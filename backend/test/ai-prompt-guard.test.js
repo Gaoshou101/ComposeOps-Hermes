@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { UNTRUSTED_GUARD, fenceUntrusted, formatWebSources, newFenceNonce } from '../src/services/ai.js';
+import { UNTRUSTED_GUARD, fenceUntrusted, formatWebSources, newFenceNonce, parseTextToolCalls } from '../src/services/ai.js';
 
 test('ai-prompt-guard: 定界块包含 nonce 且首尾标记配对', () => {
   const nonce = newFenceNonce();
@@ -50,4 +50,18 @@ test('ai-prompt-guard: 护栏声明数据不可执行且优先级最高', () => 
   assert.ok(UNTRUSTED_GUARD.includes('优先级最高'));
   assert.ok(UNTRUSTED_GUARD.includes('不可信数据'));
   assert.ok(/绝不执行/.test(UNTRUSTED_GUARD));
+});
+
+test('ai-tool-call: 兼容文本工具调用协议并移除内部标记', () => {
+  const parsed = parseTextToolCalls('请稍候。<tool_call>{"name":"project.list_managed","arguments":{}}</tool_call>');
+  assert.equal(parsed.content, '请稍候。');
+  assert.equal(parsed.toolCalls.length, 1);
+  assert.equal(parsed.toolCalls[0].function.name, 'project.list_managed');
+  assert.equal(parsed.toolCalls[0].function.arguments, '{}');
+});
+
+test('ai-tool-call: 不合法文本调用不会伪造工具请求', () => {
+  const parsed = parseTextToolCalls('<tool_call>{bad json}</tool_call>');
+  assert.equal(parsed.toolCalls.length, 0);
+  assert.match(parsed.content, /tool_call/);
 });

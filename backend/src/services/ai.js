@@ -39,6 +39,49 @@ export function formatWebSources(sources, nonce) {
   return fenceUntrusted('WEB_SEARCH', body, nonce);
 }
 
+/**
+ * 兼容不支持原生 tools 协议的 OpenAI-compatible 模型。
+ * 这类模型会把工具请求放进普通文本:
+ * <tool_call>{"name":"project.list_managed","arguments":{}}</tool_call>
+ * 统一转换后,上层 Agent 无需区分模型协议。
+ */
+export function parseTextToolCalls(text) {
+  const source = String(text || '');
+  const calls = [];
+  const pattern = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
+  const content = source.replace(pattern, (whole, raw) => {
+    try {
+      const payload = JSON.parse(raw);
+      const functionPayload = payload?.function || payload;
+      const name = functionPayload?.name || payload?.tool || '';
+      if (!name) return whole;
+      const args = functionPayload?.arguments ?? functionPayload?.params ?? {};
+      calls.push({
+        id: `text-tool-call-${calls.length + 1}`,
+        type: 'function',
+        function: {
+          name: String(name),
+          arguments: typeof args === 'string' ? args : JSON.stringify(args),
+        },
+      });
+      return '';
+    } catch {
+      return whole;
+    }
+  }).replace(/[ \t]+\n/g, '\n').trim();
+  return { content, toolCalls: calls };
+}
+
+function normalizeToolResponse(content, toolCalls, finishReason) {
+  const parsed = parseTextToolCalls(content);
+  const normalizedCalls = [...(Array.isArray(toolCalls) ? toolCalls : []), ...parsed.toolCalls];
+  return {
+    content: parsed.toolCalls.length ? parsed.content : content,
+    finishReason: normalizedCalls.length ? 'tool_calls' : finishReason,
+    toolCalls: normalizedCalls,
+  };
+}
+
 export function getAiConfig() {
   return {
     baseUrl: getSetting('ai.base_url', 'https://api.openai.com/v1'),
@@ -148,7 +191,7 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
     fullText = message.content || '';
     finishReason = data?.choices?.[0]?.finish_reason || '';
     toolCalls = message.tool_calls || [];
-    return { content: fullText, finishReason, toolCalls };
+    return normalizeToolResponse(fullText, toolCalls, finishReason);
   }
 
   // 流式：解析 SSE
@@ -175,7 +218,8 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
         const delta = choice.delta?.content || '';
         if (delta) {
           fullText += delta;
-          if (onToken) onToken(delta);
+          // 带工具定义时先缓存,避免模型把文本协议标记直接显示给用户。
+          if (onToken && !tools?.length) onToken(delta);
         }
         
         // 累积 tool_calls (流式返回时分多个 chunk)
@@ -203,7 +247,11 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
       } catch {}
     }
   }
-  return { content: fullText, finishReason, toolCalls };
+  const normalized = normalizeToolResponse(fullText, toolCalls, finishReason);
+  if (onToken && tools?.length && !normalized.toolCalls.length && normalized.content) {
+    onToken(normalized.content);
+  }
+  return normalized;
 }
 
 export {
