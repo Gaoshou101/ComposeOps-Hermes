@@ -8,7 +8,7 @@ import {
   listAgentPlans,
   listAgentExecutions,
 } from '../lib/db.js';
-import { registerAgentTools, assessRisk } from './agent-tools.js';
+import { registerAgentTools, assessRisk, RISK_LEVELS } from './agent-tools.js';
 import { findProject, findProjectContainer } from './scanner.js';
 import { PreconditionChecker, PostconditionValidator, TOOL_CATEGORIES, expandMacro, MACRO_TOOLS } from './agent-tool-categories.js';
 
@@ -41,22 +41,6 @@ const PLAN_SYSTEM_PROMPT = `你是 ComposeOps 的运维规划 Agent。请根据�
 
 输出格式:
 {"steps":[{"tool":"工具名","params":{}},{"tool":"工具名","params":{}}]}`;
-
-/** 工具风险等级:低/中/高/极高,前端据此决定确认强度。 */
-const RISK_LEVELS = {
-  'compose.up': 'high',
-  'compose.stop': 'high',
-  'compose.restart': 'medium',
-  'compose.pull': 'low',
-  'config.edit': 'high',
-  'config.rollback': 'high',
-  'environment.set': 'high',
-  'volume.mount': 'high',
-  'maintenance.clean': 'critical',
-  'compose.exec': 'high',
-  'compose.scale': 'medium',
-  'cron.create': 'medium',
-};
 
 /** 多角色 Agent:不同角色限定不同 system prompt 与可调用工具。 */
 export const AGENT_ROLES = {
@@ -859,4 +843,5 @@ export function getAgent() {
   return singleton;
 }
 
+// RISK_LEVELS 的单一事实来源在 agent-tools.js;这里 re-export 兼容既有导入点。
 export { RISK_LEVELS };

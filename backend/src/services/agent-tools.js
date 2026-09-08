@@ -11,6 +11,22 @@ import { registerComposeTools } from './tools/compose-tools.js';
 import { registerConfigTools } from './tools/config-tools.js';
 import { registerMaintenanceTools } from './tools/maintenance-tools.js';
 
+/** 工具风险等级:低/中/高/极高,前端据此决定确认强度。单一事实来源。 */
+export const RISK_LEVELS = {
+  'compose.up': 'high',
+  'compose.stop': 'high',
+  'compose.restart': 'medium',
+  'compose.pull': 'low',
+  'config.edit': 'high',
+  'config.rollback': 'high',
+  'environment.set': 'high',
+  'volume.mount': 'high',
+  'maintenance.clean': 'critical',
+  'compose.exec': 'high',
+  'compose.scale': 'medium',
+  'cron.create': 'medium',
+};
+
 /**
  * 动态风险评估:根据项目上下文提升工具风险等级。
  * @param {string} toolName - 工具名称
@@ -19,21 +35,6 @@ import { registerMaintenanceTools } from './tools/maintenance-tools.js';
  * @returns {string} 动态评估后的风险等级
  */
 export function assessRisk(toolName, params, context) {
-  const RISK_LEVELS = {
-    'compose.up': 'high',
-    'compose.stop': 'high',
-    'compose.restart': 'medium',
-    'compose.pull': 'low',
-    'config.edit': 'high',
-    'config.rollback': 'high',
-    'environment.set': 'high',
-    'volume.mount': 'high',
-    'maintenance.clean': 'critical',
-    'compose.exec': 'high',
-    'compose.scale': 'medium',
-    'cron.create': 'medium',
-  };
-
   const baseRisk = RISK_LEVELS[toolName] || 'low';
 
   // 生产项目提升风险等级

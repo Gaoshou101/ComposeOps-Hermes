@@ -2,24 +2,17 @@
  * 维护 / 告警 / 指标域工具注册(maintenance.* alert.* metrics.query backup.trigger …)。
  * 由 agent-tools.js 拆分 —— 工具注册链与 helper 逐字节搬运。
  */
-import { getActivityDocker } from '../docker-hosts.js';
-import { findProject, scanProjects } from '../scanner.js';
-import { checkImageUpdates } from '../maintenance.js';
-import { getProjectUpdates } from '../image-updater.js';
-import { addComposeBackup, addPerformanceBaseline, setSetting, getSetting } from '../../lib/db.js';
-import { callOpenAI, getAiConfig } from '../ai.js';
-import { getNotificationConfig, sendNotification } from '../notifications.js';
+import { addComposeBackup, addPerformanceBaseline, getSetting, setSetting } from '../../lib/db.js';
+import { configureAlert, deleteAlert, listAlerts, queryContainerMetrics } from '../agent-metrics.js';
+import { readCompose } from '../compose-runner.js';
 import { createJob } from '../cron-scheduler.js';
-import { queryContainerMetrics, configureAlert, listAlerts, deleteAlert } from '../agent-metrics.js';
+import { getActivityDocker } from '../docker-hosts.js';
+import { getProjectUpdates } from '../image-updater.js';
+import { checkImageUpdates } from '../maintenance.js';
+import { getNotificationConfig, sendNotification } from '../notifications.js';
+import { findProject, scanProjects } from '../scanner.js';
 import { readContainerStat } from '../stats.js';
 
-function collectOutput() {
-  let text = '';
-  return {
-    push: (stream, chunk) => { text += chunk; },
-    text: () => text.slice(-20000),
-  };
-}
 function sumSpace(reclaimed) {
   return Object.values(reclaimed || {}).reduce((total, value) => total + (Number(value) || 0), 0);
 }
@@ -37,7 +30,7 @@ function readAlertRules() {
 async function currentComposeContent(project, fileIndex = 0) {
   const index = Number(fileIndex) || 0;
   if (project.mounted) return (await readCompose(project, index)).content;
-  const { readWorkspaceCompose } = await import('./compose-workspace.js');
+  const { readWorkspaceCompose } = await import('../compose-workspace.js');
   return (await readWorkspaceCompose(project, index)).content;
 }
 

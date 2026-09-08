@@ -2,13 +2,15 @@
  * 配置 / 诊断 / 环境域工具注册(config.* environment.* diagnostic.* volume.mount security.audit)。
  * 由 agent-tools.js 拆分 —— 工具注册链与 helper 逐字节搬运。
  */
-import { getActivityDocker } from '../docker-hosts.js';
-import { findProject, findProjectContainer, scanProjects } from '../scanner.js';
-import { readCompose, saveCompose, spawnComposeCommand } from '../compose-runner.js';
-import { runWorkspaceComposeArgs } from '../compose-workspace.js';
 import { getComposeBackup, listComposeBackups } from '../../lib/db.js';
 import { execReadonly, readContainerLogs } from '../../lib/docker-exec.js';
-import { assertEnvAccess, readProjectEnv, saveProjectEnv, applyProjectEnv } from '../project-env.js';
+import { callOpenAI, getAiConfig } from '../ai.js';
+import { readCompose, saveCompose } from '../compose-runner.js';
+import { previewComposeChange, validateComposeSemantics } from '../compose-validator.js';
+import { getActivityDocker } from '../docker-hosts.js';
+import { applyProjectEnv, assertEnvAccess, readProjectEnv, saveProjectEnv } from '../project-env.js';
+import { scanProjects } from '../scanner.js';
+import * as YAML from 'yaml';
 
 function collectOutput() {
   let text = '';
@@ -42,7 +44,7 @@ function diffTexts(before, after) {
 async function currentComposeContent(project, fileIndex = 0) {
   const index = Number(fileIndex) || 0;
   if (project.mounted) return (await readCompose(project, index)).content;
-  const { readWorkspaceCompose } = await import('./compose-workspace.js');
+  const { readWorkspaceCompose } = await import('../compose-workspace.js');
   return (await readWorkspaceCompose(project, index)).content;
 }
 
@@ -50,7 +52,7 @@ async function currentComposeContent(project, fileIndex = 0) {
 async function saveProjectCompose(project, fileIndex, content, reason) {
   const index = Number(fileIndex) || 0;
   if (project.mounted) return saveCompose(project, index, content, reason);
-  const { saveWorkspaceCompose } = await import('./compose-workspace.js');
+  const { saveWorkspaceCompose } = await import('../compose-workspace.js');
   return saveWorkspaceCompose(project, index, content, reason);
 }
 
@@ -286,7 +288,7 @@ export function registerConfigTools(agent) {
         if (!doc.hasIn(['services', service])) throw Object.assign(new Error(`服务 ${service} 不存在`), { statusCode: 404 });
 
         // 校验 source 路径安全性:必须位于项目目录内或已明确挂载的受控路径
-        const { safeProjectMountPath } = await import('../services/mount-plan.js');
+        const { safeProjectMountPath } = await import('../mount-plan.js');
         const projectMount = safeProjectMountPath(context.project.workingDir);
         if (!projectMount) {
           throw Object.assign(

@@ -2,14 +2,12 @@
  * Compose 域工具注册(compose.* 生命周期 / 编排 / 日志 / ps)。
  * 由 agent-tools.js 拆分 —— 工具注册链与 helper 逐字节搬运。
  */
-import { getActivityDocker } from '../docker-hosts.js';
-import { findProject, findProjectContainer, scanProjects } from '../scanner.js';
-import { prepareProjectAction } from '../project-action-runner.js';
-import { readCompose, saveCompose, spawnComposeCommand } from '../compose-runner.js';
+import { readContainerLogs } from '../../lib/docker-exec.js';
+import { spawnComposeCommand } from '../compose-runner.js';
 import { runWorkspaceComposeArgs } from '../compose-workspace.js';
-import { execReadonly, readContainerLogs } from '../../lib/docker-exec.js';
-import { validateComposeSemantics, previewComposeChange } from '../compose-validator.js';
-import { assertEnvAccess, readProjectEnv, saveProjectEnv, applyProjectEnv } from '../project-env.js';
+import { getActivityDocker } from '../docker-hosts.js';
+import { prepareProjectAction } from '../project-action-runner.js';
+import { findProjectContainer, scanProjects } from '../scanner.js';
 
 function collectOutput() {
   let text = '';
