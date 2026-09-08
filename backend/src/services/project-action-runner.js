@@ -1,6 +1,7 @@
 import { ACTIONS, resolveProjectFile, spawnCompose } from './compose-runner.js';
 import { runWorkspaceCompose } from './compose-workspace.js';
 import { runContainerAction, supportsContainerAction } from './project-control.js';
+import { withProjectOperationLock } from './project-operation-lock.js';
 
 export function assertProjectActionAllowed(project, action) {
   if (!Object.hasOwn(ACTIONS, action)) {
@@ -22,19 +23,26 @@ export async function prepareProjectAction(project, action) {
     return {
       mode: 'compose',
       run(onOutput = () => {}, onChild = () => {}) {
-        return new Promise((resolve, reject) => {
+        return withProjectOperationLock(project.id, () => new Promise((resolve, reject) => {
           const child = spawnCompose({ ...project, composeFiles: safeFiles }, action);
           onChild(child);
           child.stdout.on('data', (chunk) => onOutput('stdout', chunk.toString('utf8')));
           child.stderr.on('data', (chunk) => onOutput('stderr', chunk.toString('utf8')));
-          child.on('error', reject);
-          child.on('close', (code) => resolve(code ?? 1));
-        });
+          const timer = setTimeout(() => {
+            child.kill('SIGTERM');
+            setTimeout(() => child.kill('SIGKILL'), 5000).unref?.();
+          }, 300000);
+          child.on('error', (error) => { clearTimeout(timer); reject(error); });
+          child.on('close', (code, signal) => {
+            clearTimeout(timer);
+            resolve(signal ? 124 : code ?? 1);
+          });
+        }));
       },
     };
   }
   if (project.editable) {
-    return { mode: 'workspace', run: (onOutput = () => {}) => runWorkspaceCompose(project, action, onOutput) };
+    return { mode: 'workspace', run: (onOutput = () => {}) => withProjectOperationLock(project.id, () => runWorkspaceCompose(project, action, onOutput)) };
   }
-  return { mode: 'containers', run: (onOutput = () => {}) => runContainerAction(project, action, onOutput) };
+  return { mode: 'containers', run: (onOutput = () => {}) => withProjectOperationLock(project.id, () => runContainerAction(project, action, onOutput)) };
 }

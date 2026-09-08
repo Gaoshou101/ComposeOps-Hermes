@@ -10,6 +10,7 @@
 import { registerComposeTools } from './tools/compose-tools.js';
 import { registerConfigTools } from './tools/config-tools.js';
 import { registerMaintenanceTools } from './tools/maintenance-tools.js';
+import { registerContextTools } from './tools/context-tools.js';
 
 /** 工具风险等级:低/中/高/极高,前端据此决定确认强度。单一事实来源。 */
 export const RISK_LEVELS = {
@@ -52,5 +53,6 @@ export function registerAgentTools(agent) {
   registerComposeTools(agent);
   registerConfigTools(agent);
   registerMaintenanceTools(agent);
+  registerContextTools(agent);
   return agent;
 }

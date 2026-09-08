@@ -30,15 +30,16 @@ const {
 } = await import('../src/lib/db.js');
 const { readAgentAlertRules } = await import('../src/services/alert-monitor.js');
 
-test('agent: 注册 35 个工具并暴露元数据(含风险等级)', () => {
+test('agent: 注册 38 个工具并暴露元数据(含风险等级)', () => {
   const agent = getAgent();
   const tools = agent.listTools();
-  assert.equal(tools.length, 35);
+  assert.equal(tools.length, 38);
   const names = new Set(tools.map((tool) => tool.name));
   for (const expected of [
     'compose.up', 'compose.restart', 'config.edit', 'diagnostic.probe', 'maintenance.clean', 'metrics.query',
     'compose.scale', 'compose.exec', 'config.rollback', 'config.diff', 'environment.get', 'environment.set',
     'network.inspect', 'security.audit', 'volume.mount', 'backup.trigger', 'notification.test', 'cron.create', 'performance.baseline',
+    'project.list_managed', 'web.search', 'config.propose',
   ]) {
     assert.ok(names.has(expected), `缺少工具 ${expected}`);
   }
@@ -62,6 +63,14 @@ test('agent: 风险等级与多角色元数据可用', () => {
   const roles = agent.listRoles();
   assert.equal(roles.length, 4);
   assert.ok(roles.some((role) => role.name === 'incident_responder'));
+});
+
+test('agent: 执行入口会绑定会话项目上下文', () => {
+  const agent = getAgent();
+  const bound = agent._bindContext([
+    { tool: 'compose.logs', params: {} },
+  ], { projectId: 'managed-project', containerId: 'container-1' });
+  assert.deepEqual(bound[0].params, { projectId: 'managed-project', containerId: 'container-1' });
 });
 
 test('agent: parsePlanJson 兼容代码块与杂质文本', () => {

@@ -165,6 +165,10 @@ async function withRunner(project, callback) {
     lease = await acquireRunner(project);
     return await callback(lease.container);
   } catch (error) {
+    if (error.statusCode === 504 && lease) {
+      retireRunner(lease.entry);
+      await destroyRunner(lease.entry);
+    }
     if (!error.statusCode) error.statusCode = 409;
     throw error;
   } finally {
@@ -215,13 +219,38 @@ async function execInRunner(container, cmd, { input, onOutput = () => {} } = {})
   stream.pipe(demux);
   const stdout = [];
   const stderr = [];
-  demux.stdout.on('data', (chunk) => { stdout.push(chunk); onOutput('stdout', chunk.toString('utf8')); });
-  demux.stderr.on('data', (chunk) => { stderr.push(chunk); onOutput('stderr', chunk.toString('utf8')); });
+  let stdoutBytes = 0;
+  let stderrBytes = 0;
+  const maxOutputBytes = 1024 * 1024;
+  demux.stdout.on('data', (chunk) => {
+    if (stdoutBytes < maxOutputBytes) {
+      const part = chunk.subarray(0, maxOutputBytes - stdoutBytes);
+      stdout.push(part);
+      stdoutBytes += part.length;
+    }
+    onOutput('stdout', chunk.toString('utf8').slice(-20000));
+  });
+  demux.stderr.on('data', (chunk) => {
+    if (stderrBytes < maxOutputBytes) {
+      const part = chunk.subarray(0, maxOutputBytes - stderrBytes);
+      stderr.push(part);
+      stderrBytes += part.length;
+    }
+    onOutput('stderr', chunk.toString('utf8').slice(-20000));
+  });
   if (input !== undefined) stream.end(input);
-  await Promise.all([
+  try {
+    await Promise.race([Promise.all([
     new Promise((resolve, reject) => demux.stdout.on('end', resolve).on('error', reject)),
     new Promise((resolve, reject) => demux.stderr.on('end', resolve).on('error', reject)),
-  ]);
+    ]), new Promise((_, reject) => {
+      const timer = setTimeout(() => reject(Object.assign(new Error('Compose 工作命令执行超时'), { statusCode: 504 })), 300000);
+      timer.unref?.();
+    })]);
+  } catch (error) {
+    demux.destroy?.();
+    throw error;
+  }
   const result = await instance.inspect();
   return {
     code: result.ExitCode ?? 1,

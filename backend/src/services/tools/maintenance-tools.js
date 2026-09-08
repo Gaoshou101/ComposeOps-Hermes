@@ -77,7 +77,7 @@ export function registerMaintenanceTools(agent) {
     .registerTool('maintenance.clean', {
       description: '清理未使用的镜像/卷/网络/构建缓存',
       category: 'maintenance',
-      requiredPermission: 'managed',
+      requiredPermission: 'admin',
       confirmationRequired: true,
       requiresProject: false,
       parameters: {
@@ -114,7 +114,7 @@ export function registerMaintenanceTools(agent) {
     .registerTool('maintenance.update', {
       description: '检查纳管项目镜像是否有远程更新',
       category: 'maintenance',
-      requiredPermission: 'managed',
+      requiredPermission: 'readonly',
       confirmationRequired: false,
       requiresProject: false,
       parameters: {
@@ -150,7 +150,7 @@ export function registerMaintenanceTools(agent) {
     .registerTool('alert.configure', {
       description: '配置容器资源告警规则(超过阈值触发通知或自动操作)',
       category: 'maintenance',
-      requiredPermission: 'managed',
+      requiredPermission: 'admin',
       confirmationRequired: true,
       requiresProject: false,
       parameters: {
@@ -189,7 +189,7 @@ export function registerMaintenanceTools(agent) {
     .registerTool('alert.delete', {
       description: '删除告警规则',
       category: 'maintenance',
-      requiredPermission: 'managed',
+      requiredPermission: 'admin',
       confirmationRequired: true,
       requiresProject: false,
       parameters: {

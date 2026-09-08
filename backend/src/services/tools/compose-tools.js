@@ -8,11 +8,12 @@ import { runWorkspaceComposeArgs } from '../compose-workspace.js';
 import { getActivityDocker } from '../docker-hosts.js';
 import { prepareProjectAction } from '../project-action-runner.js';
 import { findProjectContainer, scanProjects } from '../scanner.js';
+import { redactText } from '../../lib/redaction.js';
 
 function collectOutput() {
   let text = '';
   return {
-    push: (stream, chunk) => { text += chunk; },
+    push: (stream, chunk) => { text = `${text}${chunk}`.slice(-1024 * 1024); },
     text: () => text.slice(-20000),
   };
 }
@@ -24,8 +25,15 @@ async function runComposeArgs(project, args, onOutput = () => {}) {
       const child = spawnComposeCommand(project, args);
       child.stdout.on('data', (chunk) => { onOutput('stdout', chunk.toString('utf8')); output.push('stdout', chunk); });
       child.stderr.on('data', (chunk) => { onOutput('stderr', chunk.toString('utf8')); output.push('stderr', chunk); });
-      child.on('error', reject);
-      child.on('close', (code) => resolve(code ?? 1));
+      const timer = setTimeout(() => {
+        child.kill('SIGTERM');
+        setTimeout(() => child.kill('SIGKILL'), 5000).unref?.();
+      }, 300000);
+      child.on('error', (error) => { clearTimeout(timer); reject(error); });
+      child.on('close', (code, signal) => {
+        clearTimeout(timer);
+        resolve(signal ? 124 : code ?? 1);
+      });
     });
     return { mode: 'compose', exitCode: code, output: output.text() };
   }
@@ -150,7 +158,7 @@ export function registerComposeTools(agent) {
     .registerTool('compose.ps', {
       description: '列出项目或全部纳管项目的容器状态(只读)',
       category: 'compose',
-      requiredPermission: 'managed',
+      requiredPermission: 'readonly',
       confirmationRequired: false,
       requiresProject: false,
       parameters: {
@@ -229,15 +237,31 @@ export function registerComposeTools(agent) {
         const docker = getActivityDocker();
         const container = docker.getContainer(context.container.id);
         const started = Date.now();
-        const exec = await container.exec({ AttachStdout: true, AttachStderr: true, Cmd: ['/bin/sh', '-c', command] });
+        const escaped = command.replace(/'/g, "'\\''");
+        const boundedCommand = `if command -v timeout >/dev/null 2>&1; then timeout --signal=TERM 120s /bin/sh -c '${escaped}'; else /bin/sh -c '${escaped}'; fi`;
+        const exec = await container.exec({ AttachStdout: true, AttachStderr: true, Cmd: ['/bin/sh', '-c', boundedCommand] });
         const stream = await exec.start({ Tty: false });
         const chunks = [];
-        for await (const chunk of stream) {
-          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        }
+        const maxBytes = 1024 * 1024;
+        let totalBytes = 0;
+        const deadline = new Promise((_, reject) => {
+          const timer = setTimeout(() => reject(Object.assign(new Error('容器命令执行超时'), { statusCode: 504 })), 125000);
+          timer.unref?.();
+        });
+        const readOutput = (async () => {
+          for await (const chunk of stream) {
+            const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            if (totalBytes < maxBytes) {
+              const remaining = maxBytes - totalBytes;
+              chunks.push(buffer.subarray(0, remaining));
+              totalBytes += Math.min(buffer.length, remaining);
+            }
+          }
+        })();
+        await Promise.race([readOutput, deadline]);
         const inspect = await exec.inspect().catch(() => null);
         return {
-          stdout: Buffer.concat(chunks).toString('utf8').slice(0, 20000),
+          stdout: redactText(Buffer.concat(chunks).toString('utf8')),
           exitCode: inspect?.ExitCode ?? null,
           durationMs: Date.now() - started,
         };

@@ -111,17 +111,64 @@ export async function assertPermission(tool, context) {
   }
 }
 
-/** 轻量 JSON Schema 校验:仅检查必填字段与数组类型。 */
+/**
+ * 工具执行边界上的 JSON Schema 子集校验。
+ * 工具参数来自 LLM 和浏览器,不能只把 schema 当作展示元数据。
+ */
 export function validateParams(schema = {}, params = {}) {
+  if (!params || typeof params !== 'object' || Array.isArray(params)) {
+    throw Object.assign(new Error('工具参数必须是 JSON 对象'), { statusCode: 400 });
+  }
   const required = Array.isArray(schema.required) ? schema.required : [];
   for (const key of required) {
     if (params[key] === undefined || params[key] === null || params[key] === '') {
       throw Object.assign(new Error(`缺少必填参数 ${key}`), { statusCode: 400 });
     }
   }
+
+  const typeMatches = (value, type) => {
+    if (type === 'array') return Array.isArray(value);
+    if (type === 'object') return value !== null && typeof value === 'object' && !Array.isArray(value);
+    if (type === 'integer') return Number.isInteger(value);
+    if (type === 'number') return typeof value === 'number' && Number.isFinite(value);
+    return typeof value === type;
+  };
+
   for (const [key, def] of Object.entries(schema.properties || {})) {
-    if (def?.type === 'array' && params[key] !== undefined && !Array.isArray(params[key])) {
-      throw Object.assign(new Error(`参数 ${key} 必须是数组`), { statusCode: 400 });
+    if (params[key] === undefined || params[key] === null) continue;
+    if (def?.type && !typeMatches(params[key], def.type)) {
+      throw Object.assign(new Error(`参数 ${key} 类型必须是 ${def.type}`), { statusCode: 400 });
+    }
+    if (Array.isArray(def?.enum) && !def.enum.includes(params[key])) {
+      throw Object.assign(new Error(`参数 ${key} 的值不在允许范围内`), { statusCode: 400 });
+    }
+    if (typeof def?.minLength === 'number' && String(params[key]).length < def.minLength) {
+      throw Object.assign(new Error(`参数 ${key} 长度不能小于 ${def.minLength}`), { statusCode: 400 });
+    }
+    if (typeof def?.maxLength === 'number' && String(params[key]).length > def.maxLength) {
+      throw Object.assign(new Error(`参数 ${key} 长度不能超过 ${def.maxLength}`), { statusCode: 400 });
+    }
+    if (typeof def?.minimum === 'number' && params[key] < def.minimum) {
+      throw Object.assign(new Error(`参数 ${key} 不能小于 ${def.minimum}`), { statusCode: 400 });
+    }
+    if (typeof def?.maximum === 'number' && params[key] > def.maximum) {
+      throw Object.assign(new Error(`参数 ${key} 不能大于 ${def.maximum}`), { statusCode: 400 });
+    }
+    if (def?.type === 'array' && def.items?.type) {
+      for (const item of params[key]) {
+        if (!typeMatches(item, def.items.type)) {
+          throw Object.assign(new Error(`参数 ${key} 的数组元素类型必须是 ${def.items.type}`), { statusCode: 400 });
+        }
+      }
+    }
+    if (def?.type === 'object' && def.properties) validateParams(def, params[key]);
+  }
+
+  if (schema.additionalProperties === false) {
+    const allowed = new Set(Object.keys(schema.properties || {}));
+    for (const key of Object.keys(params)) {
+      if (!allowed.has(key)) throw Object.assign(new Error(`不支持的参数 ${key}`), { statusCode: 400 });
     }
   }
+  return true;
 }

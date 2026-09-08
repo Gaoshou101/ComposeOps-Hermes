@@ -10,6 +10,7 @@ import { previewComposeChange, validateComposeSemantics } from '../compose-valid
 import { getActivityDocker } from '../docker-hosts.js';
 import { applyProjectEnv, assertEnvAccess, readProjectEnv, saveProjectEnv } from '../project-env.js';
 import { scanProjects } from '../scanner.js';
+import { attachPrivateRollback, redactText } from '../../lib/redaction.js';
 import * as YAML from 'yaml';
 
 function collectOutput() {
@@ -38,6 +39,26 @@ function diffTexts(before, after) {
   const added = afterLines.filter((line) => !beforeSet.has(line));
   const removed = beforeLines.filter((line) => !afterSet.has(line));
   return { added, removed, unified: null, addedCount: added.length, removedCount: removed.length };
+}
+
+function applyYamlChange(content, params) {
+  const doc = YAML.parseDocument(content);
+  const keys = String(params.path || '').split('.').map((key) => key.trim()).filter(Boolean);
+  if (!keys.length) throw Object.assign(new Error('path 不能为空'), { statusCode: 400 });
+  if (params.action === 'unset') {
+    doc.deleteIn(keys);
+  } else if (params.action === 'append') {
+    const existing = doc.getIn(keys);
+    const next = existing == null
+      ? [coerceValue(params.value)]
+      : Array.isArray(existing)
+        ? [...existing, coerceValue(params.value)]
+        : [existing, coerceValue(params.value)];
+    doc.setIn(keys, next);
+  } else {
+    doc.setIn(keys, coerceValue(params.value));
+  }
+  return doc.toString();
 }
 
 /** 读取指定 Compose 文件当前内容(兼容 mounted / workspace)。 */
@@ -76,7 +97,7 @@ export function registerConfigTools(agent) {
       execute: async (params, context) => {
         const content = typeof params.content === 'string' && params.content
           ? params.content
-          : (await readCompose(context.project, Number(params.fileIndex) || 0)).content;
+          : await currentComposeContent(context.project, Number(params.fileIndex) || 0);
         const preview = previewComposeChange(content, context.project);
         return { preview, contentLength: content.length };
       },
@@ -99,9 +120,44 @@ export function registerConfigTools(agent) {
       execute: async (params, context) => {
         const content = typeof params.content === 'string' && params.content
           ? params.content
-          : (await readCompose(context.project, Number(params.fileIndex) || 0)).content;
+          : await currentComposeContent(context.project, Number(params.fileIndex) || 0);
         const issues = validateComposeSemantics(content);
         return { issues, errorCount: issues.filter((issue) => issue.level === 'error').length };
+      },
+    })
+    .registerTool('config.propose', {
+      description: '预览对 Compose 配置的结构化修改,不写入文件',
+      category: 'config',
+      requiredPermission: 'editable',
+      confirmationRequired: false,
+      requiresProject: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          projectId: { type: 'string', description: '项目 ID' },
+          fileIndex: { type: 'number', description: 'Compose 文件索引(默认 0)' },
+          path: { type: 'string', maxLength: 500, description: 'YAML 点路径' },
+          value: { type: 'string', maxLength: 20000, description: '新值' },
+          action: { type: 'string', enum: ['set', 'unset', 'append'], description: '操作类型' },
+        },
+        required: ['projectId', 'path', 'action'],
+      },
+      execute: async (params, context) => {
+        const fileIndex = Number(params.fileIndex) || 0;
+        const before = await currentComposeContent(context.project, fileIndex);
+        const after = applyYamlChange(before, params);
+        const issues = validateComposeSemantics(after);
+        return {
+          ok: issues.every((issue) => issue.level !== 'error'),
+          projectId: context.project.id,
+          fileIndex,
+          path: params.path,
+          action: params.action,
+          diff: diffTexts(before, after),
+          preview: previewComposeChange(after, context.project),
+          issues,
+          requiresRestart: true,
+        };
       },
     })
     .registerTool('config.edit', {
@@ -123,25 +179,10 @@ export function registerConfigTools(agent) {
       },
       execute: async (params, context) => {
         const fileIndex = Number(params.fileIndex) || 0;
-        const current = await readCompose(context.project, fileIndex);
-        const doc = YAML.parseDocument(current.content);
-        const keys = String(params.path).split('.').map((key) => key.trim()).filter(Boolean);
-        if (!keys.length) throw new Error('path 不能为空');
-        if (params.action === 'unset') {
-          doc.deleteIn(keys);
-        } else if (params.action === 'append') {
-          const existing = doc.getIn(keys);
-          const next = existing == null
-            ? [coerceValue(params.value)]
-            : Array.isArray(existing)
-              ? [...existing, coerceValue(params.value)]
-              : [existing, coerceValue(params.value)];
-          doc.setIn(keys, next);
-        } else {
-          doc.setIn(keys, coerceValue(params.value));
-        }
-        await saveCompose(context.project, fileIndex, doc.toString(), `agent:config.edit:${params.path}`);
-        return { ok: true, path: params.path, action: params.action, fileIndex, previous: current.content };
+        const current = { content: await currentComposeContent(context.project, fileIndex) };
+        const next = applyYamlChange(current.content, params);
+        await saveProjectCompose(context.project, fileIndex, next, `agent:config.edit:${params.path}`);
+        return attachPrivateRollback({ ok: true, path: params.path, action: params.action, fileIndex }, 'previous', current.content);
       },
       undo: async (params, _result, context) => {
         if (!_result?.previous) throw new Error('缺少回滚内容');
@@ -252,7 +293,7 @@ export function registerConfigTools(agent) {
           });
           applied = { exitCode: code, output: output.text() };
         }
-        return { ok: true, key, backup: saved.backup, applied, previousRaw: payload.raw };
+        return attachPrivateRollback({ ok: true, key, backup: saved.backup, applied: applied ? { ...applied, output: redactText(applied.output) } : null }, 'previousRaw', payload.raw);
       },
       undo: async (_params, result, context) => {
         if (result?.previousRaw == null) throw new Error('缺少回滚内容');
@@ -322,7 +363,7 @@ export function registerConfigTools(agent) {
         normalized.push(mount);
         doc.setIn(['services', service, 'volumes'], normalized);
         await saveProjectCompose(context.project, fileIndex, doc.toString(), `agent:volume.mount:${service}`);
-        return { ok: true, service, mount, previous: current };
+        return attachPrivateRollback({ ok: true, service, mount }, 'previous', current);
       },
       undo: async (params, result, context) => {
         if (result?.previous == null) throw new Error('缺少回滚内容');
@@ -373,7 +414,8 @@ export function registerConfigTools(agent) {
         if (!logs && context.container) {
           logs = await readContainerLogs(getActivityDocker().getContainer(context.container.id), 200);
         }
-        const prompt = `请分析以下容器日志,给出问题根因、证据与可执行修复步骤。\n\n${logs.slice(-12000)}`;
+        const { fenceUntrusted, UNTRUSTED_GUARD } = await import('../ai.js');
+        const prompt = `${UNTRUSTED_GUARD}\n请分析以下容器日志,给出问题根因、证据与可执行修复步骤。\n\n${fenceUntrusted('CONTAINER_LOGS', logs.slice(-12000))}`;
         const analysis = await callOpenAI({
           ...cfg,
           messages: [

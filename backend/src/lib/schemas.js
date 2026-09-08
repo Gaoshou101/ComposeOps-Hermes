@@ -49,9 +49,12 @@ export const numericId = { anyOf: [{ type: 'integer' }, { type: 'string', maxLen
 export const limitField = (maximum) => ({ type: 'integer', minimum: 1, maximum });
 export const agentStep = {
   type: 'object',
+  additionalProperties: false,
+  required: ['tool'],
   properties: {
     tool: { type: 'string', maxLength: 64 },
     params: { type: 'object' },
     confirmed: { type: 'boolean' },
+    stepIndex: { type: 'integer', minimum: 0, maximum: 100 },
   },
 };

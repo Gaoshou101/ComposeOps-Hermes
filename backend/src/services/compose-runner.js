@@ -66,6 +66,8 @@ export function spawnComposeCommand(project, args, overrideFiles = null) {
   });
 }
 
+export const COMPOSE_OPERATION_TIMEOUT_MS = 300000;
+
 export function spawnCompose(project, action) {
   const base = composeBase();
   return spawn(base[0], composeArgs(project, action), {

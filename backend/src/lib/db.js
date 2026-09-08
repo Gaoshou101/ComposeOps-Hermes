@@ -2,6 +2,8 @@ import Database from 'better-sqlite3';
 import { chmodSync } from 'fs';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { createHash } from 'node:crypto';
+import { redactValue } from './redaction.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../../data/opsdash.db');
@@ -122,6 +124,8 @@ db.exec(`
     result TEXT,
     error TEXT,
     duration_ms INTEGER,
+    parameters_hash TEXT,
+    confirmation_status TEXT NOT NULL DEFAULT 'not_required',
     confirmed_by TEXT,
     confirmed_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -181,6 +185,12 @@ const MIGRATIONS = [
     version: 4,
     name: '容器资源指标历史记录',
     up(database) {
+      // Agent 审计列与指标表同批迁移,兼容测试/历史库中缺失执行表的情况。
+      const hasExecutionTable = database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agent_executions'").get();
+      if (hasExecutionTable) {
+        addColumn(database, 'agent_executions', 'parameters_hash', 'TEXT');
+        addColumn(database, 'agent_executions', 'confirmation_status', "TEXT NOT NULL DEFAULT 'not_required'");
+      }
       database.exec(`
         CREATE TABLE IF NOT EXISTS container_metrics (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -207,6 +217,13 @@ export function addColumn(database, table, column, definition) {
   return true;
 }
 
+function ensureAgentExecutionAuditColumns(database) {
+  const hasExecutionTable = database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agent_executions'").get();
+  if (!hasExecutionTable) return;
+  addColumn(database, 'agent_executions', 'parameters_hash', 'TEXT');
+  addColumn(database, 'agent_executions', 'confirmation_status', "TEXT NOT NULL DEFAULT 'not_required'");
+}
+
 /**
  * 按 user_version 顺序执行未应用的迁移。每条迁移单独一个事务,
  * 版本号与数据变更一起提交,中途失败不会留下"半应用"的版本号。
@@ -225,6 +242,8 @@ export function runMigrations(database = db, migrations = MIGRATIONS) {
     applied.push(migration.version);
     console.log(`[db] 已应用迁移 v${migration.version}: ${migration.name}`);
   }
+  // v4 已发布后仍可能存在未带审计列的数据库,启动时独立幂等补齐。
+  ensureAgentExecutionAuditColumns(database);
   return applied;
 }
 
@@ -310,13 +329,21 @@ export function updateAgentPlan(planId, patch = {}) {
   const current = getAgentPlan(planId);
   if (!current) return null;
   const status = patch.status !== undefined ? String(patch.status) : current.status;
-  const resultJson = patch.resultJson !== undefined ? JSON.stringify(patch.resultJson) : current.result_json;
+  const resultJson = patch.resultJson !== undefined ? JSON.stringify(redactValue(patch.resultJson)) : current.result_json;
   const executedAt = patch.executedAt !== undefined ? patch.executedAt : current.executed_at;
+  // 计划参数可能包含用户明确要求写入的 secret,必须保留给后续执行;
+  // 对外读取统一经过路由层脱敏,执行结果与审计结果仍在这里脱敏。
+  const planJson = patch.planJson !== undefined ? JSON.stringify(patch.planJson) : current.plan_json;
+  const progressStage = patch.progressStage !== undefined ? String(patch.progressStage || '') : current.progress_stage;
+  const progressPercent = patch.progressPercent !== undefined ? Number(patch.progressPercent) : current.progress_percent;
+  const currentStepIndex = patch.currentStepIndex !== undefined ? Number(patch.currentStepIndex) : current.current_step_index;
+  const updatedAt = patch.updatedAt !== undefined ? patch.updatedAt : current.updated_at;
   db.prepare(`
     UPDATE agent_plans
-    SET status = ?, result_json = ?, executed_at = ?
+    SET status = ?, result_json = ?, executed_at = ?, plan_json = ?,
+        progress_stage = ?, progress_percent = ?, current_step_index = ?, updated_at = ?
     WHERE id = ?
-  `).run(status, resultJson, executedAt, planId);
+  `).run(status, resultJson, executedAt, planJson, progressStage, progressPercent, currentStepIndex, updatedAt, planId);
   return getAgentPlan(planId);
 }
 
@@ -329,24 +356,29 @@ export function recordAgentExecution(planId, toolName, params, status = 'pending
   const execId = `exec-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
   db.prepare(
     'INSERT INTO agent_executions(id, plan_id, tool_name, parameters, status) VALUES(?, ?, ?, ?, ?)'
-  ).run(execId, planId, String(toolName || ''), JSON.stringify(params || {}), String(status || 'pending'));
+  ).run(execId, planId, String(toolName || ''), JSON.stringify(redactValue(params || {})), String(status || 'pending'));
+  db.prepare('UPDATE agent_executions SET parameters_hash = ? WHERE id = ?')
+    .run(createHash('sha256').update(JSON.stringify(params || {})).digest('hex'), execId);
   return execId;
 }
 
-export function updateAgentExecution(execId, { status, result, error, durationMs, confirmedBy, confirmedAt } = {}) {
+export function updateAgentExecution(execId, { status, result, error, durationMs, confirmedBy, confirmedAt, confirmationStatus, parametersHash } = {}) {
   const current = db.prepare('SELECT * FROM agent_executions WHERE id = ?').get(execId);
   if (!current) return null;
   const nextStatus = status !== undefined ? String(status) : current.status;
-  const nextResult = result !== undefined ? JSON.stringify(result) : current.result;
-  const nextError = error !== undefined ? String(error) : current.error;
+  const nextResult = result !== undefined ? JSON.stringify(redactValue(result)) : current.result;
+  const nextError = error !== undefined ? redactValue(String(error)) : current.error;
   const nextDuration = durationMs !== undefined ? Number(durationMs) : current.duration_ms;
   const nextConfirmedBy = confirmedBy !== undefined ? confirmedBy : current.confirmed_by;
   const nextConfirmedAt = confirmedAt !== undefined ? confirmedAt : current.confirmed_at;
+  const nextConfirmationStatus = confirmationStatus !== undefined ? String(confirmationStatus) : current.confirmation_status;
+  const nextParametersHash = parametersHash !== undefined ? String(parametersHash) : current.parameters_hash;
   db.prepare(`
     UPDATE agent_executions
-    SET status = ?, result = ?, error = ?, duration_ms = ?, confirmed_by = ?, confirmed_at = ?
+    SET status = ?, result = ?, error = ?, duration_ms = ?, confirmed_by = ?, confirmed_at = ?,
+        confirmation_status = ?, parameters_hash = ?
     WHERE id = ?
-  `).run(nextStatus, nextResult, nextError, nextDuration, nextConfirmedBy, nextConfirmedAt, execId);
+  `).run(nextStatus, nextResult, nextError, nextDuration, nextConfirmedBy, nextConfirmedAt, nextConfirmationStatus, nextParametersHash, execId);
   return db.prepare('SELECT * FROM agent_executions WHERE id = ?').get(execId);
 }
 

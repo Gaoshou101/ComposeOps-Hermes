@@ -13,6 +13,13 @@ import { getActivityDocker } from './docker-hosts.js';
 
 /** 工具分类定义 */
 export const TOOL_CATEGORIES = {
+  context: {
+    label: '上下文与资料',
+    description: '发现已纳管项目和可选的联网资料检索',
+    icon: 'globe',
+    risk: 'low',
+    tools: ['project.list_managed', 'web.search']
+  },
   lifecycle: {
     label: '生命周期管理',
     description: '容器和服务的启停、重启、扩缩容',
@@ -25,7 +32,7 @@ export const TOOL_CATEGORIES = {
     description: 'Compose 配置文件的编辑、校验、回滚',
     icon: 'file-edit',
     risk: 'high',
-    tools: ['config.edit', 'config.validate', 'config.preview', 'config.rollback', 'config.diff'],
+    tools: ['config.propose', 'config.edit', 'config.validate', 'config.preview', 'config.rollback', 'config.diff'],
     requires: ['lifecycle.stopped'] // 约束：修改配置前需要先停止服务
   },
   diagnostic: {
@@ -210,7 +217,7 @@ const POSTCONDITIONS = {
   'compose.scale': [
     {
       check: async (params, result, context) => {
-        if (!params.replicas) return true;
+        if (params.replicas === undefined || params.replicas === null) return true;
         
         // 验证实际副本数是否符合预期
         const project = await findProject(context.projectId);
@@ -258,9 +265,11 @@ const POSTCONDITIONS = {
         const project = await findProject(context.projectId);
         if (!project) return false;
         
-        const { readCompose } = await import('./compose-runner.js');
-        const content = await readCompose(project);
-        const validation = await validateComposeSemantics(content);
+        const content = project.mounted
+          ? (await import('./compose-runner.js')).readCompose(project)
+          : (await import('./compose-workspace.js')).readWorkspaceCompose(project);
+        const compose = await content;
+        const validation = await validateComposeSemantics(compose.content);
         
         return validation.valid;
       },
@@ -288,11 +297,11 @@ export const MACRO_TOOLS = {
       }
     },
     steps: [
-      { tool: 'backup.trigger', params: { type: 'config' } },
-      { tool: 'compose.stop', params: {} },
-      { tool: 'config.validate', params: {} },
-      { tool: 'compose.up', params: { detach: true } },
-      { tool: 'diagnostic.probe', params: { command: 'ps aux', maxWaitSeconds: 10 }, condition: (ctx) => ctx.healthCheck !== false }
+      { tool: 'backup.trigger', params: (ctx) => ({ projectId: ctx.projectId }) },
+      { tool: 'compose.stop', params: (ctx) => ({ projectId: ctx.projectId }) },
+      { tool: 'config.validate', params: (ctx) => ({ projectId: ctx.projectId }) },
+      { tool: 'compose.up', params: (ctx) => ({ projectId: ctx.projectId }) },
+      { tool: 'diagnostic.probe', params: (ctx) => ({ projectId: ctx.projectId, containerId: ctx.containerId, command: 'ps aux' }), condition: (ctx) => ctx.healthCheck !== false && !!ctx.containerId }
     ]
   },
   'macro.config_update': {
@@ -306,16 +315,18 @@ export const MACRO_TOOLS = {
       type: 'object',
       properties: {
         projectId: { type: 'string', description: '项目 ID' },
-        patch: { type: 'object', description: 'YAML 补丁对象' }
+        path: { type: 'string', description: 'YAML 点路径' },
+        value: { type: 'string', description: '新值' },
+        action: { type: 'string', enum: ['set', 'unset', 'append'], description: '编辑动作' }
       },
-      required: ['patch']
+      required: ['path', 'action']
     },
     steps: [
-      { tool: 'backup.trigger', params: { type: 'config' } },
-      { tool: 'config.validate', params: {} },
-      { tool: 'config.edit', params: (ctx) => ({ patch: ctx.patch }) },
-      { tool: 'config.validate', params: {} },
-      { tool: 'compose.restart', params: {} }
+      { tool: 'backup.trigger', params: (ctx) => ({ projectId: ctx.projectId }) },
+      { tool: 'config.validate', params: (ctx) => ({ projectId: ctx.projectId }) },
+      { tool: 'config.edit', params: (ctx) => ({ projectId: ctx.projectId, path: ctx.path, value: ctx.value, action: ctx.action }) },
+      { tool: 'config.validate', params: (ctx) => ({ projectId: ctx.projectId }) },
+      { tool: 'compose.restart', params: (ctx) => ({ projectId: ctx.projectId }) }
     ]
   },
   'macro.emergency_rollback': {
@@ -332,10 +343,10 @@ export const MACRO_TOOLS = {
       }
     },
     steps: [
-      { tool: 'compose.stop', params: {} },
-      { tool: 'config.rollback', params: {} },
-      { tool: 'compose.up', params: { detach: true } },
-      { tool: 'compose.logs', params: { tail: 50 } }
+      { tool: 'compose.stop', params: (ctx) => ({ projectId: ctx.projectId }) },
+      { tool: 'config.rollback', params: (ctx) => ({ projectId: ctx.projectId }) },
+      { tool: 'compose.up', params: (ctx) => ({ projectId: ctx.projectId }) },
+      { tool: 'compose.logs', params: (ctx) => ({ projectId: ctx.projectId, tail: 50 }) }
     ]
   },
   'macro.full_cleanup': {
@@ -348,14 +359,13 @@ export const MACRO_TOOLS = {
     parameters: {
       type: 'object',
       properties: {
-        includVolumes: { type: 'boolean', description: '是否清理卷（危险）', default: false }
+        includeVolumes: { type: 'boolean', description: '是否清理卷（危险）', default: false }
       }
     },
     steps: [
-      { tool: 'compose.stop', params: {} },
-      { tool: 'maintenance.clean', params: { target: 'images' } },
-      { tool: 'maintenance.clean', params: { target: 'volumes' }, condition: (ctx) => ctx.includeVolumes === true },
-      { tool: 'maintenance.clean', params: { target: 'networks' } }
+      { tool: 'maintenance.clean', params: { scope: 'images' } },
+      { tool: 'maintenance.clean', params: { scope: 'volumes' }, condition: (ctx) => ctx.includeVolumes === true },
+      { tool: 'maintenance.clean', params: { scope: 'networks' } }
     ]
   }
 };

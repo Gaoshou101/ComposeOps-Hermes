@@ -12,10 +12,12 @@ import {
   listAgentFeedback,
   listPerformanceBaselines,
   recordAgentFeedback,
+  updateAgentPlan,
 } from '../lib/db.js';
 import { getAgent } from '../services/agent.js';
 import { generateSmartSuggestions } from '../services/agent-suggestions.js';
 import { agentStep, idField, limitField, numericId } from '../lib/schemas.js';
+import { redactRows, redactValue } from '../lib/redaction.js';
 
 export default async function agentRoutes(fastify) {
   // ===== Agent 编排端点 =====
@@ -61,7 +63,7 @@ export default async function agentRoutes(fastify) {
     const agent = getAgent();
     const plan = await agent.plan(message, { projectId, containerId, sessionId, role });
     const planId = agent.persistPlan(sessionId, message, plan, { projectId, containerId });
-    return { planId, plan, thoughts: agent.thoughts };
+    return { planId, plan: redactValue(plan), thoughts: redactRows(plan.thoughts || []) };
   });
 
   // POST /api/v1/ai/agent/execute —— 执行已规划或自定义步骤
@@ -79,7 +81,7 @@ export default async function agentRoutes(fastify) {
       },
     },
   }, async (request, reply) => {
-    const { planId, steps, sessionId } = request.body || {};
+    const { planId, steps } = request.body || {};
     const agent = getAgent();
     if (!planId) {
       return reply.code(400).send({ error: 'missing_plan_id', message: '缺少 planId' });
@@ -88,20 +90,23 @@ export default async function agentRoutes(fastify) {
     if (!plan) {
       return reply.code(404).send({ error: 'plan_not_found', message: '执行计划不存在' });
     }
-    if (!Array.isArray(steps) || !steps.length) {
-      return reply.code(400).send({ error: 'missing_steps', message: '缺少执行步骤' });
+    if (plan.status === 'executing') {
+      return reply.code(409).send({ error: 'plan_in_progress', message: '该计划正在执行' });
     }
-    const result = await agent.executeWorkflow(planId, steps, { 
-      sessionId, 
+    const prepared = agent.prepareExecutionSteps(plan, steps);
+    updateAgentPlan(planId, { planJson: prepared.planJson });
+    const result = await agent.executeWorkflow(planId, prepared.steps, {
+      sessionId: plan.session_id,
       projectId: plan.project_id, 
-      containerId: plan.container_id 
+      containerId: plan.container_id,
+      role: prepared.planJson.role || 'planner',
     });
 
     // Phase 1 增强:返回细粒度执行状态
     const updatedPlan = getAgentPlan(planId);
     return {
-      ...result,
-      thoughts: agent.thoughts,
+      ...redactValue(result),
+      thoughts: result.thoughts || [],
       progress: {
         stage: updatedPlan.progress_stage || null,
         percent: updatedPlan.progress_percent || 0,
@@ -133,7 +138,7 @@ export default async function agentRoutes(fastify) {
     }
     const agent = getAgent();
     const result = await agent.executeTool(tool, params || {}, {});
-    return { ...result, thoughts: agent.thoughts };
+    return { ...result, thoughts: result.thoughts || [] };
   });
 
   // GET /api/v1/ai/agent/executions —— 执行历史
@@ -149,9 +154,9 @@ export default async function agentRoutes(fastify) {
   }, async (request) => {
     const planId = request.query?.planId;
     if (planId) {
-      return { plan: getAgentPlan(planId), executions: listAgentExecutions(planId, request.query?.limit) };
+      return { plan: redactValue(getAgentPlan(planId)), executions: redactRows(listAgentExecutions(planId, request.query?.limit)) };
     }
-    return { plans: listAgentPlans(request.query?.limit), executions: listAgentExecutions(null, request.query?.limit) };
+    return { plans: redactRows(listAgentPlans(request.query?.limit)), executions: redactRows(listAgentExecutions(null, request.query?.limit)) };
   });
 
   // GET /api/v1/ai/agent/feedback —— 用户反馈列表(反馈循环)
@@ -206,8 +211,8 @@ export default async function agentRoutes(fastify) {
     schema: { querystring: { type: 'object', properties: { limit: limitField(500) } } },
   }, async (request) => ({
     exportedAt: new Date().toISOString(),
-    plans: listAgentPlans(request.query?.limit || 100),
-    executions: listAgentExecutions(null, request.query?.limit || 500),
+    plans: redactRows(listAgentPlans(request.query?.limit || 100)),
+    executions: redactRows(listAgentExecutions(null, request.query?.limit || 500)),
     feedback: listAgentFeedback(request.query?.limit || 200),
     baselines: listPerformanceBaselines(request.query?.limit || 100),
   }));
@@ -225,11 +230,25 @@ export default async function agentRoutes(fastify) {
           containerId: idField,
           sessionId: numericId,
           role: { type: 'string', maxLength: 32 },
+          webSearchEnabled: { type: 'boolean' },
+          history: {
+            type: 'array',
+            maxItems: 12,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['role', 'content'],
+              properties: {
+                role: { type: 'string', enum: ['user', 'assistant'] },
+                content: { type: 'string', maxLength: 12000 },
+              },
+            },
+          },
         },
       },
     },
   }, async (request, reply) => {
-    const { message, projectId, containerId, sessionId, role } = request.body || {};
+    const { message, projectId, containerId, sessionId, role, webSearchEnabled = false, history = [] } = request.body || {};
     if (!message || !String(message).trim()) {
       return reply.code(400).send({ error: 'missing_message', message: '缺少 message' });
     }
@@ -244,11 +263,11 @@ export default async function agentRoutes(fastify) {
 
     const send = (event) => {
       if (reply.raw.destroyed || reply.raw.writableEnded) return;
-      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+      reply.raw.write(`data: ${JSON.stringify(redactValue(event))}\n\n`);
     };
 
     const agent = getAgent();
-    const context = { projectId, containerId, sessionId, role };
+    const context = { projectId, containerId, sessionId, role, webSearchEnabled, history };
 
     // 客户端断开时中断执行
     const abortController = new AbortController();
@@ -263,7 +282,6 @@ export default async function agentRoutes(fastify) {
     try {
       // 调用 executeWithLoop,事件通过 onEvent 回调推送
       await agent.executeWithLoop(message, context, send, abortController.signal);
-      send({ type: 'done' });
     } catch (error) {
       if (error.name === 'AbortError') {
         send({ type: 'interrupted', content: '执行已被用户中断' });
