@@ -1,42 +1,9 @@
 <template>
   <div class="interactive-chart-wrapper" ref="wrapperRef">
-    <!-- Chart Toolbar -->
-    <div class="chart-toolbar">
-      <div class="chart-controls">
-        <button v-for="type in chartTypes" :key="type.key"
-                @click="chartType = type.key"
-                :class="['chart-type-btn', chartType === type.key && 'active']"
-                :title="type.label">
-          <component :is="type.icon" class="w-4 h-4" />
-        </button>
-        
-        <!-- Export button with dropdown -->
-        <div class="export-dropdown" ref="exportDropdownRef">
-          <button @click="toggleExportMenu"
-                  class="chart-type-btn export-btn"
-                  title="导出数据">
-            <Download class="w-4 h-4" />
-          </button>
-          <div v-if="showExportMenu" class="export-menu">
-            <button @click="exportToCSV" class="export-menu-item">
-              <span class="export-icon">📄</span>
-              <span>导出 CSV</span>
-            </button>
-            <button @click="exportToPNG" class="export-menu-item">
-              <span class="export-icon">🖼️</span>
-              <span>导出 PNG</span>
-            </button>
-          </div>
-        </div>
-      </div>
-      <div class="chart-stats">
-        <span class="stat-item">最小: <strong>{{ stats.min }}</strong></span>
-        <span class="stat-item">平均: <strong>{{ stats.avg }}</strong></span>
-        <span class="stat-item">最大: <strong>{{ stats.max }}</strong></span>
-        <span class="stat-item current">当前: <strong>{{ stats.current }}</strong></span>
-      </div>
-    </div>
-
+    <ChartToolbar v-model="chartType"
+                  :chart-types="chartTypes"
+                  :stats="stats"
+                  @export="handleExport" />
     <!-- Main Chart Canvas -->
     <div class="chart-canvas-wrapper" ref="canvasWrapper">
       <svg :viewBox="`0 0 ${width} ${height}`" class="chart-canvas"
@@ -180,27 +147,14 @@
               fill="#3B82F6" opacity="0.2" stroke="#3B82F6" stroke-width="1" />
       </svg>
 
-      <!-- Hover tooltip -->
-      <div v-if="hoverIndex !== null"
-           class="chart-tooltip"
-           :style="{ left: `${tooltipX}px`, top: `${tooltipY}px` }">
-        <template v-if="compareMode && visibleDatasets.length > 0">
-          <!-- Multi-metric tooltip -->
-          <div class="tooltip-time">{{ formatTime(visibleDatasets[0].visibleData[hoverIndex]?.timestamp) }}</div>
-          <div v-for="(dataset, idx) in visibleDatasets" :key="`tooltip-${idx}`"
-               v-if="dataset.visibleData[hoverIndex]"
-               class="tooltip-metric">
-            <span class="tooltip-metric-dot" :style="{ backgroundColor: dataset.color }"></span>
-            <span class="tooltip-metric-label">{{ dataset.label }}:</span>
-            <span class="tooltip-metric-value">{{ formatValue(dataset.visibleData[hoverIndex].value) }} {{ dataset.unit }}</span>
-          </div>
-        </template>
-        <template v-else-if="visiblePoints[hoverIndex]">
-          <!-- Single-metric tooltip -->
-          <div class="tooltip-time">{{ formatTime(visiblePoints[hoverIndex].timestamp) }}</div>
-          <div class="tooltip-value">{{ formatValue(visiblePoints[hoverIndex].value) }}</div>
-        </template>
-      </div>
+      <ChartTooltip :visible="hoverIndex !== null"
+                    :x="tooltipX"
+                    :y="tooltipY"
+                    :multi="compareMode && visibleDatasets.length > 0"
+                    :datasets="visibleDatasets"
+                    :hover-index="hoverIndex"
+                    :point="!compareMode ? visiblePoints[hoverIndex] : null"
+                    :unit="unit" />
     </div>
 
     <!-- Zoom controls -->
@@ -220,7 +174,10 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
-import { TrendingUp, BarChart3, Activity, ZoomIn, ZoomOut, Maximize2, Download } from 'lucide-vue-next';
+import { TrendingUp, BarChart3, Activity, ZoomIn, ZoomOut, Maximize2 } from 'lucide-vue-next';
+import ChartToolbar from './ChartToolbar.vue';
+import ChartTooltip from './ChartTooltip.vue';
+import { useChartExport } from './useChartExport.js';
 
 const props = defineProps({
   data: { type: Array, default: () => [] }, // [{ timestamp, value }]
@@ -242,8 +199,6 @@ const chartTypes = [
   { key: 'area', label: '面积图', icon: Activity },
   { key: 'bar', label: '柱状图', icon: BarChart3 },
 ];
-
-const emit = defineEmits(['export']);
 
 const chartType = ref('area');
 const padding = { top: 20, right: 20, bottom: 30, left: 50 };
@@ -271,10 +226,6 @@ const lastTouchCenter = ref(null);
 // Phase 2: Keyboard navigation
 const focusedPointIndex = ref(null);
 const keyboardEnabled = ref(false);
-
-// Export functionality
-const showExportMenu = ref(false);
-const exportDropdownRef = ref(null);
 
 const plotWidth = computed(() => props.width - padding.left - padding.right);
 const plotHeight = computed(() => props.height - padding.top - padding.bottom);
@@ -490,11 +441,6 @@ function formatValue(value) {
   return `${value.toFixed(1)}${props.unit}`;
 }
 
-function formatTime(timestamp) {
-  const date = new Date(timestamp);
-  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
 // Mouse interactions
 function onMouseMove(event) {
   if (visiblePoints.value.length === 0) return;
@@ -596,98 +542,6 @@ function resetZoom() {
   panOffset.value = 0;
 }
 
-// Export functions
-function toggleExportMenu() {
-  showExportMenu.value = !showExportMenu.value;
-}
-
-function exportToCSV() {
-  showExportMenu.value = false;
-  
-  let csvContent = '';
-  
-  if (props.compareMode && visibleDatasets.value.length > 0) {
-    // Multi-metric CSV
-    const headers = ['时间', ...visibleDatasets.value.map(ds => `${ds.label} (${ds.unit})`)];
-    csvContent = headers.join(',') + '\n';
-    
-    const maxLength = Math.max(...visibleDatasets.value.map(ds => ds.visibleData.length));
-    for (let i = 0; i < maxLength; i++) {
-      const row = [];
-      const timestamp = visibleDatasets.value[0]?.visibleData[i]?.timestamp;
-      row.push(timestamp ? new Date(timestamp).toLocaleString('zh-CN') : '');
-      
-      visibleDatasets.value.forEach(ds => {
-        const point = ds.visibleData[i];
-        row.push(point ? point.value.toFixed(2) : '');
-      });
-      
-      csvContent += row.join(',') + '\n';
-    }
-  } else {
-    // Single-metric CSV
-    csvContent = '时间,值\n';
-    visiblePoints.value.forEach(point => {
-      const time = new Date(point.timestamp).toLocaleString('zh-CN');
-      csvContent += `${time},${point.value.toFixed(2)}\n`;
-    });
-  }
-  
-  const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  link.setAttribute('href', url);
-  link.setAttribute('download', `chart-data-${Date.now()}.csv`);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
-function exportToPNG() {
-  showExportMenu.value = false;
-  
-  const svgElement = canvasWrapper.value?.querySelector('svg');
-  if (!svgElement) return;
-  
-  const svgData = new XMLSerializer().serializeToString(svgElement);
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  const img = new Image();
-  
-  canvas.width = props.width * 2;
-  canvas.height = props.height * 2;
-  
-  img.onload = () => {
-    ctx.fillStyle = '#0F131C';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    
-    canvas.toBlob(blob => {
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `chart-${Date.now()}.png`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    });
-  };
-  
-  const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-  const svgUrl = URL.createObjectURL(svgBlob);
-  img.src = svgUrl;
-}
-
-function handleClickOutside(event) {
-  if (exportDropdownRef.value && !exportDropdownRef.value.contains(event.target)) {
-    showExportMenu.value = false;
-  }
-}
-
 // Phase 2: Keyboard navigation
 function handleKeyDown(event) {
   if (!keyboardEnabled.value) return;
@@ -752,12 +606,25 @@ function enableKeyboardNav() {
   keyboardEnabled.value = true;
 }
 
+// ChartToolbar 的 @export 转发到 CSV/PNG 导出(依赖 visible* computed,故置于其定义之后)。
+const { exportToCSV, exportToPNG } = useChartExport();
+function handleExport(format) {
+  if (format === 'png') {
+    exportToPNG({ canvasWrapper, width: props.width, height: props.height });
+  } else {
+    exportToCSV({
+      compareMode: props.compareMode,
+      visibleDatasets: visibleDatasets.value,
+      visiblePoints: visiblePoints.value,
+    });
+  }
+}
+
 // Mount/unmount
 onMounted(() => {
   if (wrapperRef.value) {
     wrapperRef.value.addEventListener('mouseup', onMouseUp);
   }
-  document.addEventListener('click', handleClickOutside);
   document.addEventListener('keydown', handleKeyDown);
 });
 
@@ -765,7 +632,6 @@ onBeforeUnmount(() => {
   if (wrapperRef.value) {
     wrapperRef.value.removeEventListener('mouseup', onMouseUp);
   }
-  document.removeEventListener('click', handleClickOutside);
   document.removeEventListener('keydown', handleKeyDown);
 });
 
@@ -788,61 +654,6 @@ watch(() => props.data.length, () => {
   border-radius: 0.5rem;
   border: 1px solid #27272a;
   padding: 1rem;
-}
-
-.chart-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid #27272a;
-}
-
-.chart-controls {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.chart-type-btn {
-  padding: 0.5rem;
-  border-radius: 0.375rem;
-  background: #18181b;
-  border: 1px solid #27272a;
-  color: #a1a1aa;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.chart-type-btn:hover {
-  background: #27272a;
-  color: #e4e4e7;
-}
-
-.chart-type-btn.active {
-  background: #38BDF8;
-  border-color: #38BDF8;
-  color: #fff;
-}
-
-.chart-stats {
-  display: flex;
-  gap: 1.5rem;
-  font-size: 0.75rem;
-}
-
-.stat-item {
-  color: #71717a;
-}
-
-.stat-item strong {
-  color: #e4e4e7;
-  font-weight: 600;
-  margin-left: 0.25rem;
-}
-
-.stat-item.current strong {
-  color: #38BDF8;
 }
 
 .chart-canvas-wrapper {
@@ -892,54 +703,6 @@ watch(() => props.data.length, () => {
   filter: drop-shadow(0 0 4px currentColor);
 }
 
-.chart-tooltip {
-  position: absolute;
-  background: #18181b;
-  border: 1px solid #38BDF8;
-  border-radius: 0.375rem;
-  padding: 0.5rem 0.75rem;
-  pointer-events: none;
-  z-index: 10;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.tooltip-time {
-  font-size: 0.75rem;
-  color: #a1a1aa;
-  margin-bottom: 0.25rem;
-}
-
-.tooltip-value {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #38BDF8;
-}
-
-.tooltip-metric {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.25rem;
-  font-size: 0.875rem;
-}
-
-.tooltip-metric-dot {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.tooltip-metric-label {
-  color: #a1a1aa;
-  font-weight: 500;
-}
-
-.tooltip-metric-value {
-  color: #e4e4e7;
-  font-weight: 600;
-}
-
 .zoom-controls {
   position: absolute;
   top: 4.5rem;
@@ -963,53 +726,6 @@ watch(() => props.data.length, () => {
   background: #27272a;
   color: #e4e4e7;
   border-color: #38BDF8;
-}
-
-.export-dropdown {
-  position: relative;
-}
-
-.export-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.export-menu {
-  position: absolute;
-  top: calc(100% + 0.5rem);
-  left: 0;
-  min-width: 10rem;
-  background: #18181b;
-  border: 1px solid #27272a;
-  border-radius: 0.375rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 20;
-  overflow: hidden;
-}
-
-.export-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.75rem 1rem;
-  background: transparent;
-  border: none;
-  color: #e4e4e7;
-  font-size: 0.875rem;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.export-menu-item:hover {
-  background: #27272a;
-}
-
-.export-icon {
-  font-size: 1rem;
-  line-height: 1;
 }
 
 .keyboard-focus-ring {
