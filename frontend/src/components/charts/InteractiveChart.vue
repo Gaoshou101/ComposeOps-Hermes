@@ -59,40 +59,42 @@
 
         <!-- Phase 2: 多指标模式 -->
         <template v-if="compareMode && multiLinePaths.length > 0">
-          <!-- Multi-metric area charts -->
-          <path v-for="(areaData, idx) in multiAreaPaths" :key="`area-${idx}`"
-                v-if="chartType === 'area'"
-                :d="areaData.path"
-                :fill="`url(#${areaData.gradientId})`"
-                class="chart-area" />
+          <!-- 面积:chartType=area 时渲染多面积 -->
+          <template v-if="chartType === 'area'">
+            <path v-for="(areaData, idx) in multiAreaPaths" :key="`area-${idx}`"
+                  :d="areaData.path"
+                  :fill="`url(#${areaData.gradientId})`"
+                  class="chart-area" />
+          </template>
 
-          <!-- Multi-metric line charts -->
-          <path v-for="(lineData, idx) in multiLinePaths" :key="`line-${idx}`"
-                v-if="chartType === 'line' || chartType === 'area'"
-                :d="lineData.path"
-                fill="none"
-                :stroke="lineData.color"
-                stroke-width="2"
-                stroke-linejoin="round"
-                stroke-linecap="round"
-                class="chart-line" />
+          <!-- 折线:area 或 line 都叠线 -->
+          <template v-if="chartType === 'line' || chartType === 'area'">
+            <path v-for="(lineData, idx) in multiLinePaths" :key="`line-${idx}`"
+                  :d="lineData.path"
+                  fill="none"
+                  :stroke="lineData.color"
+                  stroke-width="2"
+                  stroke-linejoin="round"
+                  stroke-linecap="round"
+                  class="chart-line" />
+          </template>
 
           <!-- Multi-metric hover crosshair -->
           <g v-if="hoverIndex !== null" class="crosshair">
             <line :x1="getX(hoverIndex)" :y1="padding.top"
                   :x2="getX(hoverIndex)" :y2="height - padding.bottom"
                   class="crosshair-line" />
-            <circle v-for="(dataset, idx) in visibleDatasets" :key="`dot-${idx}`"
-                    v-if="dataset.visibleData[hoverIndex]"
+            <circle v-for="(dataset, idx) in hoveredDatasets" :key="`dot-${idx}`"
                     :cx="getX(hoverIndex)"
-                    :cy="getYForScale(dataset.visibleData[hoverIndex].value, yScales[idx])"
+                    :cy="getYForScale(dataset.visibleData[hoverIndex].value, yScales[visibleDatasets.indexOf(dataset)])"
                     r="4" :fill="dataset.color" class="crosshair-dot" />
             <!-- Keyboard focus indicators -->
-            <circle v-for="(dataset, idx) in visibleDatasets" :key="`focus-${idx}`"
-                    v-if="keyboardEnabled && focusedPointIndex === hoverIndex && dataset.visibleData[hoverIndex]"
-                    :cx="getX(hoverIndex)"
-                    :cy="getYForScale(dataset.visibleData[hoverIndex].value, yScales[idx])"
-                    r="8" fill="none" stroke="#38BDF8" stroke-width="2" class="keyboard-focus-ring" />
+            <template v-if="keyboardEnabled && focusedPointIndex === hoverIndex">
+              <circle v-for="(dataset, idx) in hoveredDatasets" :key="`focus-${idx}`"
+                      :cx="getX(hoverIndex)"
+                      :cy="getYForScale(dataset.visibleData[hoverIndex].value, yScales[visibleDatasets.indexOf(dataset)])"
+                      r="8" fill="none" stroke="#38BDF8" stroke-width="2" class="keyboard-focus-ring" />
+            </template>
           </g>
         </template>
 
@@ -267,6 +269,12 @@ const visibleDatasets = computed(() => {
       visibleData: dataset.data.slice(startIdx, endIdx),
     };
   });
+});
+
+// 多指标模式下 hoverIndex 处有点的 datasets(消除模板 v-for+v-if 混用)
+const hoveredDatasets = computed(() => {
+  if (hoverIndex.value === null) return [];
+  return visibleDatasets.value.filter((d) => d.visibleData?.[hoverIndex.value]);
 });
 
 // Statistics

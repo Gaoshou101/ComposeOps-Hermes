@@ -58,9 +58,10 @@ describe('BatchConfirmModal', () => {
       await wrapper.vm.$nextTick();
       const checkbox = wrapper.find('#select-all');
       await checkbox.setValue(true);
-      
-      expect(steps[0].confirmed).toBe(true);
-      expect(steps[1].confirmed).toBe(true);
+      await wrapper.vm.$nextTick();
+
+      // 组件不再突变传入 props:全选作用于本地副本,父级源数组不被污染
+      expect(wrapper.vm.localSteps.every((s) => s.confirmed)).toBe(true);
       expect(wrapper.vm.allChecked).toBe(true);
       wrapper.unmount();
     });
@@ -110,15 +111,16 @@ describe('BatchConfirmModal', () => {
       wrapper.unmount();
     });
 
-    it('编辑完成后更新步骤参数', () => {
+    it('编辑完成后更新本地步骤参数(不污染父 props)', () => {
       const steps = [{ tool: 'compose.restart', params: { service: 'web' }, confirmed: false }];
       const wrapper = mount(BatchConfirmModal, mountOptions({ show: true, steps }));
-      
+
       wrapper.vm.editingIdx = 0;
       wrapper.vm.paramsText = JSON.stringify({ service: 'api', replicas: 2 }, null, 2);
       wrapper.vm.closeEdit();
-      
-      expect(steps[0].params).toEqual({ service: 'api', replicas: 2 });
+
+      expect(steps[0].params).toEqual({ service: 'web' }); // 父级不被改
+      expect(wrapper.vm.localSteps[0].params).toEqual({ service: 'api', replicas: 2 });
       wrapper.unmount();
     });
   });

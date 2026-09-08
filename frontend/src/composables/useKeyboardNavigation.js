@@ -33,15 +33,12 @@ export function useKeyboardNavigation({ enabled, onCheatSheet, getProjectIds, on
     const ids = getProjectIds();
     if (!ids.length) return null;
     const index = ids.indexOf(selected);
-    let next = index;
-    if (key === 'j' || key === 'ArrowDown' || key === 'k' || key === 'ArrowUp') {
-      next = key === 'j' || key === 'ArrowDown' ? Math.min(index + 1, ids.length - 1) : Math.max(index - 1, 0);
-    } else {
-      return null;
-    }
-    // 初始化:默认选中第一个
-    if (index < 0) next = 0;
-    selected = ids[next] || '';
+    if (key !== 'j' && key !== 'ArrowDown' && key !== 'k' && key !== 'ArrowUp') return null;
+    // 初始化(未选中任何项目)默认选中第一个;j/↓ 下移,k/↑ 上移
+    const targetIndex = index < 0 ? 0 : key === 'j' || key === 'ArrowDown'
+      ? Math.min(index + 1, ids.length - 1)
+      : Math.max(index - 1, 0);
+    selected = ids[targetIndex] || '';
     return selected;
   }
 

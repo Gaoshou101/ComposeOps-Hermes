@@ -108,7 +108,7 @@ import { useEscapeKey } from '../../composables/useEscapeKey.js';
 const props = defineProps({
   project: { type: Object, required: true },
 });
-const emit = defineEmits(['close', 'refresh']);
+const emit = defineEmits(['close', 'refresh', 'apply']);
 
 const toast = useToastStore();
 const loading = ref(false);

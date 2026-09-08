@@ -1,13 +1,15 @@
+/**
+ * ChartTooltip.vue —— 悬浮提示(单指标 / 多指标)。
+ * 从 InteractiveChart.vue 拆分。
+ */
 <template>
   <div v-if="visible"
        class="chart-tooltip"
        :style="{ left: `${x}px`, top: `${y}px` }">
-    <template v-if="multi && datasets.length > 0">
-      <div class="tooltip-time">{{ formatTime(datasets[0].visibleData[hoverIndex]?.timestamp) }}</div>
-      <div v-for="(dataset, idx) in datasets" :key="`tooltip-${idx}`"
-           v-if="dataset.visibleData[hoverIndex]"
-           class="tooltip-metric">
-        <span class="tooltip-metric-dot" :style="{ backgroundColor: dataset.color }"></span>
+    <template v-if="multi && visibleRows.length > 0">
+      <div class="tooltip-time">{{ formatTime(visibleRows[0].visibleData[hoverIndex]?.timestamp) }}</div>
+      <div v-for="(dataset, idx) in visibleRows" :key="`tooltip-${idx}`" class="tooltip-metric">
+        <span class="tooltip-metric-dot" :style="{ backgroundColor: dataset.color }" />
         <span class="tooltip-metric-label">{{ dataset.label }}:</span>
         <span class="tooltip-metric-value">{{ formatValue(dataset.visibleData[hoverIndex].value) }} {{ dataset.unit }}</span>
       </div>
@@ -20,7 +22,9 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue';
+
+const props = defineProps({
   visible: { type: Boolean, default: false },
   x: { type: Number, default: 0 },
   y: { type: Number, default: 0 },
@@ -31,9 +35,14 @@ defineProps({
   unit: { type: String, default: '' },
 });
 
+/** 当前可见的 tooltip 行:筛掉 hoverIndex 无数据的 dataset,消除 v-for+v-if 混用。 */
+const visibleRows = computed(() =>
+  (props.datasets || []).filter((d) => d.visibleData?.[props.hoverIndex]),
+);
+
 function formatValue(value) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-';
-  return `${value.toFixed(1)}${unit}`;
+  return `${value.toFixed(1)}${props.unit}`;
 }
 function formatTime(timestamp) {
   const date = new Date(timestamp);

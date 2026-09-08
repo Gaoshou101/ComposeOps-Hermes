@@ -1,203 +1,3 @@
-<script setup>
-import { ref, onMounted } from 'vue';
-import { useToastStore } from '../stores/toast.js';
-
-const toast = useToastStore();
-
-function showNotification(type, title, message) {
-  const text = message ? `${title}: ${message}` : title;
-  toast[type](text);
-}
-
-const repos = ref([]);
-const loading = ref(false);
-const showAddModal = ref(false);
-const showEditModal = ref(false);
-const showHistoryModal = ref(false);
-const currentRepo = ref(null);
-const commitHistory = ref([]);
-
-const formData = ref({
-  name: '',
-  url: '',
-  branch: 'main',
-  localPath: '',
-  projectId: '',
-  autoSync: false,
-  sshKey: '',
-});
-
-const projects = ref([]);
-
-async function loadProjects() {
-  try {
-    const res = await fetch('/api/v1/projects');
-    if (!res.ok) throw new Error('Failed to load projects');
-    const data = await res.json();
-    projects.value = data.projects || [];
-  } catch (err) {
-    showNotification('error', '加载项目列表失败', err.message);
-  }
-}
-
-async function loadRepos() {
-  loading.value = true;
-  try {
-    const res = await fetch('/api/v1/gitops');
-    if (!res.ok) throw new Error('Failed to load repositories');
-    const data = await res.json();
-    repos.value = data.repositories || [];
-  } catch (err) {
-    showNotification('error', '加载仓库列表失败', err.message);
-  } finally {
-    loading.value = false;
-  }
-}
-
-function openAddModal() {
-  formData.value = {
-    name: '',
-    url: '',
-    branch: 'main',
-    localPath: '',
-    projectId: '',
-    autoSync: false,
-    sshKey: '',
-  };
-  showAddModal.value = true;
-}
-
-function openEditModal(repo) {
-  currentRepo.value = repo;
-  formData.value = { ...repo };
-  showEditModal.value = true;
-}
-
-async function addRepo() {
-  try {
-    const res = await fetch('/api/v1/gitops', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData.value),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || 'Failed to add repository');
-    }
-    showNotification('success', '仓库添加成功');
-    showAddModal.value = false;
-    await loadRepos();
-  } catch (err) {
-    showNotification('error', '添加仓库失败', err.message);
-  }
-}
-
-async function updateRepo() {
-  try {
-    const res = await fetch(`/api/v1/gitops/${currentRepo.value.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData.value),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || 'Failed to update repository');
-    }
-    showNotification('success', '仓库更新成功');
-    showEditModal.value = false;
-    await loadRepos();
-  } catch (err) {
-    showNotification('error', '更新仓库失败', err.message);
-  }
-}
-
-async function deleteRepo(id) {
-  if (!confirm('确定要删除此仓库吗？这不会删除本地文件，只会移除 GitOps 配置。')) return;
-  try {
-    const res = await fetch(`/api/v1/gitops/${id}`, { method: 'DELETE' });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || 'Failed to delete repository');
-    }
-    showNotification('success', '仓库删除成功');
-    await loadRepos();
-  } catch (err) {
-    showNotification('error', '删除仓库失败', err.message);
-  }
-}
-
-async function syncRepo(id) {
-  try {
-    const res = await fetch(`/api/v1/gitops/${id}/sync`, { method: 'POST' });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || 'Failed to sync repository');
-    }
-    const data = await res.json();
-    showNotification('success', data.hasChanges ? '同步成功，发现新提交' : '同步成功，无新提交');
-    await loadRepos();
-  } catch (err) {
-    showNotification('error', '同步失败', err.message);
-  }
-}
-
-async function loadHistory(id) {
-  currentRepo.value = repos.value.find(r => r.id === id);
-  try {
-    const res = await fetch(`/api/v1/gitops/${id}/history?limit=50`);
-    if (!res.ok) throw new Error('Failed to load history');
-    const data = await res.json();
-    commitHistory.value = data.commits || [];
-    showHistoryModal.value = true;
-  } catch (err) {
-    showNotification('error', '加载历史失败', err.message);
-  }
-}
-
-async function rollback(commitHash) {
-  if (!confirm(`确定要回滚到提交 ${commitHash.substring(0, 7)} 吗？这会重置仓库到此版本。`)) return;
-  try {
-    const res = await fetch(`/api/v1/gitops/${currentRepo.value.id}/rollback`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ commitHash }),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || 'Failed to rollback');
-    }
-    showNotification('success', '回滚成功');
-    showHistoryModal.value = false;
-    await loadRepos();
-  } catch (err) {
-    showNotification('error', '回滚失败', err.message);
-  }
-}
-
-function getStatusColor(status) {
-  const colors = {
-    synced: 'text-emerald-400',
-    pending: 'text-amber-400',
-    error: 'text-rose-400',
-  };
-  return colors[status] || 'text-slate-400';
-}
-
-function getStatusLabel(status) {
-  const labels = {
-    synced: '已同步',
-    pending: '待同步',
-    error: '错误',
-  };
-  return labels[status] || '未知';
-}
-
-onMounted(() => {
-  loadProjects();
-  loadRepos();
-});
-</script>
-
 <template>
   <div class="h-full flex flex-col bg-[#05070C]">
     <!-- GITOPS_HEADER_MARKER -->
@@ -471,6 +271,206 @@ onMounted(() => {
     </div>
   </div>
 </template>
+
+<script setup>
+import { ref, onMounted } from 'vue';
+import { useToastStore } from '../stores/toast.js';
+
+const toast = useToastStore();
+
+function showNotification(type, title, message) {
+  const text = message ? `${title}: ${message}` : title;
+  toast[type](text);
+}
+
+const repos = ref([]);
+const loading = ref(false);
+const showAddModal = ref(false);
+const showEditModal = ref(false);
+const showHistoryModal = ref(false);
+const currentRepo = ref(null);
+const commitHistory = ref([]);
+
+const formData = ref({
+  name: '',
+  url: '',
+  branch: 'main',
+  localPath: '',
+  projectId: '',
+  autoSync: false,
+  sshKey: '',
+});
+
+const projects = ref([]);
+
+async function loadProjects() {
+  try {
+    const res = await fetch('/api/v1/projects');
+    if (!res.ok) throw new Error('Failed to load projects');
+    const data = await res.json();
+    projects.value = data.projects || [];
+  } catch (err) {
+    showNotification('error', '加载项目列表失败', err.message);
+  }
+}
+
+async function loadRepos() {
+  loading.value = true;
+  try {
+    const res = await fetch('/api/v1/gitops');
+    if (!res.ok) throw new Error('Failed to load repositories');
+    const data = await res.json();
+    repos.value = data.repositories || [];
+  } catch (err) {
+    showNotification('error', '加载仓库列表失败', err.message);
+  } finally {
+    loading.value = false;
+  }
+}
+
+function openAddModal() {
+  formData.value = {
+    name: '',
+    url: '',
+    branch: 'main',
+    localPath: '',
+    projectId: '',
+    autoSync: false,
+    sshKey: '',
+  };
+  showAddModal.value = true;
+}
+
+function openEditModal(repo) {
+  currentRepo.value = repo;
+  formData.value = { ...repo };
+  showEditModal.value = true;
+}
+
+async function addRepo() {
+  try {
+    const res = await fetch('/api/v1/gitops', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData.value),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Failed to add repository');
+    }
+    showNotification('success', '仓库添加成功');
+    showAddModal.value = false;
+    await loadRepos();
+  } catch (err) {
+    showNotification('error', '添加仓库失败', err.message);
+  }
+}
+
+async function updateRepo() {
+  try {
+    const res = await fetch(`/api/v1/gitops/${currentRepo.value.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData.value),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Failed to update repository');
+    }
+    showNotification('success', '仓库更新成功');
+    showEditModal.value = false;
+    await loadRepos();
+  } catch (err) {
+    showNotification('error', '更新仓库失败', err.message);
+  }
+}
+
+async function deleteRepo(id) {
+  if (!confirm('确定要删除此仓库吗？这不会删除本地文件，只会移除 GitOps 配置。')) return;
+  try {
+    const res = await fetch(`/api/v1/gitops/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Failed to delete repository');
+    }
+    showNotification('success', '仓库删除成功');
+    await loadRepos();
+  } catch (err) {
+    showNotification('error', '删除仓库失败', err.message);
+  }
+}
+
+async function syncRepo(id) {
+  try {
+    const res = await fetch(`/api/v1/gitops/${id}/sync`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Failed to sync repository');
+    }
+    const data = await res.json();
+    showNotification('success', data.hasChanges ? '同步成功，发现新提交' : '同步成功，无新提交');
+    await loadRepos();
+  } catch (err) {
+    showNotification('error', '同步失败', err.message);
+  }
+}
+
+async function loadHistory(id) {
+  currentRepo.value = repos.value.find(r => r.id === id);
+  try {
+    const res = await fetch(`/api/v1/gitops/${id}/history?limit=50`);
+    if (!res.ok) throw new Error('Failed to load history');
+    const data = await res.json();
+    commitHistory.value = data.commits || [];
+    showHistoryModal.value = true;
+  } catch (err) {
+    showNotification('error', '加载历史失败', err.message);
+  }
+}
+
+async function rollback(commitHash) {
+  if (!confirm(`确定要回滚到提交 ${commitHash.substring(0, 7)} 吗？这会重置仓库到此版本。`)) return;
+  try {
+    const res = await fetch(`/api/v1/gitops/${currentRepo.value.id}/rollback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ commitHash }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || 'Failed to rollback');
+    }
+    showNotification('success', '回滚成功');
+    showHistoryModal.value = false;
+    await loadRepos();
+  } catch (err) {
+    showNotification('error', '回滚失败', err.message);
+  }
+}
+
+function getStatusColor(status) {
+  const colors = {
+    synced: 'text-emerald-400',
+    pending: 'text-amber-400',
+    error: 'text-rose-400',
+  };
+  return colors[status] || 'text-slate-400';
+}
+
+function getStatusLabel(status) {
+  const labels = {
+    synced: '已同步',
+    pending: '待同步',
+    error: '错误',
+  };
+  return labels[status] || '未知';
+}
+
+onMounted(() => {
+  loadProjects();
+  loadRepos();
+});
+</script>
 
 <style scoped>
 input[type="checkbox"]:checked {

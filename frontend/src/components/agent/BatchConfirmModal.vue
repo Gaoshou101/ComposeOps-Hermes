@@ -12,12 +12,12 @@
 
     <div class="flex items-center gap-2 border-b border-zinc-800 pb-2">
       <input id="select-all" type="checkbox" :checked="allChecked" class="checkbox" @change="toggleAll" />
-      <label for="select-all" class="cursor-pointer text-xs sm:text-sm font-medium text-zinc-300">全选 ({{ confirmedCount }} / {{ steps.length }})</label>
+      <label for="select-all" class="cursor-pointer text-xs sm:text-sm font-medium text-zinc-300">全选 ({{ confirmedCount }} / {{ localSteps.length }})</label>
     </div>
 
     <div class="space-y-2">
       <div
-        v-for="(step, idx) in steps"
+        v-for="(step, idx) in localSteps"
         :key="idx"
         class="rounded-lg border border-zinc-800 bg-zinc-950/40 p-2.5 transition-colors sm:p-3"
         :class="{ 'border-cyan-800/60 bg-cyan-950/20': step.confirmed }"
@@ -70,16 +70,25 @@ const props = defineProps({
 
 const emit = defineEmits(['confirm', 'cancel']);
 
+// 在本地副本上编辑/确认,避免直接改 props.steps(vue/no-mutating-props)。
+// show 打开时从传入 steps 深拷贝一次;confirm 时把编辑结果随事件回传父组件。
+const localSteps = ref([]);
+
+watch(() => props.show, (show) => {
+  if (show) {
+    localSteps.value = (props.steps || []).map((s) => ({
+      ...s,
+      params: s.params ? JSON.parse(JSON.stringify(s.params)) : undefined,
+    }));
+  }
+}, { immediate: true });
+
 const editingIdx = ref(-1);
 const paramsText = ref('');
 
-watch(() => props.show, (show) => {
-  if (show) { editingIdx.value = -1; paramsText.value = ''; }
-});
-
-const confirmedCount = computed(() => props.steps.filter((s) => s.confirmed).length);
-const unconfirmedCount = computed(() => props.steps.length - confirmedCount.value);
-const allChecked = computed(() => props.steps.length > 0 && confirmedCount.value === props.steps.length);
+const confirmedCount = computed(() => localSteps.value.filter((s) => s.confirmed).length);
+const unconfirmedCount = computed(() => localSteps.value.length - confirmedCount.value);
+const allChecked = computed(() => localSteps.value.length > 0 && confirmedCount.value === localSteps.value.length);
 
 const parseError = computed(() => {
   if (editingIdx.value < 0) return '';
@@ -94,26 +103,26 @@ const parseError = computed(() => {
 
 function toggleAll(event) {
   const checked = event.target.checked;
-  props.steps.forEach((step) => (step.confirmed = checked));
+  localSteps.value.forEach((step) => (step.confirmed = checked));
 }
 
 function toggleEdit(idx) {
   if (editingIdx.value === idx) { closeEdit(); return; }
   editingIdx.value = idx;
-  paramsText.value = JSON.stringify(props.steps[idx]?.params ?? {}, null, 2);
+  paramsText.value = JSON.stringify(localSteps.value[idx]?.params ?? {}, null, 2);
 }
 
 function closeEdit() {
   // 解析失败时保留编辑现场,由确认按钮禁用兜底
   if (parseError.value) return;
-  props.steps[editingIdx.value].params = JSON.parse(paramsText.value);
+  localSteps.value[editingIdx.value].params = JSON.parse(paramsText.value);
   editingIdx.value = -1;
 }
 
 function confirmAll() {
   if (editingIdx.value >= 0) closeEdit();
   if (parseError.value) return;
-  emit('confirm', props.steps);
+  emit('confirm', localSteps.value);
 }
 
 function formatParams(params) {
