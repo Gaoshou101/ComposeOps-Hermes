@@ -79,6 +79,43 @@ async function saveProjectCompose(project, fileIndex, content, reason) {
 
 export function registerConfigTools(agent) {
   agent
+    .registerTool('config.inspect', {
+      description: '读取当前纳管项目的 Compose 配置摘要,用于与官方文档或联网资料逐项比对(敏感值脱敏)',
+      category: 'config',
+      requiredPermission: 'editable',
+      confirmationRequired: false,
+      requiresProject: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          projectId: { type: 'string', description: '项目 ID' },
+          fileIndex: { type: 'number', description: 'Compose 文件索引(默认 0)' },
+        },
+        required: ['projectId'],
+      },
+      execute: async (params, context) => {
+        const fileIndex = Number(params.fileIndex) || 0;
+        const content = await currentComposeContent(context.project, fileIndex);
+        const safeContent = redactText(content);
+        const doc = YAML.parseDocument(content);
+        const root = doc.toJSON() || {};
+        const services = Object.entries(root.services || {}).map(([name, service]) => ({
+          name,
+          image: service?.image || null,
+          build: service?.build ? true : false,
+          ports: Array.isArray(service?.ports) ? service.ports : [],
+          dependsOn: service?.depends_on ? Object.keys(service.depends_on) : [],
+        }));
+        return {
+          projectId: context.project.id,
+          fileIndex,
+          filePath: context.project.composeFiles?.[fileIndex] || null,
+          content: safeContent.slice(0, 120000),
+          services,
+          note: '这是当前本地纳管配置的脱敏快照,联网资料只能作为参考,两者一致性需按字段逐项判断',
+        };
+      },
+    })
     .registerTool('config.preview', {
       description: '预览 Compose 配置变更对运行容器的影响(diff/重启范围)',
       category: 'config',

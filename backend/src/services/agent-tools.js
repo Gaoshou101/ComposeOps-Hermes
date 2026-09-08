@@ -1,7 +1,7 @@
 /**
  * Agent 工具注册总入口。
  *
- * 31 个工具按域拆到 tools/ 下三个纯注册函数(registerComposeTools / registerConfigTools /
+ * Agent 工具按域拆到 tools/ 下纯注册函数(registerComposeTools / registerConfigTools /
  * registerMaintenanceTools),由本文件统一组装。拆分只搬运、不改任何工具体。
  *
  * 只读探测与容器日志读取统一走 ../lib/docker-exec.js(白名单单一事实来源)。
@@ -11,6 +11,7 @@ import { registerComposeTools } from './tools/compose-tools.js';
 import { registerConfigTools } from './tools/config-tools.js';
 import { registerMaintenanceTools } from './tools/maintenance-tools.js';
 import { registerContextTools } from './tools/context-tools.js';
+import { registerMemoryTools } from './tools/memory-tools.js';
 
 /** 工具风险等级:低/中/高/极高,前端据此决定确认强度。单一事实来源。 */
 export const RISK_LEVELS = {
@@ -54,5 +55,6 @@ export function registerAgentTools(agent) {
   registerConfigTools(agent);
   registerMaintenanceTools(agent);
   registerContextTools(agent);
+  registerMemoryTools(agent);
   return agent;
 }

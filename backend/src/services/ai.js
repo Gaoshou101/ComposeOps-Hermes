@@ -272,6 +272,36 @@ export async function searchWeb(query) {
   const q = String(query || '').trim();
   if (!q) return [];
   const results = [];
+  // GitHub Code/Search 对项目名和 Compose 文件比通用摘要搜索更精确。
+  try {
+    const timeout = AbortSignal.timeout(8000);
+    const resp = await fetch(`https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&per_page=3`, {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'ComposeOps-AI/1.0' },
+      signal: timeout,
+    });
+    if (resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      for (const repo of Array.isArray(data.items) ? data.items : []) {
+        if (!repo?.html_url) continue;
+        results.push({
+          title: repo.full_name || repo.name || 'GitHub repository',
+          url: repo.html_url,
+          snippet: `${repo.description || '无项目描述'}; stars: ${repo.stargazers_count || 0}; 默认分支: ${repo.default_branch || 'main'}`,
+          sourceType: 'github_repository',
+          trustedDomain: 'github.com',
+        });
+        if (repo.full_name) {
+          results.push({
+            title: `${repo.full_name} README`,
+            url: `https://github.com/${repo.full_name}#readme`,
+            snippet: '项目官方 README 入口,可进一步核对 Docker/Compose 使用说明和文件路径',
+            sourceType: 'github_readme',
+            trustedDomain: 'github.com',
+          });
+        }
+      }
+    }
+  } catch {}
   try {
     const timeout = AbortSignal.timeout(8000);
     const resp = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(q)}&format=json&no_html=1&skip_disambig=1`, {
@@ -282,12 +312,12 @@ export async function searchWeb(query) {
       const data = await resp.json().catch(() => ({}));
       const abstract = String(data.AbstractText || '').trim();
       if (abstract) {
-        results.push({ title: data.Heading || 'DuckDuckGo 摘要', url: data.AbstractURL || '', snippet: abstract });
+        results.push({ title: data.Heading || 'DuckDuckGo 摘要', url: data.AbstractURL || '', snippet: abstract, sourceType: 'search_summary' });
       }
       const topics = Array.isArray(data.RelatedTopics) ? data.RelatedTopics : [];
       for (const topic of topics.slice(0, 4)) {
         const title = topic.Text?.split(' - ')[0] || '';
-        if (title) results.push({ title: title.slice(0, 120), url: topic.FirstURL || '', snippet: topic.Text || '' });
+        if (title) results.push({ title: title.slice(0, 120), url: topic.FirstURL || '', snippet: topic.Text || '', sourceType: 'search_summary' });
       }
     }
   } catch {}
@@ -304,10 +334,10 @@ export async function searchWeb(query) {
         const snippets = [...html.matchAll(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g)].slice(0, 5);
         for (const m of snippets) {
           const text = m[1].replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').trim();
-          if (text) results.push({ title: '', url: '', snippet: text.slice(0, 200) });
+          if (text) results.push({ title: '', url: '', snippet: text.slice(0, 200), sourceType: 'search_summary' });
         }
       }
     } catch {}
   }
-  return results.slice(0, 5);
+  return results.filter((item, index, list) => item.url || list.findIndex((candidate) => candidate.snippet === item.snippet) === index).slice(0, 8);
 }

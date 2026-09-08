@@ -20,6 +20,7 @@ const REQUIRED_TOOLS = [
   'compose.pull', 'config.edit', 'maintenance.clean', 'maintenance.update',
   // 其它全部已注册工具(防删漏)
   'compose.exec', 'compose.scale', 'config.rollback', 'config.diff',
+  'config.inspect', 'project.list_managed', 'web.search', 'memory.search', 'memory.save', 'memory.delete',
   'environment.get', 'environment.set', 'volume.mount',
   'security.audit', 'backup.trigger', 'notification.test', 'cron.create',
   'performance.baseline', 'alert.configure', 'alert.list', 'alert.delete',

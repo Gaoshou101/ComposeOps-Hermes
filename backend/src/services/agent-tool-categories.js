@@ -20,6 +20,13 @@ export const TOOL_CATEGORIES = {
     risk: 'low',
     tools: ['project.list_managed', 'web.search']
   },
+  memory: {
+    label: '长期记忆',
+    description: '读取、保存和删除用户明确授权的偏好与环境事实',
+    icon: 'brain',
+    risk: 'low',
+    tools: ['memory.search', 'memory.save', 'memory.delete']
+  },
   lifecycle: {
     label: '生命周期管理',
     description: '容器和服务的启停、重启、扩缩容',
@@ -32,7 +39,7 @@ export const TOOL_CATEGORIES = {
     description: 'Compose 配置文件的编辑、校验、回滚',
     icon: 'file-edit',
     risk: 'high',
-    tools: ['config.propose', 'config.edit', 'config.validate', 'config.preview', 'config.rollback', 'config.diff'],
+    tools: ['config.inspect', 'config.propose', 'config.edit', 'config.validate', 'config.preview', 'config.rollback', 'config.diff'],
     requires: ['lifecycle.stopped'] // 约束：修改配置前需要先停止服务
   },
   diagnostic: {

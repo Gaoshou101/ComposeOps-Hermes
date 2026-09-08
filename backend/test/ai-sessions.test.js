@@ -51,3 +51,11 @@ test('ai: 未指定会话默认进入全局历史', () => {
   assert.equal(history.length, 1);
   assert.equal(history[0].sessionId, 0);
 });
+
+test('ai: Agent 会话与普通 AI 会话按 kind 隔离', () => {
+  clearAiHistory();
+  addAiMessage('user', '普通对话', null, 301);
+  addAiMessage('user', 'Agent 对话', { agent: true }, 302);
+  assert.equal(listAiSessions(20, 'agent').some((item) => item.sessionId === 302), true);
+  assert.equal(listAiSessions(20, 'agent').some((item) => item.sessionId === 301), false);
+});

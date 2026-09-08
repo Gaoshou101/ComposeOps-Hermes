@@ -29,6 +29,17 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS ai_memories (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    memory_key TEXT NOT NULL UNIQUE,
+    value      TEXT NOT NULL,
+    source     TEXT NOT NULL DEFAULT 'conversation',
+    confidence TEXT NOT NULL DEFAULT 'medium',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_ai_memories_updated ON ai_memories(updated_at);
+
   CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -278,7 +289,7 @@ export function getAiHistory(limit = 50, sessionId = null) {
   ).all(limit).reverse();
 }
 
-export function listAiSessions(limit = 30) {
+export function listAiSessions(limit = 30, kind = '') {
   const sessions = db.prepare(`
     SELECT session_id AS sessionId,
            MAX(created_at) AS createdAt,
@@ -286,14 +297,29 @@ export function listAiSessions(limit = 30) {
            COUNT(*) AS messageCount
     FROM ai_history h
     WHERE session_id <> 0
+      AND (? = '' OR EXISTS (
+        SELECT 1 FROM ai_history hk
+        WHERE hk.session_id = h.session_id AND hk.context LIKE ?
+      ))
     GROUP BY session_id
     ORDER BY MAX(id) DESC
     LIMIT ?
-  `).all(Math.max(1, Math.min(Number(limit) || 30, 100)));
+  `).all(
+    String(kind || '') === 'agent' ? 'agent' : '',
+    String(kind || '') === 'agent' ? '%"agent":true%' : '',
+    Math.max(1, Math.min(Number(limit) || 30, 100)),
+  );
   return sessions.map((session) => ({
     ...session,
     title: String(session.firstUserMessage || '').replace(/\s+/g, ' ').slice(0, 60),
   }));
+}
+
+/** 创建一个新的聊天会话 ID。空会话不写入历史,首次发送消息后才会出现在列表。 */
+export function createAiSession() {
+  let sessionId = Date.now();
+  while (db.prepare('SELECT 1 FROM ai_history WHERE session_id = ? LIMIT 1').get(sessionId)) sessionId += 1;
+  return sessionId;
 }
 
 export function clearAiSession(sessionId) {
@@ -302,6 +328,41 @@ export function clearAiSession(sessionId) {
 
 export function clearAiHistory() {
   db.prepare('DELETE FROM ai_history').run();
+}
+
+export function listAiMemories(limit = 100, query = '') {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 200));
+  const text = String(query || '').trim();
+  if (text) {
+    const like = `%${text.replace(/[\\%_]/g, '\\$&')}%`;
+    return db.prepare(`
+      SELECT id, memory_key AS memoryKey, value, source, confidence, created_at AS createdAt, updated_at AS updatedAt
+      FROM ai_memories
+      WHERE memory_key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\'
+      ORDER BY updated_at DESC, id DESC LIMIT ?
+    `).all(like, like, safeLimit);
+  }
+  return db.prepare(`
+    SELECT id, memory_key AS memoryKey, value, source, confidence, created_at AS createdAt, updated_at AS updatedAt
+    FROM ai_memories ORDER BY updated_at DESC, id DESC LIMIT ?
+  `).all(safeLimit);
+}
+
+export function upsertAiMemory(memoryKey, value, source = 'conversation', confidence = 'medium') {
+  const key = String(memoryKey || '').trim().slice(0, 160);
+  const content = String(value || '').trim().slice(0, 4000);
+  if (!key || !content) throw Object.assign(new Error('记忆 key 和内容不能为空'), { statusCode: 400 });
+  db.prepare(`
+    INSERT INTO ai_memories(memory_key, value, source, confidence, updated_at)
+    VALUES(?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(memory_key) DO UPDATE SET value = excluded.value, source = excluded.source,
+      confidence = excluded.confidence, updated_at = datetime('now')
+  `).run(key, content, String(source || 'conversation').slice(0, 64), String(confidence || 'medium').slice(0, 32));
+  return listAiMemories(1, key)[0] || null;
+}
+
+export function deleteAiMemory(memoryKey) {
+  return db.prepare('DELETE FROM ai_memories WHERE memory_key = ?').run(String(memoryKey || '').trim()).changes > 0;
 }
 
 /** 创建 Agent 执行计划,返回 planId。 */

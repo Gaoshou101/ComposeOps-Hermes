@@ -184,11 +184,11 @@ export default async function aiRoutes(fastify) {
     schema: {
       querystring: {
         type: 'object',
-        properties: { limit: limitField(100) },
+          properties: { limit: limitField(100), kind: { type: 'string', maxLength: 32 } },
       },
     },
   }, async (request) => {
-    return { sessions: listAiSessions(request.query?.limit) };
+    return { sessions: listAiSessions(request.query?.limit, request.query?.kind) };
   });
 
   // DELETE /api/v1/ai/history?sessionId=<id> —— 删除指定会话;不带参数清空全部

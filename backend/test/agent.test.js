@@ -30,16 +30,16 @@ const {
 } = await import('../src/lib/db.js');
 const { readAgentAlertRules } = await import('../src/services/alert-monitor.js');
 
-test('agent: 注册 38 个工具并暴露元数据(含风险等级)', () => {
+test('agent: 注册 42 个工具并暴露元数据(含风险等级)', () => {
   const agent = getAgent();
   const tools = agent.listTools();
-  assert.equal(tools.length, 38);
+  assert.equal(tools.length, 42);
   const names = new Set(tools.map((tool) => tool.name));
   for (const expected of [
     'compose.up', 'compose.restart', 'config.edit', 'diagnostic.probe', 'maintenance.clean', 'metrics.query',
     'compose.scale', 'compose.exec', 'config.rollback', 'config.diff', 'environment.get', 'environment.set',
     'network.inspect', 'security.audit', 'volume.mount', 'backup.trigger', 'notification.test', 'cron.create', 'performance.baseline',
-    'project.list_managed', 'web.search', 'config.propose',
+    'project.list_managed', 'web.search', 'memory.search', 'memory.save', 'memory.delete', 'config.inspect', 'config.propose',
   ]) {
     assert.ok(names.has(expected), `缺少工具 ${expected}`);
   }

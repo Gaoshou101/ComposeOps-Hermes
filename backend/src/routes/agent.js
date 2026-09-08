@@ -13,6 +13,8 @@ import {
   listPerformanceBaselines,
   recordAgentFeedback,
   updateAgentPlan,
+  createAiSession,
+  listAiMemories,
 } from '../lib/db.js';
 import { getAgent } from '../services/agent.js';
 import { generateSmartSuggestions } from '../services/agent-suggestions.js';
@@ -38,6 +40,14 @@ export default async function agentRoutes(fastify) {
 
   // GET /api/v1/ai/agent/roles —— 多角色 Agent 元数据
   fastify.get('/agent/roles', async () => ({ roles: getAgent().listRoles() }));
+
+  // POST /api/v1/ai/agent/sessions —— 创建聊天会话
+  fastify.post('/agent/sessions', async () => ({ sessionId: createAiSession() }));
+
+  // GET /api/v1/ai/agent/memories —— 长期记忆管理页/侧栏
+  fastify.get('/agent/memories', {
+    schema: { querystring: { type: 'object', properties: { limit: limitField(200), query: { type: 'string', maxLength: 200 } } } },
+  }, async (request) => ({ memories: listAiMemories(request.query?.limit, request.query?.query) }));
 
   // POST /api/v1/ai/agent/plan —— 规划(不执行),返回思维链与执行计划
   // role 不设 enum:agent.js 把未知 role 归一为 planner,拒绝会改变既有语义。
