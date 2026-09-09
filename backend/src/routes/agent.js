@@ -14,6 +14,7 @@ import {
   recordAgentFeedback,
   updateAgentPlan,
   createAiSession,
+  renameAiSession,
   listAiMemories,
 } from '../lib/db.js';
 import { getAgent } from '../services/agent.js';
@@ -43,6 +44,24 @@ export default async function agentRoutes(fastify) {
 
   // POST /api/v1/ai/agent/sessions —— 创建聊天会话
   fastify.post('/agent/sessions', async () => ({ sessionId: createAiSession() }));
+
+  // PATCH /api/v1/ai/agent/sessions/:sessionId —— 重命名聊天会话
+  fastify.patch('/agent/sessions/:sessionId', {
+    schema: {
+      params: { type: 'object', required: ['sessionId'], properties: { sessionId: numericId } },
+      body: {
+        type: 'object', additionalProperties: false, required: ['title'],
+        properties: { title: { type: 'string', minLength: 1, maxLength: 80 } },
+      },
+    },
+  }, async (request, reply) => {
+    try {
+      renameAiSession(request.params.sessionId, request.body.title);
+      return { ok: true, title: request.body.title.trim().slice(0, 80) };
+    } catch (error) {
+      return reply.code(error.statusCode || 400).send({ error: 'session_rename_failed', message: error.message });
+    }
+  });
 
   // GET /api/v1/ai/agent/memories —— 长期记忆管理页/侧栏
   fastify.get('/agent/memories', {

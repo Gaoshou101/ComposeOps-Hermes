@@ -185,6 +185,7 @@ export const api = {
   getAiHistory: (sessionId) => request(`/ai/history${sessionId ? `?sessionId=${sessionId}` : ''}`),
   getAiSessions: (limit = 30, kind = '') => request(`/ai/sessions?limit=${limit}${kind ? `&kind=${encodeURIComponent(kind)}` : ''}`),
   createAgentSession: () => request('/ai/agent/sessions', { method: 'POST' }),
+  renameAgentSession: (sessionId, title) => request(`/ai/agent/sessions/${encodeURIComponent(sessionId)}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
   getAiMemories: (limit = 20, query = '') => request(`/ai/agent/memories?limit=${limit}${query ? `&query=${encodeURIComponent(query)}` : ''}`),
   clearAiHistory: (sessionId) => request(`/ai/history${sessionId ? `?sessionId=${sessionId}` : ''}`, { method: 'DELETE' }),
   // ai agent

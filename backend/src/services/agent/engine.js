@@ -61,6 +61,7 @@ const LOOP_SYSTEM_PROMPT = `你是 ComposeOps 的聊天式运维 Agent。你通�
 8. 联网搜索只有在开关开启时可用,搜索结果必须给出来源,不能把搜索结果直接当成执行命令。
 9. 优先使用 API 原生工具调用;如果模型只能输出文本工具协议,使用 <tool_call>{"name":"工具名","arguments":{}}</tool_call>,不要把工具调用当作给用户的回答。
 10. 需要了解用户的长期偏好时先调用 memory.search;只有用户明确说“记住/以后都/我的习惯是”时才调用 memory.save,不要自行保存推测,绝不保存密码、令牌或密钥。
+11. 用户询问“服务器/主机/整机/系统资源/当前服务器信息”时,这是全局只读问题,优先调用 server.inspect,不要缩小成某个项目或容器。
 请用简体中文回答,保持简洁并在需要确认时明确写出需要用户确认的具体动作。`;
 
 /** 多角色 Agent:不同角色限定不同 system prompt 与可调用工具。 */
@@ -492,6 +493,11 @@ export class OperationsAgent {
     }
 
     try {
+      const publishTrace = (phase, content, metadata = {}) => {
+        const thought = this.addThought(phase, content, metadata, trace);
+        onEvent({ type: 'trace', trace: thought });
+        return thought;
+      };
       const priorMessages = Array.isArray(context.history)
         ? context.history
           .filter((item) => ['user', 'assistant'].includes(item?.role) && typeof item.content === 'string')
@@ -544,7 +550,7 @@ export class OperationsAgent {
       }));
 
       updateAgentPlan(planId, { status: 'executing', progressStage: 'Tool Loop 执行中', updatedAt: new Date().toISOString() });
-      this.addThought('loop_started', `开始 Tool Loop 执行,角色:${roleMeta.label}`, { tools: tools.length }, trace);
+      publishTrace('loop_started', `开始 Tool Loop 执行,角色:${roleMeta.label}`, { tools: tools.length });
       onEvent({ type: 'loop_started', planId, role: roleMeta.label, toolsAvailable: tools.length });
 
       let loopCount = 0;
@@ -553,13 +559,13 @@ export class OperationsAgent {
       while (loopCount < maxLoops) {
         if (abortController.signal.aborted) {
           onEvent({ type: 'interrupted', reason: '用户中断执行' });
-          this.addThought('interrupted', '用户中断执行', { loopCount }, trace);
+          publishTrace('interrupted', '用户中断执行', { loopCount });
           updateAgentPlan(planId, { status: 'cancelled', resultJson: { messages }, executedAt: new Date().toISOString() });
           return { success: false, messages, finalContent: '执行已中断', interrupted: true };
         }
 
         loopCount++;
-        this.addThought('loop_iteration', `第 ${loopCount} 轮循环`, {}, trace);
+        publishTrace('loop_iteration', `第 ${loopCount} 轮循环`, {});
 
         // 调用 LLM(带工具定义)
         let responseText = '';
@@ -574,7 +580,7 @@ export class OperationsAgent {
             tools,
             stream: true,
             onToken: (token) => {
-              onEvent({ type: 'thought', content: token });
+              onEvent({ type: 'token', content: token });
             },
             signal: abortController.signal,
           });
@@ -601,10 +607,10 @@ export class OperationsAgent {
           messages.push({ role: 'assistant', content: responseText || null });
           // LLM 决定结束对话
           onEvent({ type: 'done', content: responseText });
-          if (context.sessionId) addAiMessage('assistant', responseText, { agent: true, projectId: context.projectId || null }, Number(context.sessionId));
-          this.addThought('loop_completed', 'LLM 决定结束执行', { loopCount }, trace);
+          publishTrace('loop_completed', 'LLM 决定结束执行', { loopCount });
           updateAgentPlan(planId, { status: 'completed', resultJson: { messages, finalContent: responseText }, executedAt: new Date().toISOString(), progressStage: '执行完成', progressPercent: 100, updatedAt: new Date().toISOString() });
-          return { success: true, messages, finalContent: responseText };
+          if (context.sessionId) addAiMessage('assistant', responseText, { agent: true, projectId: context.projectId || null, trace }, Number(context.sessionId));
+          return { success: true, messages, finalContent: responseText, trace };
         }
 
         if (stopReason === 'tool_calls' && toolCalls.length > 0) {
@@ -622,7 +628,7 @@ export class OperationsAgent {
               continue;
             }
             
-            this.addThought('tool_requested', `LLM 请求调用工具: ${toolName}`, { params: toolParams }, trace);
+            publishTrace('tool_requested', `请求调用工具: ${toolName}`, { params: toolParams });
             onEvent({ type: 'tool_requested', tool: toolName, params: toolParams });
 
             // 检查工具风险等级,决定是否需要确认
@@ -670,7 +676,7 @@ export class OperationsAgent {
                 const rejectMsg = `用户拒绝执行 ${toolName}`;
                 messages.push({ role: 'tool', tool_call_id: toolCall.id, content: rejectMsg });
                 onEvent({ type: 'tool_rejected', tool: toolName });
-                this.addThought('tool_rejected', rejectMsg, {}, trace);
+                publishTrace('tool_rejected', rejectMsg, {});
                 const rejectedId = recordAgentExecution(planId, toolName, toolParams, 'rejected');
                 updateAgentExecution(rejectedId, { confirmationStatus: approval?.reason || 'rejected', confirmedAt: new Date().toISOString() });
                 continue; // 让 LLM 看到拒绝消息后重新决策
@@ -687,7 +693,7 @@ export class OperationsAgent {
 
             // 执行工具
             onEvent({ type: 'tool_executing', tool: toolName, params: effectiveParams });
-            this.addThought('tool_executing', `正在执行 ${toolName}`, { params: effectiveParams }, trace);
+            publishTrace('tool_executing', `正在执行 ${toolName}`, { params: effectiveParams });
 
             try {
               const execId = recordAgentExecution(planId, toolName, effectiveParams, 'executing');
@@ -703,13 +709,13 @@ export class OperationsAgent {
               messages.push({ role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify(result) });
 
               onEvent({ type: 'tool_result', tool: toolName, result });
-              this.addThought('tool_executed', `${toolName} 执行完成`, { success: result.success }, trace);
+              publishTrace('tool_executed', `${toolName} 执行完成`, { success: result.success });
 
             } catch (error) {
               const errorMsg = error.message;
               messages.push({ role: 'tool', tool_call_id: toolCall.id, content: errorMsg });
               onEvent({ type: 'tool_error', tool: toolName, error: errorMsg });
-              this.addThought('tool_error', `${toolName} 执行失败`, { error: errorMsg }, trace);
+              publishTrace('tool_error', `${toolName} 执行失败`, { error: errorMsg });
             }
           }
           
@@ -722,9 +728,10 @@ export class OperationsAgent {
         // 未知 stop_reason,结束循环
         messages.push({ role: 'assistant', content: responseText || null });
         onEvent({ type: 'done', content: responseText });
-        if (context.sessionId) addAiMessage('assistant', responseText, { agent: true, projectId: context.projectId || null }, Number(context.sessionId));
+        if (context.sessionId) addAiMessage('assistant', responseText, { agent: true, projectId: context.projectId || null, trace }, Number(context.sessionId));
+        publishTrace('loop_completed', 'Agent 完成回答', { loopCount });
         updateAgentPlan(planId, { status: 'completed', resultJson: { messages, finalContent: responseText }, executedAt: new Date().toISOString(), progressStage: '执行完成', progressPercent: 100, updatedAt: new Date().toISOString() });
-        return { success: true, messages, finalContent: responseText };
+        return { success: true, messages, finalContent: responseText, trace };
       }
 
       // 达到最大循环次数

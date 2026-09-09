@@ -29,6 +29,13 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS ai_sessions (
+    session_id INTEGER PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS ai_memories (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     memory_key TEXT NOT NULL UNIQUE,
@@ -275,6 +282,12 @@ export function addAiMessage(role, content, context = null, sessionId = null) {
   db.prepare(
     'INSERT INTO ai_history(role, content, context, session_id) VALUES(?, ?, ?, ?)'
   ).run(role, content, context ? JSON.stringify(context) : null, sessionId == null ? 0 : sessionId);
+  if (sessionId != null && Number(sessionId) !== 0) {
+    db.prepare(`
+      INSERT INTO ai_sessions(session_id, updated_at) VALUES(?, datetime('now'))
+      ON CONFLICT(session_id) DO UPDATE SET updated_at = datetime('now')
+    `).run(Number(sessionId));
+  }
   return db.prepare('SELECT last_insert_rowid() AS id').get().id;
 }
 
@@ -291,17 +304,19 @@ export function getAiHistory(limit = 50, sessionId = null) {
 
 export function listAiSessions(limit = 30, kind = '') {
   const sessions = db.prepare(`
-    SELECT session_id AS sessionId,
-           MAX(created_at) AS createdAt,
+    SELECT h.session_id AS sessionId,
+           COALESCE(s.title, '') AS sessionTitle,
+           MAX(h.created_at) AS createdAt,
            (SELECT content FROM ai_history h2 WHERE h2.session_id = h.session_id AND h2.role = 'user' ORDER BY h2.id ASC LIMIT 1) AS firstUserMessage,
            COUNT(*) AS messageCount
     FROM ai_history h
-    WHERE session_id <> 0
+    LEFT JOIN ai_sessions s ON s.session_id = h.session_id
+    WHERE h.session_id <> 0
       AND (? = '' OR EXISTS (
         SELECT 1 FROM ai_history hk
         WHERE hk.session_id = h.session_id AND hk.context LIKE ?
       ))
-    GROUP BY session_id
+    GROUP BY h.session_id
     ORDER BY MAX(id) DESC
     LIMIT ?
   `).all(
@@ -311,7 +326,7 @@ export function listAiSessions(limit = 30, kind = '') {
   );
   return sessions.map((session) => ({
     ...session,
-    title: String(session.firstUserMessage || '').replace(/\s+/g, ' ').slice(0, 60),
+    title: String(session.sessionTitle || session.firstUserMessage || '').replace(/\s+/g, ' ').slice(0, 80),
   }));
 }
 
@@ -319,15 +334,30 @@ export function listAiSessions(limit = 30, kind = '') {
 export function createAiSession() {
   let sessionId = Date.now();
   while (db.prepare('SELECT 1 FROM ai_history WHERE session_id = ? LIMIT 1').get(sessionId)) sessionId += 1;
+  db.prepare('INSERT INTO ai_sessions(session_id) VALUES(?)').run(sessionId);
   return sessionId;
+}
+
+export function renameAiSession(sessionId, title) {
+  const id = Number(sessionId);
+  const value = String(title || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  if (!Number.isSafeInteger(id) || id <= 0) throw Object.assign(new Error('会话 ID 无效'), { statusCode: 400 });
+  if (!value) throw Object.assign(new Error('会话名称不能为空'), { statusCode: 400 });
+  const result = db.prepare(`
+    INSERT INTO ai_sessions(session_id, title, updated_at) VALUES(?, ?, datetime('now'))
+    ON CONFLICT(session_id) DO UPDATE SET title = excluded.title, updated_at = datetime('now')
+  `).run(id, value);
+  return result.changes > 0;
 }
 
 export function clearAiSession(sessionId) {
   db.prepare('DELETE FROM ai_history WHERE session_id = ?').run(sessionId);
+  db.prepare('DELETE FROM ai_sessions WHERE session_id = ?').run(sessionId);
 }
 
 export function clearAiHistory() {
   db.prepare('DELETE FROM ai_history').run();
+  db.prepare('DELETE FROM ai_sessions').run();
 }
 
 export function listAiMemories(limit = 100, query = '') {

@@ -18,7 +18,7 @@ export const TOOL_CATEGORIES = {
     description: '发现已纳管项目和可选的联网资料检索',
     icon: 'globe',
     risk: 'low',
-    tools: ['project.list_managed', 'web.search']
+    tools: ['project.list_managed', 'web.search', 'app.list']
   },
   memory: {
     label: '长期记忆',
@@ -47,14 +47,14 @@ export const TOOL_CATEGORIES = {
     description: '日志查看、资源监控、健康检查',
     icon: 'stethoscope',
     risk: 'low',
-    tools: ['diagnostic.probe', 'diagnostic.analyze', 'compose.logs', 'compose.ps', 'metrics.query', 'network.inspect']
+    tools: ['diagnostic.probe', 'diagnostic.analyze', 'compose.logs', 'compose.ps', 'metrics.query', 'network.inspect', 'server.inspect', 'server.command']
   },
   maintenance: {
     label: '运维维护',
     description: '清理、备份、更新、告警',
     icon: 'wrench',
     risk: 'high',
-    tools: ['maintenance.clean', 'maintenance.update', 'backup.trigger', 'alert.create', 'cron.create']
+    tools: ['maintenance.clean', 'maintenance.update', 'backup.trigger', 'alert.create', 'cron.create', 'cron.list', 'app.deploy']
   },
   security: {
     label: '安全审计',

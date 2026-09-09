@@ -27,6 +27,7 @@ export const RISK_LEVELS = {
   'compose.exec': 'high',
   'compose.scale': 'medium',
   'cron.create': 'medium',
+  'app.deploy': 'critical',
 };
 
 /**

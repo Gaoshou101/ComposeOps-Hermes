@@ -218,8 +218,9 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
         const delta = choice.delta?.content || '';
         if (delta) {
           fullText += delta;
-          // 带工具定义时先缓存,避免模型把文本协议标记直接显示给用户。
-          if (onToken && !tools?.length) onToken(delta);
+          // 原生 tool_calls 的模型仍可能同时输出可见说明,直接转发令牌实现真正的逐字展示。
+          // 仅在完成整个响应后才解析文本协议,避免把 <tool_call> 当成可见回答。
+          if (onToken && !/<tool_call>/i.test(fullText)) onToken(delta);
         }
         
         // 累积 tool_calls (流式返回时分多个 chunk)
@@ -248,9 +249,6 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
     }
   }
   const normalized = normalizeToolResponse(fullText, toolCalls, finishReason);
-  if (onToken && tools?.length && !normalized.toolCalls.length && normalized.content) {
-    onToken(normalized.content);
-  }
   return normalized;
 }
 

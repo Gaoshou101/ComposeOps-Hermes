@@ -34,6 +34,8 @@ export function parsePlanJson(text) {
 export function defaultPlan(agent, message, _context = {}) {
   const text = String(message || '');
   const rules = [
+    [/服务器|主机|整机|系统资源|当前服务器/, 'server.inspect'],
+    [/部署.*应用|安装.*应用|应用市场|新建.*compose|docker-compose\.yml/, 'app.list'],
     [/重启|restart/, 'compose.restart'],
     [/启动|start|\bup\b/, 'compose.up'],
     [/停止|stop/, 'compose.stop'],
