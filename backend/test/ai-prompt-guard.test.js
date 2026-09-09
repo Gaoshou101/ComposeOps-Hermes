@@ -63,5 +63,37 @@ test('ai-tool-call: 兼容文本工具调用协议并移除内部标记', () => 
 test('ai-tool-call: 不合法文本调用不会伪造工具请求', () => {
   const parsed = parseTextToolCalls('<tool_call>{bad json}</tool_call>');
   assert.equal(parsed.toolCalls.length, 0);
-  assert.match(parsed.content, /tool_call/);
+  // 畸形协议属于内部协议残片,应整体移除而不是把 <tool_call> 原文展示给用户。
+  assert.equal(parsed.content, '');
+  assert.ok(!parsed.content.includes('tool_call'));
+});
+
+test('ai-tool-call: 流式响应不会把协议标签或内容外泄给前端', () => {
+  const fullText = '请稍候。<tool_call>{"name":"project.list_managed","arguments":{}}</tool_call>';
+  const parsed = parseTextToolCalls(fullText);
+  assert.equal(parsed.content, '请稍候。');
+  assert.equal(parsed.toolCalls.length, 1);
+  assert.ok(!parsed.content.includes('tool_call'));
+  // 协议闭合标签本身也不能进入展示文本,更不会把 JSON 请求体展示给用户。
+  assert.ok(!fullText.includes('</tool_call>') || !parsed.content.includes('</tool_call>'));
+});
+
+test('ai-tool-call: 畸形或未闭合协议残片不会污染用户可见回复', () => {
+  // 畸形但已闭合的协议块整体移除,块后的正常正文保留。
+  const closedBad = parseTextToolCalls('先分析。<tool_call>{bad}中</tool_call>再说明。');
+  assert.equal(closedBad.content, '先分析。再说明。');
+  assert.equal(closedBad.toolCalls.length, 0);
+  // 未闭合的协议块到结尾一律移除。
+  const unclosed = parseTextToolCalls('先分析。<tool_call>{bad}然后继续。');
+  assert.equal(unclosed.content, '先分析。');
+  assert.equal(unclosed.toolCalls.length, 0);
+});
+
+test('ai-tool-call: 移除畸形协议块时不会误截断之后的正常正文', () => {
+  const malformedThenText = parseTextToolCalls('先分析。<tool_call>{bad}</tool_call>然后继续说明。');
+  assert.equal(malformedThenText.content, '先分析。然后继续说明。');
+  // 正常正文中提及协议标签不是工具调用,不应被当作残片截断。
+  const mention = parseTextToolCalls('关于 <tool_call> 标签的用法说明如下。');
+  assert.equal(mention.toolCalls.length, 0);
+  assert.equal(mention.content, '关于');
 });

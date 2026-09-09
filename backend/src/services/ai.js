@@ -45,16 +45,25 @@ export function formatWebSources(sources, nonce) {
  * <tool_call>{"name":"project.list_managed","arguments":{}}</tool_call>
  * 统一转换后,上层 Agent 无需区分模型协议。
  */
+/** 移除文本里残留的工具协议标签与请求体(畸形/未闭合同属内部残片)。 */
+export function stripTextToolProtocol(text) {
+  return String(text || '')
+    .replace(/<\/?tool_call[\s\S]*?<\/tool_call>/gi, '')
+    .replace(/<tool_call>[\s\S]*$/gi, '')
+    .replace(/<\/?tool_call/gi, '')
+    .replace(/[ \t]+\n/g, '\n').trim();
+}
+
 export function parseTextToolCalls(text) {
   const source = String(text || '');
   const calls = [];
   const pattern = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/gi;
-  const content = source.replace(pattern, (whole, raw) => {
+  const content = stripTextToolProtocol(source.replace(pattern, (whole, raw) => {
     try {
       const payload = JSON.parse(raw);
       const functionPayload = payload?.function || payload;
       const name = functionPayload?.name || payload?.tool || '';
-      if (!name) return whole;
+      if (!name) return '';
       const args = functionPayload?.arguments ?? functionPayload?.params ?? {};
       calls.push({
         id: `text-tool-call-${calls.length + 1}`,
@@ -66,17 +75,26 @@ export function parseTextToolCalls(text) {
       });
       return '';
     } catch {
-      return whole;
+      return '';
     }
-  }).replace(/[ \t]+\n/g, '\n').trim();
+  }));
   return { content, toolCalls: calls };
+}
+
+/**
+ * 流式响应补发:把仍未输出的纯文本(不含任何文本工具协议)推给前端。
+ * 文本协议块内部与标签本身全程不转发,避免 <tool_call> 泄露。
+ */
+function flushBufferedVisibleText(raw, emitted, onToken) {
+  const visible = stripTextToolProtocol(raw);
+  if (visible.length > emitted && onToken) onToken(visible.slice(emitted));
 }
 
 function normalizeToolResponse(content, toolCalls, finishReason) {
   const parsed = parseTextToolCalls(content);
   const normalizedCalls = [...(Array.isArray(toolCalls) ? toolCalls : []), ...parsed.toolCalls];
   return {
-    content: parsed.toolCalls.length ? parsed.content : content,
+    content: stripTextToolProtocol(parsed.content || content),
     finishReason: normalizedCalls.length ? 'tool_calls' : finishReason,
     toolCalls: normalizedCalls,
   };
@@ -164,6 +182,7 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
   let fullText = '';
   let finishReason = '';
   let toolCalls = [];
+  let emittedContentLength = 0;
 
   // Node 22 的全局 fetch 已内置对 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 环境变量的支持
   // （大小写不敏感），无需额外代理库。容器化下把宿主机代理透传进 env，AI 出站
@@ -218,9 +237,15 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
         const delta = choice.delta?.content || '';
         if (delta) {
           fullText += delta;
-          // 原生 tool_calls 的模型仍可能同时输出可见说明,直接转发令牌实现真正的逐字展示。
-          // 仅在完成整个响应后才解析文本协议,避免把 <tool_call> 当成可见回答。
-          if (onToken && !/<tool_call>/i.test(fullText)) onToken(delta);
+          // 实时计算“剥除文本协议后”的可见回复,只把新增部分推给前端:
+          // 无论协议标签是否跨 chunk、是否畸形/未闭合,内部 JSON 与标签都不会外泄。
+          if (onToken) {
+            const visible = parseTextToolCalls(fullText).content;
+            if (visible.length > emittedContentLength) {
+              onToken(visible.slice(emittedContentLength));
+              emittedContentLength = visible.length;
+            }
+          }
         }
         
         // 累积 tool_calls (流式返回时分多个 chunk)
@@ -248,6 +273,7 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
       } catch {}
     }
   }
+  if (onToken) flushBufferedVisibleText(fullText, emittedContentLength, onToken);
   const normalized = normalizeToolResponse(fullText, toolCalls, finishReason);
   return normalized;
 }

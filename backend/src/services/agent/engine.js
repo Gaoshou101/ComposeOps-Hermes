@@ -669,7 +669,12 @@ export class OperationsAgent {
               });
               
               // 等待前端确认(通过 Promise 机制)
-              const approval = await this._waitForApproval(planId, toolCall.id, abortController.signal);
+              let approval;
+              try {
+                approval = await this._waitForApproval(planId, toolCall.id, abortController.signal);
+              } finally {
+                // 无论用户批准、拒绝还是 30 秒超时,确认等待都必须清理。
+              }
 
               if (!approval || !approval.approved) {
                 // 用户拒绝

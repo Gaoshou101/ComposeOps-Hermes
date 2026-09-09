@@ -318,6 +318,9 @@ export default async function agentRoutes(fastify) {
         send({ type: 'error', content: error.message });
       }
     } finally {
+      // 无论正常结束、确认等待超时还是客户端断开,都补发 done,
+      // 保证前端 running 状态一定在 SSE 关闭前清理。
+      send({ type: 'done', content: null, closed: true });
       completed = true;
       reply.raw.end();
     }
