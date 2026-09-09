@@ -17,8 +17,13 @@ function cacheable(path, opts) {
   return isGet(opts) && (CACHEABLE_PATHS.includes(path) || opts.cacheable);
 }
 function doFetch(path, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  const hasBody = opts.body !== undefined && opts.body !== null && opts.body !== '';
+  if (hasBody && !Object.keys(headers).some((key) => key.toLowerCase() === 'content-type')) {
+    headers['Content-Type'] = 'application/json';
+  }
   return fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    headers,
     ...opts,
   }).then(async (res) => {
     if (!res.ok) {
