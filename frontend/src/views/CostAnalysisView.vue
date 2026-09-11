@@ -239,6 +239,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
+import { api } from '../api/client.js';
 import { useToastStore } from '../stores/toast.js';
 
 const toast = useToastStore();
@@ -257,8 +258,8 @@ async function loadReport() {
   error.value = '';
   try {
     const [reportData, sugData] = await Promise.all([
-      fetch('/api/v1/cost-analysis/report').then(r => r.json()),
-      fetch('/api/v1/cost-analysis/suggestions').then(r => r.json())
+      api.getCostAnalysisReport(),
+      api.getCostSuggestions()
     ]);
     report.value = reportData;
     suggestions.value = sugData;

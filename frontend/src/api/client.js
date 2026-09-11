@@ -1,4 +1,6 @@
 // 统一 API 客户端,基于 fetch 封装
+import { normalizeBackgroundJob, normalizeCostReport, normalizeDockerUsage, normalizeJobsResponse, normalizeMetrics, normalizeMountPlan, normalizeStorageDf } from '../lib/api-normalizers.js';
+
 const BASE = '/api/v1';
 
 /**
@@ -97,13 +99,13 @@ export const api = {
   logout: () => request('/auth/logout', { method: 'POST' }),
   changePassword: (payload) => request('/auth/password', { method: 'POST', body: JSON.stringify(payload) }),
   getProjects: (force = false) => request('/projects', { force }),
-  getMountPlan: () => request('/projects/mount-plan'),
+  getMountPlan: async () => normalizeMountPlan(await request('/projects/mount-plan')),
   saveProjectManagement: (projectIds, mountProjectIds = []) => request('/projects/management', { method: 'PUT', body: JSON.stringify({ projectIds, mountProjectIds }) }),
   saveProjectMounts: (projectIds) => request('/projects/mounts', { method: 'PUT', body: JSON.stringify({ projectIds }) }),
   getProject: (id) => request(`/projects/${id}`),
   getProjectActivity: (id) => request(`/projects/${id}/activity`),
-  listJobs: (limit = 20) => request(`/jobs?limit=${limit}`, { cacheable: true }),
-  getJob: (id) => request(`/jobs/${id}`),
+  listJobs: async (limit = 20) => normalizeJobsResponse(await request(`/jobs?limit=${limit}`, { cacheable: true })),
+  getJob: async (id) => normalizeBackgroundJob(await request(`/jobs/${id}`)),
   streamJobUpdates: (jobId, onFrame, signal) => {
     return fetch(`${BASE}/jobs/${jobId}/stream`, { signal }).then(async (res) => {
       if (!res.ok || !res.body) {
@@ -123,13 +125,15 @@ export const api = {
           const line = part.trim();
           if (!line.startsWith('data:')) continue;
           try {
-            onFrame(JSON.parse(line.slice(5).trim()));
+            const frame = JSON.parse(line.slice(5).trim());
+            if (frame?.job) frame.job = normalizeBackgroundJob(frame.job);
+            onFrame(frame);
           } catch {}
         }
       }
     });
   },
-  createProjectBatchJob: (projectIds, action) => request('/jobs', { method: 'POST', body: JSON.stringify({ projectIds, action }) }),
+  createProjectBatchJob: async (projectIds, action) => normalizeBackgroundJob(await request('/jobs', { method: 'POST', body: JSON.stringify({ projectIds, action }) })),
   saveProjectPreference: (id, payload) => request(`/projects/${id}/preferences`, { method: 'PATCH', body: JSON.stringify(payload) }),
   getComposeFile: (projectId, fileIndex = 0, force = false) => request(`/projects/${projectId}/compose?fileIndex=${fileIndex}`, { force }),
   saveComposeFile: (projectId, fileIndex, content) =>
@@ -168,7 +172,7 @@ export const api = {
   streamRollback: (projectId, onFrame) => streamComposeControl(projectId, null, onFrame, `/projects/${projectId}/rollback`, {}),
   checkAllUpdates: () => request('/ops/updates/check-all', { method: 'POST' }),
   // docker storage
-  getStorageDf: () => request('/ops/storage/df'),
+  getStorageDf: async () => normalizeStorageDf(await request('/ops/storage/df')),
   pruneStorage: (mode, confirm) => request('/ops/storage/prune', { method: 'POST', body: JSON.stringify({ mode, confirm }) }),
   getStorageResources: (force = false) => request('/ops/storage/resources', { force }),
   removeStorageResource: (kind, id) => request(`/ops/storage/resources/${kind}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
@@ -212,7 +216,7 @@ export const api = {
   validateCompose: (projectId, fileIndex, content) => request(`/projects/${projectId}/compose/validate`, { method: 'POST', body: JSON.stringify({ fileIndex, content }) }),
   previewCompose: (projectId, content) => request(`/projects/${projectId}/compose/preview`, { method: 'POST', body: JSON.stringify({ content }) }),
   // system
-  getMetrics: () => request('/system/metrics'),
+  getMetrics: async () => normalizeMetrics(await request('/system/metrics')),
   getCapabilities: () => request('/system/capabilities'),
   getPreferences: () => request('/personal/preferences'),
   savePreferences: (payload) => request('/personal/preferences', { method: 'PUT', body: JSON.stringify(payload) }),
@@ -220,7 +224,9 @@ export const api = {
   saveNotifications: (payload) => request('/personal/notifications', { method: 'PUT', body: JSON.stringify(payload) }),
   testNotifications: (payload) => request('/personal/notifications/test', { method: 'POST', body: JSON.stringify(payload) }),
   getOperations: () => request('/personal/operations', { cacheable: true }),
-  getDockerUsage: () => request('/personal/maintenance/usage'),
+  getDockerUsage: async () => normalizeDockerUsage(await request('/personal/maintenance/usage')),
+  getCostAnalysisReport: async () => normalizeCostReport(await request('/cost-analysis/report')),
+  getCostSuggestions: () => request('/cost-analysis/suggestions'),
   pruneDocker: (payload) => request('/personal/maintenance/prune', { method: 'POST', body: JSON.stringify(payload) }),
   getUpdateSettings: () => request('/personal/updates'),
   saveUpdateSettings: (payload) => request('/personal/updates', { method: 'PUT', body: JSON.stringify(payload) }),
