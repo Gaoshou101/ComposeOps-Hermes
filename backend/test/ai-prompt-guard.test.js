@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { UNTRUSTED_GUARD, fenceUntrusted, formatWebSources, newFenceNonce, parseTextToolCalls } from '../src/services/ai.js';
+import { UNTRUSTED_GUARD, fenceUntrusted, formatWebSources, newFenceNonce, parseTextToolCalls, stripTextToolProtocol } from '../src/services/ai.js';
 
 test('ai-prompt-guard: 定界块包含 nonce 且首尾标记配对', () => {
   const nonce = newFenceNonce();
@@ -96,4 +96,11 @@ test('ai-tool-call: 移除畸形协议块时不会误截断之后的正常正文
   const mention = parseTextToolCalls('关于 <tool_call> 标签的用法说明如下。');
   assert.equal(mention.toolCalls.length, 0);
   assert.equal(mention.content, '关于');
+});
+
+test('ai-tool-call: 分片工具协议前缀不会泄露', () => {
+  assert.equal(stripTextToolProtocol('limburg<tool_ca当前你有以下可以操作的项目'), 'limburg当前你有以下可以操作的项目');
+  assert.equal(stripTextToolProtocol('limburg<tool_当前你有以下可以操作的项目'), 'limburg当前你有以下可以操作的项目');
+  assert.equal(stripTextToolProtocol('tool_ca'), '');
+  assert.equal(stripTextToolProtocol('<tool_call>{"name":"project.list_managed"'), '');
 });

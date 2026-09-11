@@ -29,6 +29,7 @@ import { Bot, MessageCircle, Send, Square, UserRound, X } from 'lucide-vue-next'
 import { api } from '../api/client.js';
 import { useAgentConsole } from '../composables/useAgentConsole.js';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
+import { stripAgentProtocol } from '../lib/agent-text.js';
 
 const { open, context, closeAgent } = useAgentConsole();
 const sessionId = ref(null); const messages = ref([]); const input = ref(''); const running = ref(false); const scrollEl = ref(null); const inputEl = ref(null); let nextId = 0; let controller = null;
@@ -37,7 +38,7 @@ const contextSummary = computed(() => pageContext.value.summary || pageContext.v
 const defaultPrompt = computed(() => pageContext.value.mode === 'cron-editor' ? '根据当前表单帮我创建这个定时任务' : '请分析当前页面，并告诉我可以做什么');
 useEscapeKey({ active: open, onClose: closeAgent, layer: 'drawer', lockBody: true });
 function stringify(value) { try { return JSON.stringify(value, null, 2); } catch { return String(value); } }
-function renderMarkdown(value) { return DOMPurify.sanitize(marked.parse(String(value || ''), { breaks: true, gfm: true })); }
+function renderMarkdown(value) { return DOMPurify.sanitize(marked.parse(stripAgentProtocol(value), { breaks: true, gfm: true })); }
 function scrollBottom() { void nextTick(() => { if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight; }); }
 function focusInput() { void nextTick(() => inputEl.value?.focus()); }
 async function ensureSession() { if (sessionId.value) return; const result = await api.createAgentSession(); sessionId.value = Number(result.sessionId); }
@@ -54,13 +55,13 @@ async function sendMessage() {
   finally { assistant.streaming = false; running.value = false; controller = null; scrollBottom(); }
 }
 function handleEvent(event, assistant) {
-  if (event.type === 'token') assistant.content += event.content || '';
+  if (event.type === 'token') assistant.content += stripAgentProtocol(event.content);
   else if (event.type === 'confirmation_required') assistant.confirmation = { ...event, busy: false };
   else if (event.type === 'context_data' && event.kind === 'projects') assistant.projects = event.projects;
   else if (event.type === 'action_completed' && event.kind === 'cron_created') window.dispatchEvent(new CustomEvent('composeops:cron-agent-created', { detail: event.result || {} }));
-  else if (event.type === 'error') assistant.content += `${assistant.content ? '\n\n' : ''}${event.content || 'Agent 执行失败'}`;
-  else if (event.type === 'interrupted') assistant.content += `${assistant.content ? '\n\n' : ''}${event.reason || '执行已中断'}`;
-  else if (event.type === 'done' && event.content && !assistant.content) assistant.content = event.content;
+  else if (event.type === 'error') assistant.content += `${assistant.content ? '\n\n' : ''}${stripAgentProtocol(event.content || 'Agent 执行失败')}`;
+  else if (event.type === 'interrupted') assistant.content += `${assistant.content ? '\n\n' : ''}${stripAgentProtocol(event.reason || '执行已中断')}`;
+  else if (event.type === 'done' && event.content && !assistant.content) assistant.content = stripAgentProtocol(event.content);
   scrollBottom();
 }
 async function approve(message) { const confirmation = message.confirmation; if (!confirmation || confirmation.busy) return; confirmation.busy = true; try { await api.agentApprove({ executionId: confirmation.executionId, toolCallId: confirmation.toolCallId, approved: true }); message.confirmation = null; } catch (error) { confirmation.busy = false; message.content = `确认失败：${error.message}`; } }

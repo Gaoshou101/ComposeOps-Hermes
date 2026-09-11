@@ -1,7 +1,7 @@
 import { redactValue } from './redaction.js';
 import { stripTextToolProtocol } from '../services/ai.js';
 
-const INTERNAL_TOKEN_PATTERN = /\btool[_ ]?ca(?:lls?)?\b|<\/?tool_call[^>]*>/gi;
+const INTERNAL_TOKEN_PATTERN = /\btool_(?:call|calls|ca)\b|<\/?tool(?:[_ ]?[a-z]*)?/gi;
 
 function cleanText(value) {
   return stripTextToolProtocol(String(value || ''))
