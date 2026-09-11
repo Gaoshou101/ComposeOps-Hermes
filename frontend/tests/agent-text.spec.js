@@ -48,4 +48,12 @@ describe('Agent visible text protocol filter', () => {
     expect(html).toContain('data-preprocessing');
     expect(html).toContain('mineru-batch');
   });
+
+  it('starts a table when the model glues it directly to the preceding sentence', () => {
+    const html = renderAgentMarkdown('你现在可以操作的项目如下:|名称|类型|可编辑|服务配置文件||:--:|:--:|:--: | :--:||composeops|workspace|是|/data/compose/docker-compose.yml|\n| data-preprocessing|workspace|是|/data/data-preprocessing/docker-compose.yml|');
+    expect(html.match(/<table>/g)).toHaveLength(1);
+    expect(html).toMatch(/<th(?: align="center")?>名称<\/th>/);
+    expect(html).toMatch(/<td(?: align="center")?>composeops<\/td>/);
+    expect(html).toMatch(/<td(?: align="center")?>data-preprocessing<\/td>/);
+  });
 });

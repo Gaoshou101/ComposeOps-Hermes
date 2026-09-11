@@ -15,11 +15,17 @@ function normalizeAgentMarkdown(value) {
       continue;
     }
     if (!inFence) {
-      const delimiterWithRow = line.match(/^(\|\s*[-: ]+\|(?:\s*[-: ]+\|)+)(\|[^\n]*)$/);
-      if (delimiterWithRow) {
-        const rows = delimiterWithRow[2].replace(/\|\|(?=\s*[^|\n]+\|)/g, '|\n|');
-        output.push(delimiterWithRow[1], ...rows.split('\n'));
-        continue;
+      const delimiterStart = line.search(/\|(?=\s*:?-+:?\s*\|)/);
+      if (delimiterStart >= 0) {
+        const beforeDelimiter = line.slice(0, delimiterStart);
+        const headerMatch = beforeDelimiter.match(/^(.*?)(\|[^|\n]*(?:\|[^|\n]*)+\|)$/);
+        const delimiterMatch = line.slice(delimiterStart).match(/^\|(?:\s*:?-+:?\s*\|)+/);
+        if (headerMatch && delimiterMatch) {
+          const compactRows = line.slice(delimiterStart + delimiterMatch[0].length)
+            .replace(/\|\|(?=\s*[^|\n]+\|)/g, '|\n|');
+          output.push(headerMatch[1], '', headerMatch[2], delimiterMatch[0], ...compactRows.split('\n'));
+          continue;
+        }
       }
       if (/^\s*\|/.test(line)) {
         const compactRows = line.replace(/\|\|(?=\s*[^|\n]+\|)/g, '|\n|');
