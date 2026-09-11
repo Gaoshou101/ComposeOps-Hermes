@@ -65,9 +65,9 @@
       </div>
 
       <div v-if="mountPlan" class="grid sm:grid-cols-4 gap-2">
-        <StatCard title="已发现" :value="String(mountPlan.summary.total)" sub="Compose 项目" />
-        <StatCard title="已纳管" :value="String(mountPlan.summary.managed)" sub="由你明确授权" />
-        <StatCard title="Compose 就绪" :value="String(mountPlan.summary.operable)" sub="可编辑、拉取和创建" />
+        <StatCard title="已发现" :value="String(mountPlan.summary?.total || 0)" sub="Compose 项目" />
+        <StatCard title="已纳管" :value="String(mountPlan.summary?.managed || 0)" sub="由你明确授权" />
+        <StatCard title="Compose 就绪" :value="String(mountPlan.summary?.operable || 0)" sub="可编辑、拉取和创建" />
         <StatCard title="已选 Compose" :value="String(mountPlan.projects.filter((project) => project.managed && project.mountEnabled).length)" sub="按需精确挂载" />
       </div>
 

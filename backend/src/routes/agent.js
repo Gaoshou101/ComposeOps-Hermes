@@ -273,11 +273,22 @@ export default async function agentRoutes(fastify) {
               },
             },
           },
+          pageContext: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              page: { type: 'string', maxLength: 120 },
+              route: { type: 'string', maxLength: 512 },
+              mode: { type: 'string', maxLength: 120 },
+              summary: { type: 'string', maxLength: 1000 },
+              state: { type: 'string', maxLength: 12000 },
+            },
+          },
         },
       },
     },
   }, async (request, reply) => {
-    const { message, projectId, containerId, sessionId, role, webSearchEnabled = false, history = [] } = request.body || {};
+    const { message, projectId, containerId, sessionId, role, webSearchEnabled = false, history = [], pageContext = {} } = request.body || {};
     if (!message || !String(message).trim()) {
       return reply.code(400).send({ error: 'missing_message', message: '缺少 message' });
     }
@@ -296,7 +307,7 @@ export default async function agentRoutes(fastify) {
     };
 
     const agent = getAgent();
-    const context = { projectId, containerId, sessionId, role, webSearchEnabled, history };
+    const context = { projectId, containerId, sessionId, role, webSearchEnabled, history, pageContext };
 
     // 客户端断开时中断执行
     const abortController = new AbortController();

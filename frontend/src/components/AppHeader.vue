@@ -41,6 +41,7 @@
       </div>
       <HostSwitcher />
       <EventCenter />
+      <button class="icon-btn" title="打开页面 Agent" aria-label="打开页面 Agent" @click="emitAgentOpen"><Bot class="w-4 h-4 text-cyan-300" /></button>
       <button class="icon-btn" :title="density === 'compact' ? '切换为舒适视图' : '切换为紧凑视图'" aria-label="视图密度" @click="toggleDensity"><Rows3 class="w-4 h-4" /></button>
       <span class="hidden lg:inline text-muted">{{ currentTime }}</span>
       <span class="h-5 w-px bg-surface-800"></span>
@@ -192,7 +193,10 @@ async function runProjectAction(project, action) {
     toast.error(`操作提交失败:${error?.message || '未知错误'}`);
   }
 }
-defineEmits(['logout']);
+const emit = defineEmits(['logout', 'open-agent']);
+function emitAgentOpen() {
+  emit('open-agent');
+}
 let pingTimer; let clockTimer;
 
 async function ping() {

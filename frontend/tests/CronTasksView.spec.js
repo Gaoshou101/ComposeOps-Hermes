@@ -1,0 +1,74 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { nextTick } from 'vue';
+import { mount } from '@vue/test-utils';
+import { createPinia, setActivePinia } from 'pinia';
+
+const { listCronJobs, getCronHistory, openAgent, updateAgentContext, resetAgentContext } = vi.hoisted(() => ({
+  listCronJobs: vi.fn(),
+  getCronHistory: vi.fn(),
+  openAgent: vi.fn(),
+  updateAgentContext: vi.fn(),
+  resetAgentContext: vi.fn(),
+}));
+
+vi.mock('../src/api/client.js', () => ({
+  api: {
+    listCronJobs,
+    getCronHistory,
+    createCronJob: vi.fn(),
+    updateCronJob: vi.fn(),
+    deleteCronJob: vi.fn(),
+    runCronJob: vi.fn(),
+  },
+}));
+
+vi.mock('../src/composables/useAgentConsole.js', () => ({
+  useAgentConsole: () => ({ openAgent, updateAgentContext, resetAgentContext }),
+}));
+
+import CronTasksView from '../src/views/CronTasksView.vue';
+
+describe('CronTasksView Agent integration', () => {
+  let wrapper;
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    listCronJobs.mockClear();
+    getCronHistory.mockClear();
+    listCronJobs.mockResolvedValue({ jobs: [], types: { 'db-backup': { label: '数据库备份', description: '备份' } } });
+    getCronHistory.mockResolvedValue({ history: [] });
+    openAgent.mockClear();
+    updateAgentContext.mockClear();
+    resetAgentContext.mockClear();
+  });
+
+  afterEach(() => wrapper?.unmount());
+
+  it('从新建任务弹窗打开 Agent 时携带 cron-editor 上下文', async () => {
+    wrapper = mount(CronTasksView);
+    await nextTick();
+    await wrapper.find('button.btn-primary').trigger('click');
+    await nextTick();
+
+    const agentButton = wrapper.find('button[title="让 Agent 根据当前表单创建任务"]');
+    expect(agentButton.exists()).toBe(true);
+    await agentButton.trigger('click');
+
+    expect(openAgent).toHaveBeenCalledTimes(1);
+    expect(updateAgentContext).toHaveBeenCalledWith(expect.objectContaining({ mode: 'cron-editor' }));
+    expect(updateAgentContext.mock.calls.at(-1)[0].state).toContain('db-backup');
+  });
+
+  it('收到 cron.create 成功事件后关闭编辑器并刷新列表', async () => {
+    wrapper = mount(CronTasksView);
+    await nextTick();
+    await wrapper.find('button.btn-primary').trigger('click');
+    expect(wrapper.find('.modal-backdrop').exists()).toBe(true);
+
+    window.dispatchEvent(new CustomEvent('composeops:cron-agent-created', { detail: { name: '夜间备份' } }));
+    await nextTick();
+
+    expect(wrapper.find('.modal-backdrop').exists()).toBe(false);
+    expect(listCronJobs).toHaveBeenCalledTimes(2);
+  });
+});

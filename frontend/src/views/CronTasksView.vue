@@ -4,7 +4,7 @@
       <div><h1 class="page-title">定时任务</h1><p class="page-subtitle">可视化 Cron 调度:自动备份、Docker 清理与镜像检查</p></div>
       <div class="page-actions">
         <button class="btn-secondary" :disabled="loading" @click="load"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />刷新</button>
-        <button class="btn-primary" @click="openCreate"><Clock3 class="w-4 h-4" />新建定时任务</button>
+        <button class="btn-primary" @click="openCreate()"><Clock3 class="w-4 h-4" />新建定时任务</button>
       </div>
     </div>
     <p v-if="error" class="alert-error">{{ error }}</p>
@@ -70,7 +70,7 @@
 
     <div v-if="editor" class="modal-backdrop z-[55]" @click.self="closeEditor">
       <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-lg flex max-h-[88vh] flex-col">
-        <div class="modal-header shrink-0"><span>新建定时任务</span><button class="icon-btn" title="关闭" @click="closeEditor"><X class="w-4 h-4" /></button></div>
+        <div class="modal-header shrink-0"><span>新建定时任务</span><div class="flex items-center gap-2"><button class="btn-secondary !px-2.5 !py-1.5 text-xs" title="让 Agent 根据当前表单创建任务" @click="openCronAgent"><Bot class="h-3.5 w-3.5" />让 Agent 创建</button><button class="icon-btn" title="关闭" @click="closeEditor"><X class="w-4 h-4" /></button></div></div>
         <div class="min-h-0 flex-1 overflow-y-auto p-4 space-y-3">
           <p v-if="editorError" class="alert-error">{{ editorError }}</p>
           <label>任务名称<input v-model="editor.name" class="input" placeholder="例如:每天凌晨自动备份数据库" /></label>
@@ -89,12 +89,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
-import { Clock3, DatabaseBackup, Play, Plus, RefreshCw, Save, Sparkles, Trash2, X } from 'lucide-vue-next';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { Clock3, DatabaseBackup, Bot, Play, Plus, RefreshCw, Save, Sparkles, Trash2, X } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import { useToastStore } from '../stores/toast.js';
+import { useAgentConsole } from '../composables/useAgentConsole.js';
 
 const toast = useToastStore();
+const { openAgent, updateAgentContext, resetAgentContext } = useAgentConsole();
 const jobs = ref([]);
 const types = ref({});
 const history = ref([]);
@@ -144,7 +146,18 @@ function openCreate(preset) {
     : { name: '', type: 'db-backup', cron: '0 3 * * *', enabled: true };
   editorError.value = '';
 }
-function closeEditor() { if (!saving.value) { editor.value = null; editorError.value = ''; } }
+function openCronAgent() {
+  updateAgentContext({ page: '定时任务', mode: 'cron-editor', summary: '正在新建定时任务，Agent 可读取当前表单并调用 cron.create 创建任务', state: JSON.stringify(editor.value || {}) });
+  openAgent();
+}
+function handleAgentCreated(event) {
+  const created = event.detail || {};
+  toast.success(`Agent 已创建定时任务${created.name ? `「${created.name}」` : ''}`);
+  resetAgentContext();
+  editor.value = null;
+  void load();
+}
+function closeEditor(force = false) { if (!saving.value || force) { resetAgentContext(); editor.value = null; editorError.value = ''; } }
 async function saveEditor() {
   if (!editor.value) return;
   saving.value = true;
@@ -155,7 +168,7 @@ async function saveEditor() {
     if (!editor.value.cron.trim()) throw new Error('请填写 Cron 表达式(5 段)');
     await api.createCronJob(editor.value);
     toast.success('定时任务已创建');
-    closeEditor();
+    closeEditor(true);
     await load();
   } catch (e) {
     editorError.value = e.message;
@@ -194,5 +207,12 @@ async function removeJob(job) {
     toast.error(e.message);
   }
 }
-onMounted(load);
+watch(editor, (value) => {
+  if (value) updateAgentContext({ state: JSON.stringify(value) });
+}, { deep: true });
+onMounted(() => {
+  load();
+  window.addEventListener('composeops:cron-agent-created', handleAgentCreated);
+});
+onBeforeUnmount(() => window.removeEventListener('composeops:cron-agent-created', handleAgentCreated));
 </script>

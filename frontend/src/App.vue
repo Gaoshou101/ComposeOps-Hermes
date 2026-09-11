@@ -7,7 +7,7 @@
   </div>
   <LoginView v-else-if="!auth.authenticated" />
   <div v-else class="h-dvh min-h-0 flex flex-col overflow-hidden">
-    <AppHeader @logout="auth.logout" />
+    <AppHeader @logout="auth.logout" @open-agent="openAgent" />
     <div class="flex min-h-0 flex-1 overflow-hidden pb-16 md:pb-0">
       <AppSidebar />
       <main class="app-main flex-1 min-w-0 overflow-auto">
@@ -23,6 +23,7 @@
     </div>
     <ToastContainer />
     <CheatSheetModal :open="cheatSheet" @close="cheatSheet = false" />
+    <AgentDrawer />
   </div>
 </template>
 
@@ -32,14 +33,17 @@ import AppHeader from './components/AppHeader.vue';
 import AppSidebar from './components/AppSidebar.vue';
 import ToastContainer from './components/common/ToastContainer.vue';
 import CheatSheetModal from './components/common/CheatSheetModal.vue';
+import AgentDrawer from './components/AgentDrawer.vue';
 import LoginView from './views/LoginView.vue';
 import { useAuthStore } from './stores/auth.js';
 import { useServicesStore } from './stores/services.js';
 import { useToastStore } from './stores/toast.js';
+import { useAgentConsole } from './composables/useAgentConsole.js';
 
 const auth = useAuthStore();
 const servicesStore = useServicesStore();
 const toast = useToastStore();
+const { openAgent, startPageTracking, stopPageTracking } = useAgentConsole();
 const cheatSheet = ref(false);
 const runtimeError = ref('');
 // density 的读写只由 AppHeader 一处负责;这里仅在挂载时按已存偏好初始化 body 标记。
@@ -71,6 +75,7 @@ onErrorCaptured((error) => {
 });
 onMounted(() => {
   applyDensity();
+  startPageTracking();
   window.addEventListener('composeops:runtime-error', onRuntimeError);
   window.addEventListener('composeops:operation-started', onOperationStarted);
   window.addEventListener('composeops:unauthorized', expire);
@@ -80,6 +85,7 @@ onMounted(() => {
   auth.check();
 });
 onBeforeUnmount(() => {
+  stopPageTracking();
   window.removeEventListener('composeops:runtime-error', onRuntimeError);
   window.removeEventListener('composeops:operation-started', onOperationStarted);
   window.removeEventListener('composeops:unauthorized', expire);

@@ -8,18 +8,18 @@
           <div>
             <div class="mb-2 flex items-center justify-between text-sm"><span class="text-surface-200">磁盘占用</span><span class="text-muted">{{ formatBytes(df.total) }}</span></div>
             <div class="storage-bar">
-              <span v-if="df.images.total" class="storage-seg bg-blue-500" :style="{ width: segPercent(df.images.total) }" title="镜像"></span>
-              <span v-if="df.volumes.total" class="storage-seg bg-violet-500" :style="{ width: segPercent(df.volumes.total) }" title="卷"></span>
-              <span v-if="df.containers.total" class="storage-seg bg-amber-500" :style="{ width: segPercent(df.containers.total) }" title="容器"></span>
-              <span v-if="df.buildCache.total" class="storage-seg bg-emerald-500" :style="{ width: segPercent(df.buildCache.total) }" title="构建缓存"></span>
+              <span v-if="df.images?.total" class="storage-seg bg-blue-500" :style="{ width: segPercent(df.images.total) }" title="镜像"></span>
+              <span v-if="df.volumes?.total" class="storage-seg bg-violet-500" :style="{ width: segPercent(df.volumes.total) }" title="卷"></span>
+              <span v-if="df.containers?.total" class="storage-seg bg-amber-500" :style="{ width: segPercent(df.containers.total) }" title="容器"></span>
+              <span v-if="df.buildCache?.total" class="storage-seg bg-emerald-500" :style="{ width: segPercent(df.buildCache.total) }" title="构建缓存"></span>
             </div>
             <div class="mt-2 flex flex-wrap gap-3 text-[11px] text-surface-400">
-              <span><span class="inline-block h-2 w-2 rounded-sm bg-blue-500"></span> 镜像 {{ formatBytes(df.images.total) }}</span>
-              <span><span class="inline-block h-2 w-2 rounded-sm bg-violet-500"></span> 卷 {{ formatBytes(df.volumes.total) }}</span>
-              <span><span class="inline-block h-2 w-2 rounded-sm bg-amber-500"></span> 容器 {{ formatBytes(df.containers.total) }}</span>
-              <span><span class="inline-block h-2 w-2 rounded-sm bg-emerald-500"></span> 缓存 {{ formatBytes(df.buildCache.total) }}</span>
+              <span><span class="inline-block h-2 w-2 rounded-sm bg-blue-500"></span> 镜像 {{ formatBytes(df.images?.total) }}</span>
+              <span><span class="inline-block h-2 w-2 rounded-sm bg-violet-500"></span> 卷 {{ formatBytes(df.volumes?.total) }}</span>
+              <span><span class="inline-block h-2 w-2 rounded-sm bg-amber-500"></span> 容器 {{ formatBytes(df.containers?.total) }}</span>
+              <span><span class="inline-block h-2 w-2 rounded-sm bg-emerald-500"></span> 缓存 {{ formatBytes(df.buildCache?.total) }}</span>
             </div>
-            <p class="mt-3 text-sm text-emerald-300">可安全释放 {{ formatBytes(df.reclaimable) }}<span v-if="df.volumes.orphans">(含 {{ df.volumes.orphans }} 个孤儿卷 {{ formatBytes(df.volumes.reclaimable) }})</span></p>
+            <p class="mt-3 text-sm text-emerald-300">可安全释放 {{ formatBytes(df.reclaimable) }}<span v-if="df.volumes?.orphans">(含 {{ df.volumes.orphans }} 个孤儿卷 {{ formatBytes(df.volumes.reclaimable) }})</span></p>
             <p v-if="df.disk" class="text-muted text-xs">磁盘剩余 {{ formatBytes(df.disk.free) }} / {{ formatBytes(df.disk.total) }}</p>
           </div>
 
