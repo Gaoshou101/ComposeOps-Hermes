@@ -39,12 +39,26 @@ function stripIcallProtocol(value) {
   return (output + source.slice(cursor)).replace(/_ic(?:a(?:l{0,2})?)?$/i, '');
 }
 
+function stripAgentInternalText(value) {
+  let source = String(value || '');
+  const internalStart = /\b(?:result|res)\s*=\s*composeOps\.[\w.-]+\(\)|\b(?:iNdEx|index)\s*\+\+\s*(?:(?:\r?\n|\s)+(?:result|project_ids|project_names|project_list)\s*=)/i;
+  const visibleBoundary = /(?:您当前|您可以|当前可以|以下是|当然|请告诉|如需|查看我|查看其|以\s*markdown|项目列表)/iu;
+  let match;
+  while ((match = internalStart.exec(source))) {
+    const tail = source.slice(match.index + match[0].length);
+    const boundary = tail.search(visibleBoundary);
+    const end = boundary < 0 ? source.length : match.index + match[0].length + boundary;
+    source = source.slice(0, match.index) + source.slice(end);
+  }
+  return source.replace(/^[ \t]+\n/gm, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export function stripAgentProtocol(value) {
-  return stripIcallProtocol(String(value || ''))
+  return stripAgentInternalText(stripIcallProtocol(String(value || ''))
     .replace(/<\/?tool_call[\s\S]*?<\/tool_call>/gi, '')
     .replace(/<tool_call>[\s\S]*$/gi, '')
     .replace(/<\/?tool(?:[_ ]?[a-z]*)?/gi, '')
     .replace(/\btool_(?:call|calls|ca)\b/gi, '')
     .replace(/[ \t]+\n/g, '\n')
-    .trim();
+    .trim());
 }

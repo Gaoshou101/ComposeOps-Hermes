@@ -1,10 +1,10 @@
 import { redactValue } from './redaction.js';
-import { stripTextToolProtocol } from '../services/ai.js';
+import { stripTextToolProtocol, stripAgentInternalText } from '../services/ai.js';
 
 const INTERNAL_TOKEN_PATTERN = /\btool_(?:call|calls|ca)\b|<\/?tool(?:[_ ]?[a-z]*)?/gi;
 
 function cleanText(value) {
-  return stripTextToolProtocol(String(value || ''))
+  return stripAgentInternalText(stripTextToolProtocol(String(value || '')))
     .replace(INTERNAL_TOKEN_PATTERN, '')
     .replace(/[ \t]+\n/g, '\n')
     .trim();

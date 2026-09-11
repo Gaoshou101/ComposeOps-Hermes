@@ -5,6 +5,8 @@ import { toPublicAgentEvent } from '../src/lib/agent-public-events.js';
 test('公开 Agent 事件隐藏工具协议和内部工具字段', () => {
   assert.equal(toPublicAgentEvent({ type: 'trace', trace: { content: 'tool_call secret' } }), null);
   assert.deepEqual(toPublicAgentEvent({ type: 'token', content: '回答 tool_ca' }), { type: 'token', content: '回答' });
+  assert.deepEqual(toPublicAgentEvent({ type: 'token', content: 'iNdEx++ result= composeOps.project.list_managed()project_list<tID | 项目名称 |\n您当前可以操作的项目如下:' }), { type: 'token', content: '您当前可以操作的项目如下:' });
+  assert.deepEqual(toPublicAgentEvent({ type: 'token', content: 'for (let index = 0; index < 3; index++) {}' }), { type: 'token', content: 'for (let index = 0; index < 3; index++) {}' });
   assert.deepEqual(toPublicAgentEvent({
     type: 'confirmation_required',
     tool: 'cron.create',

@@ -48,7 +48,22 @@ export function formatWebSources(sources, nonce) {
  */
 /** 移除文本里残留的工具协议标签与请求体(畸形/未闭合同属内部残片)。 */
 export function stripTextToolProtocol(text) {
-  return sanitizeTextToolProtocol(text).content;
+  return stripAgentInternalText(sanitizeTextToolProtocol(text).content);
+}
+
+/** 模型有时会把内部伪代码/工具编排变量当成回答输出,不能进入用户可见文本或历史。 */
+export function stripAgentInternalText(text) {
+  let source = String(text || '');
+  const internalStart = /\b(?:result|res)\s*=\s*composeOps\.[\w.-]+\(\)|\b(?:iNdEx|index)\s*\+\+\s*(?:(?:\r?\n|\s)+(?:result|project_ids|project_names|project_list)\s*=)/i;
+  const visibleBoundary = /(?:您当前|您可以|当前可以|以下是|当然|请告诉|如需|查看我|查看其|以\s*markdown|项目列表)/iu;
+  let match;
+  while ((match = internalStart.exec(source))) {
+    const tail = source.slice(match.index + match[0].length);
+    const boundary = tail.search(visibleBoundary);
+    const end = boundary < 0 ? source.length : match.index + match[0].length + boundary;
+    source = source.slice(0, match.index) + source.slice(end);
+  }
+  return source.replace(/^[ \t]+\n/gm, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function createTextToolCall(payload, calls) {
@@ -140,7 +155,7 @@ function sanitizeTextToolProtocol(text) {
 
 export function parseTextToolCalls(text) {
   const parsed = sanitizeTextToolProtocol(text);
-  return { content: parsed.content, toolCalls: parsed.toolCalls };
+  return { content: stripAgentInternalText(parsed.content), toolCalls: parsed.toolCalls };
 }
 
 /**
