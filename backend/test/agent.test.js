@@ -9,8 +9,6 @@ process.env.DB_PATH = path.join(tempDir, 'test.db');
 
 const {
   getAgent,
-  parsePlanJson,
-  defaultPlan,
   validateParams,
   assertPermission,
   RISK_LEVELS,
@@ -59,38 +57,6 @@ test('agent: 风险等级与多角色元数据可用', () => {
   assert.equal(RISK_LEVELS['compose.restart'], 'medium');
   assert.equal(typeof AGENT_ROLES.planner, 'object');
   assert.deepEqual(AGENT_ROLES.validator.allowedTools.includes('compose.ps'), true);
-  const agent = getAgent();
-  const roles = agent.listRoles();
-  assert.equal(roles.length, 4);
-  assert.ok(roles.some((role) => role.name === 'incident_responder'));
-});
-
-test('agent: 执行入口会绑定会话项目上下文', () => {
-  const agent = getAgent();
-  const bound = agent._bindContext([
-    { tool: 'compose.logs', params: {} },
-  ], { projectId: 'managed-project', containerId: 'container-1' });
-  assert.deepEqual(bound[0].params, { projectId: 'managed-project', containerId: 'container-1' });
-});
-
-test('agent: parsePlanJson 兼容代码块与杂质文本', () => {
-  assert.deepEqual(parsePlanJson('```json\n{"steps":[{"tool":"compose.ps","params":{}}]}\n```'), {
-    steps: [{ tool: 'compose.ps', params: {} }],
-  });
-  assert.deepEqual(parsePlanJson('前缀噪声 {"steps":[{"tool":"compose.up","params":{}}]} 后缀'), {
-    steps: [{ tool: 'compose.up', params: {} }],
-  });
-  assert.equal(parsePlanJson('不是 JSON'), null);
-});
-
-test('agent: 无 AI 时确定性规划按关键词映射工具', () => {
-  const agent = getAgent();
-  const restart = defaultPlan(agent, '帮我重启 web 服务');
-  assert.equal(restart[0].tool, 'compose.restart');
-  const clean = defaultPlan(agent, '清理旧镜像');
-  assert.equal(clean[0].tool, 'maintenance.clean');
-  const unknown = defaultPlan(agent, '给我讲个笑话');
-  assert.ok(unknown.length >= 1);
 });
 
 test('agent: 参数校验只拦截必填缺失与数组类型错误', () => {

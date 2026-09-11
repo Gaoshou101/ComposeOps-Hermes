@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { stripAgentProtocol } from '../src/lib/agent-text.js';
 import { renderAgentMarkdown } from '../src/lib/agent-markdown.js';
+
+describe('agent-protocol-core 副本同步', () => {
+  it('与后端副本字节一致(dotenv 同一约定)', () => {
+    const frontendCopy = readFileSync(resolve('src/lib/agent-protocol-core.js'));
+    const backendCopy = readFileSync(resolve('../backend/src/lib/agent-protocol-core.js'));
+    expect(frontendCopy.equals(backendCopy)).toBe(true);
+  });
+});
 
 describe('Agent visible text protocol filter', () => {
   it('removes incomplete tool markers from streamed text', () => {

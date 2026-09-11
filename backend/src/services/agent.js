@@ -3,7 +3,7 @@
  *
  * 实现已拆为:
  *  - ./agent/engine.js —— OperationsAgent 类、AGENT_ROLES、getAgent() 单例、RISK_LEVELS re-export
- *  - ./agent/planning.js —— parsePlanJson/defaultPlan/resolveToolContext/assertPermission/validateParams
+ *  - ./agent/planning.js —— resolveToolContext/assertPermission/validateParams
  * 本文件仅做 re-export,防止既有 import { … } from 'services/agent.js' 断链。
  */
 export {
@@ -13,8 +13,6 @@ export {
   RISK_LEVELS,
 } from './agent/engine.js';
 export {
-  parsePlanJson,
-  defaultPlan,
   resolveToolContext,
   assertPermission,
   validateParams,

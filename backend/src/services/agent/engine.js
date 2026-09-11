@@ -10,8 +10,8 @@ import {
   listAiMemories,
 } from '../../lib/db.js';
 import { registerAgentTools, assessRisk, RISK_LEVELS } from '../agent-tools.js';
-import { PreconditionChecker, PostconditionValidator, TOOL_CATEGORIES, expandMacro, MACRO_TOOLS } from '../agent-tool-categories.js';
-import { parsePlanJson, defaultPlan, resolveToolContext, assertPermission, validateParams } from './planning.js';
+import { PreconditionChecker, PostconditionValidator, expandMacro, MACRO_TOOLS } from '../agent-tool-categories.js';
+import { resolveToolContext, assertPermission, validateParams } from './planning.js';
 import { withProjectOperationLock } from '../project-operation-lock.js';
 import { redactValue } from '../../lib/redaction.js';
 
@@ -19,33 +19,13 @@ import { redactValue } from '../../lib/redaction.js';
  * ComposeOps 自研轻量 Agent 编排引擎。
  * 三层职责:
  *  - Tool Registry:工具元数据 + 执行函数注册(由 tools/ 各域注册)
- *  - Execution Engine:状态机 + 权限门 + 参数校验 + 审计落库
+ *  - Execution Engine:Tool Loop 状态机 + 权限门 + 参数校验 + 审计落库 + 确认门
  *  - Thought Tracing:结构化思维链,供前端可视化
  *
- * 规划/上下文解析/权限门/参数校验等纯逻辑拆在 ./planning.js;
- * 工具注册拆在 tools/(由 agent-tools.js 组装)。
+ * 规划已收敛为 Tool Loop 单一执行路径;上下文解析/权限门/参数校验等纯逻辑
+ * 拆在 ./planning.js,工具注册拆在 tools/(由 agent-tools.js 组装)。
  * 不引入 LangChain/n8n,直接复用现有 Docker/Compose/DB/权限服务。
  */
-
-const PLAN_SYSTEM_PROMPT = `你是 ComposeOps 的运维规划 Agent。请根据用户需求,从给定的工具列表中规划执行步骤。
-
-工具组织:
-- 工具已按类别组织(lifecycle/config/diagnostic/maintenance/security/advanced),便于快速定位。
-- 提供宏工具(macro.*)用于原子化多步操作:
-  * macro.safe_restart: 安全重启(备份→停止→验证→启动→健康检查)
-  * macro.deploy_with_backup: 带备份的配置部署
-  * macro.scale_with_health_check: 带健康检查的扩缩容
-  * macro.emergency_rollback: 紧急回滚(停止→配置回滚→重启→验证)
-
-规则:
-1. 只使用列表中声明的工具,不得虚构工具名。
-2. 优先使用宏工具简化常见多步操作,减少失败风险。
-3. 每个步骤给出 tool 与 params;params 只填写你从用户需求中能确定的字段,项目 ID 会由系统自动注入。
-4. 高风险操作(启动/停止/重启/修改配置/清理资源)需要用户确认,系统会自动标记。
-5. 输出必须是合法 JSON,不要输出 markdown 代码块以外的任何文字。
-
-输出格式:
-{"steps":[{"tool":"工具名","params":{}},{"tool":"工具名","params":{}}]}`;
 
 const LOOP_SYSTEM_PROMPT = `你是 ComposeOps 的聊天式运维 Agent。你通过工具帮助用户查看和操作已经明确纳管的 Docker Compose 项目。
 
@@ -109,10 +89,6 @@ export class OperationsAgent {
     return this;
   }
 
-  listRoles() {
-    return Object.entries(AGENT_ROLES).map(([name, meta]) => ({ name, ...meta }));
-  }
-
   getTool(name) {
     const registered = this.tools.get(name);
     if (registered) return registered;
@@ -146,18 +122,6 @@ export class OperationsAgent {
     
     return [...tools, ...macros];
   }
-  
-  /** 返回工具分类信息 */
-  listCategories() {
-    return Object.entries(TOOL_CATEGORIES).map(([name, category]) => ({
-      name,
-      label: category.label,
-      description: category.description,
-      icon: category.icon,
-      risk: category.risk,
-      toolCount: category.tools.length
-    }));
-  }
 
   addThought(phase, content, metadata = {}, trace = this.thoughts) {
     const thought = { timestamp: Date.now(), phase, content, metadata: redactValue(metadata) };
@@ -165,95 +129,7 @@ export class OperationsAgent {
     return thought;
   }
 
-  /**
-   * 规划入口:理解意图 → 选择工具 → 生成步骤。
-   * @param {AbortSignal} [signal] - 可选的中断信号,传给底层 LLM 调用,使用户可中断规划阶段。
-   * @returns {{ steps: Array<{tool:string, params:object, confirmationRequired:boolean}>, confirmations: string[] }}
-   */
-  async plan(userMessage, context = {}, signal = null) {
-    const trace = [];
-    this.addThought('understanding', '正在理解用户意图…', { message: String(userMessage || '') }, trace);
-    const role = context.role && AGENT_ROLES[context.role] ? context.role : 'planner';
-    this.addThought('planning', `使用「${AGENT_ROLES[role].label}」角色规划`, { role }, trace);
-    const steps = await this._planSteps(userMessage, { ...context, role }, signal, trace);
-    const boundSteps = this._bindContext(steps, context);
-    const confirmations = boundSteps
-      .filter((step) => this.getTool(step.tool)?.confirmationRequired)
-      .map((step) => step.tool);
-    this.addThought('planning', `已生成 ${boundSteps.length} 步执行计划`, {
-      tools: boundSteps.map((step) => step.tool),
-      role,
-    }, trace);
-    return { role, steps: boundSteps, confirmations: [...new Set(confirmations)], thoughts: trace };
-  }
-
-  async _planSteps(userMessage, context, signal = null, trace = []) {
-    const cfg = getAiConfig();
-    if (!cfg.apiKey) {
-      this.addThought('planning', '未配置 AI API Key,使用确定性规则规划', {}, trace);
-      return defaultPlan(this, userMessage, context);
-    }
-    try {
-      const role = context.role && AGENT_ROLES[context.role] ? context.role : 'planner';
-      const roleMeta = AGENT_ROLES[role];
-      const visibleTools = this.listTools()
-        .filter((tool) => !roleMeta.allowedTools || roleMeta.allowedTools.includes(tool.name));
-      const tools = visibleTools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.parameters,
-        confirmationRequired: tool.confirmationRequired,
-      }));
-      const text = await callOpenAI({
-        ...cfg,
-        messages: [
-          { role: 'system', content: `${PLAN_SYSTEM_PROMPT}\n\n当前角色:${roleMeta.label}(${roleMeta.description})。` },
-          {
-            role: 'user',
-            content: `可用工具:\n${JSON.stringify(tools)}\n\n用户需求:${String(userMessage || '')}`,
-          },
-        ],
-        stream: false,
-        signal,
-      });
-      const parsed = parsePlanJson(text);
-      if (parsed?.steps?.length) return parsed.steps;
-      this.addThought('planning', 'AI 规划结果不可用,回退确定性规则', {}, trace);
-      return defaultPlan(this, userMessage, context);
-    } catch {
-      this.addThought('planning', 'AI 规划调用失败,回退确定性规则', {}, trace);
-      return defaultPlan(this, userMessage, context);
-    }
-  }
-
-  /** 把请求上下文中的 projectId/containerId 注入到需要它们的工具步骤。 */
-  _bindContext(steps, context) {
-    const role = context.role && AGENT_ROLES[context.role] ? context.role : null;
-    return steps
-      .map((step) => {
-      const tool = this.getTool(step.tool);
-      const params = { ...(step.params || {}) };
-      const properties = tool?.parameters?.properties || {};
-      if (properties.projectId && !params.projectId && context.projectId) {
-        params.projectId = context.projectId;
-      }
-      if (properties.containerId && !params.containerId && context.containerId) {
-        params.containerId = context.containerId;
-      }
-
-      // Phase 1 增强:动态风险评估
-      const dynamicRisk = assessRisk(step.tool, params, context);
-
-      return { tool: step.tool, params, confirmationRequired: !!tool?.confirmationRequired, risk: dynamicRisk };
-    })
-      .filter((step) => {
-        if (!role) return true;
-        const meta = AGENT_ROLES[role];
-        return !meta.allowedTools || meta.allowedTools.includes(step.tool);
-      });
-  }
-
-  /** 执行单个工具(用于快速调用与 /agent/confirm)。 */
+  /** 执行单个工具:确认批准后、宏展开与 Tool Loop 共用此入口。 */
   async executeTool(toolName, params = {}, _context = {}, trace = []) {
     // 宏工具展开
     if (toolName.startsWith('macro.')) {
@@ -318,156 +194,8 @@ export class OperationsAgent {
   }
 
   /**
-   * 执行多步工作流,逐步记录执行结果与思维链。
-   * 任何一步失败即停止后续步骤(避免级联误操作),不自动回滚有副作用操作。
-   */
-  async executeWorkflow(planId, steps, _context = {}, signal = null) {
-    const trace = [];
-    const results = [];
-    this.addThought('planning', '开始执行工作流', { steps: steps.length }, trace);
-    for (const step of steps) {
-      if (signal?.aborted) {
-        results.push({ tool: step.tool, status: 'cancelled', error: '执行已中断' });
-        break;
-      }
-      const toolName = step.tool;
-      const params = step.params || {};
-
-      // 强制确认检查:关键工具必须经过确认流程
-      const tool = this.getTool(toolName);
-      if (!tool) {
-        results.push({ tool: toolName, status: 'not_found', error: '未注册的工具' });
-        this.addThought('validating', `工具 ${toolName} 未注册`, {}, trace);
-        break;
-      }
-      if (!roleAllowed(_context.role, toolName)) {
-        results.push({ tool: toolName, status: 'forbidden', error: '当前 Agent 角色不允许使用该工具' });
-        break;
-      }
-      const resolved = await resolveToolContext(params);
-      const risk = assessRisk(toolName, params, { ..._context, ...resolved });
-      if ((tool.confirmationRequired || risk === 'high' || risk === 'critical') && !step.confirmed) {
-        results.push({ tool: toolName, status: 'requires_confirmation', error: '该工具需要用户确认后才能执行' });
-        this.addThought('validating', `${toolName} 需要确认`, {}, trace);
-        updateAgentPlan(planId, { status: 'pending_confirmation', resultJson: { results }, executedAt: new Date().toISOString() });
-        return { success: false, status: 'pending_confirmation', results, thoughts: trace, awaitingConfirmation: true };
-      }
-
-      // 前置条件检查
-      const precondition = await PreconditionChecker.check(toolName, params, { ..._context, ...resolved });
-      if (!precondition.allowed) {
-        results.push({ tool: toolName, status: 'precondition_failed', error: precondition.reason });
-        this.addThought('validating', `${toolName} 前置条件未满足:${precondition.reason}`, {}, trace);
-        break;
-      }
-
-      const execId = recordAgentExecution(planId, toolName, params, 'executing');
-      this.addThought('executing', `执行 ${toolName}`, { execId, params }, trace);
-
-      // Phase 1 增强:更新执行进度到数据库
-      const stepIndex = steps.indexOf(step);
-      updateAgentPlan(planId, {
-        progressStage: `正在执行 ${toolName}...`,
-        progressPercent: Math.round((stepIndex / steps.length) * 100),
-        currentStepIndex: stepIndex,
-        updatedAt: new Date().toISOString(),
-      });
-
-      const started = Date.now();
-      try {
-        await assertPermission(tool, resolved);
-        validateParams(tool.parameters, params);
-        const result = tool.isMacro
-          ? await this.executeTool(toolName, params, { ..._context, ...resolved }, trace)
-          : await withProjectOperationLock(resolved.project?.id, () => tool.execute(params, resolved));
-        
-        // 后置条件验证
-        const postcondition = await PostconditionValidator.validate(toolName, params, result, { ..._context, ...resolved });
-        if (!postcondition.valid) {
-          updateAgentExecution(execId, { status: 'postcondition_failed', error: postcondition.reason, result, durationMs: Date.now() - started });
-          results.push({ tool: toolName, status: 'postcondition_failed', error: postcondition.reason, result, durationMs: Date.now() - started });
-          this.addThought('validating', `${toolName} 后置条件验证失败:${postcondition.reason}`, { execId }, trace);
-          break;
-        }
-        
-        updateAgentExecution(execId, { status: 'success', result, durationMs: Date.now() - started });
-        results.push({ tool: toolName, status: 'success', result, durationMs: Date.now() - started });
-        this.addThought('validating', `${toolName} 执行成功`, { execId }, trace);
-      } catch (error) {
-        updateAgentExecution(execId, { status: 'failed', error: error.message, durationMs: Date.now() - started });
-        results.push({ tool: toolName, status: 'failed', error: error.message, durationMs: Date.now() - started });
-        this.addThought('validating', `${toolName} 执行失败:${error.message}`, { execId }, trace);
-        break;
-      }
-    }
-    const cancelled = signal?.aborted || results.some((item) => item.status === 'cancelled');
-    const failed = results.some((item) => item.status !== 'success');
-    const status = cancelled ? 'cancelled' : results.length === 0 ? 'failed' : failed ? 'failed' : 'completed';
-    updateAgentPlan(planId, {
-      status,
-      resultJson: { results },
-      executedAt: new Date().toISOString(),
-      progressStage: cancelled ? '执行已中断' : failed ? '执行失败' : '执行完成',
-      progressPercent: failed ? Math.round((Math.max(results.length - 1, 0) / Math.max(steps.length, 1)) * 100) : 100,
-      currentStepIndex: Math.max(results.length - 1, 0),
-      updatedAt: new Date().toISOString(),
-    });
-    this.addThought('done', cancelled ? '工作流执行已中断' : failed ? '工作流执行失败' : '工作流执行完成', { results }, trace);
-    return { success: !failed && results.length > 0, status, results, thoughts: trace };
-  }
-
-  persistPlan(sessionId, userMessage, plan, context = {}) {
-    return createAgentPlan(sessionId, userMessage, {
-      role: plan.role || 'planner',
-      steps: plan.steps,
-      confirmations: plan.confirmations,
-    }, context.projectId, context.containerId);
-  }
-
-  /**
-   * 只允许执行持久化计划中的工具顺序。
-   * 完整计划可以由确认弹窗修改参数；单步重试必须显式携带 stepIndex。
-   */
-  prepareExecutionSteps(planRow, requestedSteps) {
-    let stored;
-    try {
-      stored = JSON.parse(planRow.plan_json || '{}');
-    } catch {
-      throw Object.assign(new Error('执行计划数据损坏'), { statusCode: 409 });
-    }
-    const original = Array.isArray(stored.steps) ? stored.steps : [];
-    if (!original.length) throw Object.assign(new Error('执行计划没有步骤'), { statusCode: 409 });
-    if (!Array.isArray(requestedSteps) || !requestedSteps.length) {
-      return { steps: original, planJson: stored };
-    }
-
-    if (requestedSteps.length === 1 && Number.isInteger(requestedSteps[0].stepIndex)) {
-      const index = requestedSteps[0].stepIndex;
-      const base = original[index];
-      if (!base || requestedSteps[0].tool !== base.tool) {
-        throw Object.assign(new Error('重试步骤与原计划不匹配'), { statusCode: 409 });
-      }
-      return {
-        steps: [{ ...base, ...requestedSteps[0], params: requestedSteps[0].params || base.params, stepIndex: index }],
-        planJson: stored,
-      };
-    }
-
-    if (requestedSteps.length !== original.length) {
-      throw Object.assign(new Error('执行步骤与原计划不匹配'), { statusCode: 409 });
-    }
-    const steps = requestedSteps.map((step, index) => {
-      if (step.tool !== original[index]?.tool) {
-        throw Object.assign(new Error(`第 ${index + 1} 步工具与原计划不匹配`), { statusCode: 409 });
-      }
-      return { ...original[index], ...step, params: step.params || original[index].params, stepIndex: index };
-    });
-    return { steps, planJson: { ...stored, steps } };
-  }
-
-  /**
-   * Phase 2: Tool-calling 原生循环执行。
-   * 不再预先规划全部步骤,而是让 LLM 逐步决策:调用工具 → 观察结果 → 决定下一步。
+   * Tool-calling 原生循环执行。
+   * 不预先规划全部步骤,而是让 LLM 逐步决策:调用工具 → 观察结果 → 决定下一步。
    * @param {string} userMessage - 用户需求
    * @param {object} context - 执行上下文(projectId, containerId, sessionId)
    * @param {function} onEvent - 事件回调函数,推送执行状态给前端
@@ -676,7 +404,7 @@ export class OperationsAgent {
               try {
                 approval = await this._waitForApproval(planId, toolCall.id, abortController.signal);
               } finally {
-                // 无论用户批准、拒绝还是 30 秒超时,确认等待都必须清理。
+                // 无论用户批准、拒绝、兜底超时还是断连中断,确认等待都必须清理。
               }
 
               if (!approval || !approval.approved) {
@@ -757,6 +485,8 @@ export class OperationsAgent {
   /**
    * 等待用户确认工具执行。
    * 前端通过调用 /api/v1/ai/agent/approve 来触发确认。
+   * 运维确认往往要检查日志、核对参数,耗时不可预估,因此只保留一个很长的
+   * 兜底上限(10 分钟)防止悬挂连接堆积;期间客户端断开会通过 signal 中断。
    * @private
    */
   async _waitForApproval(planId, toolCallId, signal) {
@@ -764,8 +494,8 @@ export class OperationsAgent {
       const key = `${planId}:${toolCallId}`;
       const timeout = setTimeout(() => {
         this.pendingApprovals?.delete(key);
-        resolve({ approved: false, reason: 'timeout' }); // 30 秒未确认视为拒绝
-      }, 30000);
+        resolve({ approved: false, reason: 'timeout' }); // 兜底超时视为拒绝
+      }, 10 * 60 * 1000);
 
       // 保存 resolve 函数供外部调用
       if (!this.pendingApprovals) this.pendingApprovals = new Map();
@@ -792,18 +522,6 @@ export class OperationsAgent {
       clearTimeout(pending.timeout);
       pending.resolve({ approved, input });
       this.pendingApprovals.delete(key);
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * 中断执行中的 Agent Loop。
-   */
-  interruptExecution(planId) {
-    const controller = this.activeExecutions.get(planId);
-    if (controller) {
-      controller.abort();
       return true;
     }
     return false;

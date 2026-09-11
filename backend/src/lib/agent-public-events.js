@@ -1,5 +1,6 @@
 import { redactValue } from './redaction.js';
-import { stripTextToolProtocol, stripAgentInternalText } from '../services/ai.js';
+import { stripAgentInternalText } from './agent-protocol-core.js';
+import { stripTextToolProtocol } from '../services/ai.js';
 
 const INTERNAL_TOKEN_PATTERN = /\btool_(?:call|calls|ca)\b|<\/?tool(?:[_ ]?[a-z]*)?/gi;
 

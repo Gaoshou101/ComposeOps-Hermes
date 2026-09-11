@@ -8,6 +8,8 @@ const manualContextRoute = ref('');
 let observer;
 let syncTimer;
 const SENSITIVE_FIELD_RE = /(SECRET|TOKEN|PASSWORD|PASSWD|\bPASS\b|(?:API|PRIVATE|ACCESS|SECRET|AUTH|SIGNING)[_-]?KEY)/i;
+// 字段名不带敏感关键词、但值本身长得像凭据的兜底过滤。
+const SENSITIVE_VALUE_RE = /(ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/;
 
 const PAGE_LABELS = {
   '/services': '服务',
@@ -44,6 +46,7 @@ function collectPageSnapshot() {
       value: String(field.value || '').slice(0, 500),
     }))
     .filter((field) => !SENSITIVE_FIELD_RE.test(field.label))
+    .filter((field) => !SENSITIVE_VALUE_RE.test(field.value))
     .filter((field) => field.value || field.label);
   const headings = [...root.querySelectorAll('h1, h2, h3, .page-title, .page-subtitle')]
     .map((node) => (node.innerText || node.textContent || '').trim())
@@ -73,6 +76,9 @@ function syncPageContext() {
 }
 
 function scheduleSync() {
+  // 快照要走 innerText(强制布局)且随页面 DOM 变化高频触发;
+  // 抽屉关闭时无人消费上下文,直接跳过,openAgent 时会补一次同步。
+  if (!open.value) return;
   clearTimeout(syncTimer);
   syncTimer = setTimeout(syncPageContext, 120);
 }

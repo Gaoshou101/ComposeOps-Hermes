@@ -9,12 +9,17 @@
 - 弹层 Esc 统一由 `frontend/src/composables/useEscapeKey.js` 管理(modal > drawer > event > command,`lockBody` 计数锁滚动)。
 - 端口映射 `0.0.0.0:28765:3001` 为用户明确配置,勿改。
 - 敏感识别正则:`/(SECRET|TOKEN|PASSWORD|PASSWD|\bPASS\b|(?:API|PRIVATE|ACCESS|SECRET|AUTH|SIGNING)[_-]?KEY)/i`。
-- 镜像必须保持字节一致:`backend/src/lib/dotenv.js` ⇄ `frontend/src/lib/dotenv.js`(改一处就同步另一处)。
+- 镜像必须保持字节一致:`backend/src/lib/dotenv.js` ⇄ `frontend/src/lib/dotenv.js`;`backend/src/lib/agent-protocol-core.js` ⇄ `frontend/src/lib/agent-protocol-core.js`(改一处就同步另一处,两侧 sync 测试会比对字节兜底)。
+
+## AI Agent
+- 执行路径收敛为 Tool Loop 单通道:`POST /ai/agent/execute-stream`(SSE)+ `POST /ai/agent/approve` 确认门;早期 plan/execute/confirm/feedback/export 等规划管线端点已删除,勿再引用。
+- 会话历史单一通道:后端从 DB 读,前端不回传 `history`;token 分片由后端发射层保证干净,前端**原样追加,禁止逐分片清洗**(会吃掉分片边界空白,导致 Markdown 表格/代码块粘连)。
+- 前端聊天逻辑在 `frontend/src/composables/useAgentChat.js`(工作台与全局抽屉共用);页面上下文采集在 `useAgentConsole.js`(抽屉关闭时不做快照)。
 
 ## 常用命令
 - 前端构建: `cd frontend && npm run build`(零 Warning;`chunkSizeWarningLimit: 3000`)
 - 前端单测: `cd frontend && npx vitest run`
-- 后端单测: `cd backend && DB_PATH=/tmp/x.db node --test test/*.test.js`
+- 后端单测: `cd backend && DB_PATH=/tmp/x.db npm test`(必须 `--test-concurrency=1`,并发会多进程抢同一 DB 偶发失败)
 - 后端语法: `node --check <file>`
 - 完整启动: `node backend/src/index.js`(`SERVE_FRONTEND=1 PORT=3001 ENABLE_SHELL=1`)
 

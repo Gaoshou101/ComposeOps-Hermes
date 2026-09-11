@@ -197,21 +197,10 @@ export const api = {
   renameAgentSession: (sessionId, title) => request(`/ai/agent/sessions/${encodeURIComponent(sessionId)}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
   getAiMemories: (limit = 20, query = '') => request(`/ai/agent/memories?limit=${limit}${query ? `&query=${encodeURIComponent(query)}` : ''}`),
   clearAiHistory: (sessionId) => request(`/ai/history${sessionId ? `?sessionId=${sessionId}` : ''}`, { method: 'DELETE' }),
-  // ai agent
-  getAgentTools: () => request('/ai/agent/tools'),
-  getAgentCategories: () => request('/ai/agent/categories'),
-  agentPlan: (payload) => request('/ai/agent/plan', { method: 'POST', body: JSON.stringify(payload) }),
-  agentExecute: (payload) => request('/ai/agent/execute', { method: 'POST', body: JSON.stringify(payload) }),
+  // ai agent:执行已收敛为 Tool Loop 流式通道;会话/记忆/审计见上方与下方的端点
   agentExecuteStream: (payload, onEvent, signal) => streamSse('/ai/agent/execute-stream', payload, onEvent, signal),
   agentApprove: (payload) => request('/ai/agent/approve', { method: 'POST', body: JSON.stringify(payload) }),
-  agentInterrupt: (payload) => request('/ai/agent/interrupt', { method: 'POST', body: JSON.stringify(payload) }),
-  agentConfirm: (payload) => request('/ai/agent/confirm', { method: 'POST', body: JSON.stringify(payload) }),
   getAgentExecutions: (planId = '') => request(`/ai/agent/executions${planId ? `?planId=${encodeURIComponent(planId)}` : ''}`),
-  getAgentSuggestions: (projectId = '', limit = 5) => request(`/ai/agent/suggestions?${projectId ? `projectId=${encodeURIComponent(projectId)}&` : ''}limit=${limit}`),
-  getAgentRoles: () => request('/ai/agent/roles'),
-  getAgentFeedback: () => request('/ai/agent/feedback'),
-  agentFeedback: (payload) => request('/ai/agent/feedback', { method: 'POST', body: JSON.stringify(payload) }),
-  exportAgent: (limit = '') => request(`/ai/agent/export${limit ? `?limit=${encodeURIComponent(limit)}` : ''}`),
   // compose 语义校验 / 变更预览
   validateCompose: (projectId, fileIndex, content) => request(`/projects/${projectId}/compose/validate`, { method: 'POST', body: JSON.stringify({ fileIndex, content }) }),
   previewCompose: (projectId, content) => request(`/projects/${projectId}/compose/preview`, { method: 'POST', body: JSON.stringify({ content }) }),

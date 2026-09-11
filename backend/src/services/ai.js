@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { getSetting, setSetting, addAiMessage, getAiHistory, clearAiHistory } from '../lib/db.js';
+import { scanIcallProtocols, stripAgentInternalText } from '../lib/agent-protocol-core.js';
 
 const DEFAULT_SYSTEM_PROMPT = `你是 OpsDash 的运维助手，擅长 Docker Compose 与容器排错。
 - 当用户请求"排错"时，先给出问题根因的简短判断，再给出可执行的修复步骤。
@@ -51,21 +52,6 @@ export function stripTextToolProtocol(text) {
   return stripAgentInternalText(sanitizeTextToolProtocol(text).content);
 }
 
-/** 模型有时会把内部伪代码/工具编排变量当成回答输出,不能进入用户可见文本或历史。 */
-export function stripAgentInternalText(text) {
-  let source = String(text || '');
-  const internalStart = /\b(?:result|res)\s*=\s*composeOps\.[\w.-]+\(\)|\b(?:iNdEx|index)\s*\+\+\s*(?:(?:\r?\n|\s)+(?:result|project_ids|project_names|project_list)\s*=)/i;
-  const visibleBoundary = /(?:您当前|您可以|当前可以|以下是|当然|请告诉|如需|查看我|查看其|以\s*markdown|项目列表)/iu;
-  let match;
-  while ((match = internalStart.exec(source))) {
-    const tail = source.slice(match.index + match[0].length);
-    const boundary = tail.search(visibleBoundary);
-    const end = boundary < 0 ? source.length : match.index + match[0].length + boundary;
-    source = source.slice(0, match.index) + source.slice(end);
-  }
-  return source.replace(/^[ \t]+\n/gm, '\n').replace(/\n{3,}/g, '\n\n').trim();
-}
-
 function createTextToolCall(payload, calls) {
   const functionPayload = payload?.function || payload;
   const name = functionPayload?.name || payload?.tool || '';
@@ -81,63 +67,6 @@ function createTextToolCall(payload, calls) {
   });
 }
 
-function scanIcallProtocols(source, calls) {
-  const marker = /_icall/gi;
-  let cursor = 0;
-  let output = '';
-  let match;
-  while ((match = marker.exec(source)) !== null) {
-    const start = match.index;
-    output += source.slice(cursor, start);
-    let jsonStart = marker.lastIndex;
-    while (jsonStart < source.length && /\s/.test(source[jsonStart])) jsonStart += 1;
-    if (source[jsonStart] === ':') {
-      jsonStart += 1;
-      while (jsonStart < source.length && /\s/.test(source[jsonStart])) jsonStart += 1;
-    }
-    if (source[jsonStart] !== '{') {
-      // '_ic' 后若只跟 _icall 单词的残片(如 '_ica'/'_icall'),协议可能尚未写完,
-      // 必须按未完成处理整段扣住;若当作普通文本丢弃标记,下一轮协议补全时
-      // 已发射的残片无法收回,可见文本会回缩/错位。
-      if (/^(?:a(?:l{0,2})?)?$/i.test(source.slice(marker.lastIndex))) {
-        return { content: output, incomplete: true };
-      }
-      cursor = marker.lastIndex;
-      continue;
-    }
-
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
-    let jsonEnd = -1;
-    for (let index = jsonStart; index < source.length; index += 1) {
-      const character = source[index];
-      if (escaped) { escaped = false; continue; }
-      if (character === '\\') { escaped = true; continue; }
-      if (character === '"') { inString = !inString; continue; }
-      if (inString) continue;
-      if (character === '{') depth += 1;
-      if (character === '}') {
-        depth -= 1;
-        if (depth === 0) { jsonEnd = index + 1; break; }
-      }
-    }
-    if (jsonEnd < 0) return { content: output, incomplete: true };
-
-    let end = jsonEnd;
-    while (end < source.length && /\s/.test(source[end])) end += 1;
-    if (source[end] !== '>') return { content: output, incomplete: true };
-    try { createTextToolCall(JSON.parse(source.slice(jsonStart, jsonEnd)), calls); } catch {}
-    cursor = end + 1;
-    marker.lastIndex = cursor;
-  }
-  const remainder = output + source.slice(cursor);
-  return {
-    content: remainder.replace(/_ic(?:a(?:l{0,2})?)?$/i, ''),
-    incomplete: false,
-  };
-}
-
 function sanitizeTextToolProtocol(text) {
   const source = String(text || '');
   const calls = [];
@@ -149,7 +78,7 @@ function sanitizeTextToolProtocol(text) {
   const withoutOpenXml = withoutClosedXml
     .replace(/<\/?tool_call[\s\S]*?<\/tool_call>/gi, '')
     .replace(/<tool_call>[\s\S]*$/gi, '');
-  const scanned = scanIcallProtocols(withoutOpenXml, calls);
+  const scanned = scanIcallProtocols(withoutOpenXml, (payload) => createTextToolCall(payload, calls));
   return {
     content: scanned.content
       .replace(/<\/?tool(?:[_ ]?[a-z]*)?/gi, '')
