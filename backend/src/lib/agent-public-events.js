@@ -17,7 +17,11 @@ function cleanError(value) {
 
 export function toPublicAgentEvent(event) {
   if (!event || typeof event !== 'object') return null;
-  if (event.type === 'token' || event.type === 'done') return { type: event.type, content: cleanText(event.content) };
+  // token 必须原样透传:分片在 ai.js 发射层已完成全量、有状态的协议剥离,
+  // 这里若逐 token 再清洗(trim/正则),会吃掉分片边界的空白与换行,
+  // 造成表格、代码块与前文粘连,以及英文词间空格丢失。
+  if (event.type === 'token') return { type: 'token', content: String(event.content ?? '') };
+  if (event.type === 'done') return { type: event.type, content: cleanText(event.content) };
   if (event.type === 'confirmation_required') {
     return {
       type: 'confirmation_required',

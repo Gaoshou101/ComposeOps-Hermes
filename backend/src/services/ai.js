@@ -96,6 +96,12 @@ function scanIcallProtocols(source, calls) {
       while (jsonStart < source.length && /\s/.test(source[jsonStart])) jsonStart += 1;
     }
     if (source[jsonStart] !== '{') {
+      // '_ic' 后若只跟 _icall 单词的残片(如 '_ica'/'_icall'),协议可能尚未写完,
+      // 必须按未完成处理整段扣住;若当作普通文本丢弃标记,下一轮协议补全时
+      // 已发射的残片无法收回,可见文本会回缩/错位。
+      if (/^(?:a(?:l{0,2})?)?$/i.test(source.slice(marker.lastIndex))) {
+        return { content: output, incomplete: true };
+      }
       cursor = marker.lastIndex;
       continue;
     }
@@ -156,6 +162,29 @@ function sanitizeTextToolProtocol(text) {
 export function parseTextToolCalls(text) {
   const parsed = sanitizeTextToolProtocol(text);
   return { content: stripAgentInternalText(parsed.content), toolCalls: parsed.toolCalls };
+}
+
+/**
+ * 流式发射持回:结尾若只是工具协议/内部伪代码的前缀残片(如 "<to"、"tool_"、"result"、
+ * "index"),先扣住不发,等下一段确认后再发射。否则残片会被当正文提前发出,
+ * 下一轮被剥除时已发射内容无法收回,造成可见文本回缩或协议泄露。
+ * 流结束由 flushBufferedVisibleText 补发全部剩余内容,不丢字。
+ */
+const PROTOCOL_PREFIX_HOLD_BACKS = [
+  /_ic(?:a(?:l{0,2})?)?$/i,
+  /\btool_(?:c(?:a(?:l{0,2})?)?)?$/i,
+  /<\/?t(?:o(?:o(?:l(?:[_ ]?[a-z]*)?)?)?)?$/i,
+  /\bres(?:u(?:l(?:t)?)?)?(?:\s*=\s*)?$/,
+  /\b(?:i?n(?:d(?:e(?:x)?)?)?)?(?:\+\+)?(?:\s*=\s*)?$/,
+];
+
+function protocolHoldBackLength(text) {
+  let hold = 0;
+  for (const pattern of PROTOCOL_PREFIX_HOLD_BACKS) {
+    const match = pattern.exec(text);
+    if (match && match[0].length > hold) hold = match[0].length;
+  }
+  return hold;
 }
 
 /**
@@ -315,12 +344,14 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
         if (delta) {
           fullText += delta;
           // 实时计算“剥除文本协议后”的可见回复,只把新增部分推给前端:
-          // 无论协议标签是否跨 chunk、是否畸形/未闭合,内部 JSON 与标签都不会外泄。
+          // 无论协议标签是否跨 chunk、是否畸形/未闭合,内部 JSON 与标签都不会外泄;
+          // 结尾的协议前缀残片按持回处理,避免先发后删导致回缩。
           if (onToken) {
             const visible = parseTextToolCalls(fullText).content;
-            if (visible.length > emittedContentLength) {
-              onToken(visible.slice(emittedContentLength));
-              emittedContentLength = visible.length;
+            const safeLength = visible.length - protocolHoldBackLength(visible);
+            if (safeLength > emittedContentLength) {
+              onToken(visible.slice(emittedContentLength, safeLength));
+              emittedContentLength = safeLength;
             }
           }
         }

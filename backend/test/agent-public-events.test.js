@@ -4,9 +4,14 @@ import { toPublicAgentEvent } from '../src/lib/agent-public-events.js';
 
 test('公开 Agent 事件隐藏工具协议和内部工具字段', () => {
   assert.equal(toPublicAgentEvent({ type: 'trace', trace: { content: 'tool_call secret' } }), null);
-  assert.deepEqual(toPublicAgentEvent({ type: 'token', content: '回答 tool_ca' }), { type: 'token', content: '回答' });
-  assert.deepEqual(toPublicAgentEvent({ type: 'token', content: 'iNdEx++ result= composeOps.project.list_managed()project_list<tID | 项目名称 |\n您当前可以操作的项目如下:' }), { type: 'token', content: '您当前可以操作的项目如下:' });
-  assert.deepEqual(toPublicAgentEvent({ type: 'token', content: 'for (let index = 0; index < 3; index++) {}' }), { type: 'token', content: 'for (let index = 0; index < 3; index++) {}' });
+  // token 分片必须在 ai.js 发射层(全量、有状态)完成协议剥离后原样透传:
+  // 逐 token 清洗会吃掉分片边界的空白与换行,造成表格/代码块与正文粘连、英文空格丢失。
+  assert.deepEqual(toPublicAgentEvent({ type: 'token', content: '回答 \n\n| 项目 | 状态 |' }), { type: 'token', content: '回答 \n\n| 项目 | 状态 |' });
+  assert.deepEqual(toPublicAgentEvent({ type: 'token', content: '' }), { type: 'token', content: '' });
+  assert.deepEqual(toPublicAgentEvent({ type: 'token' }), { type: 'token', content: '' });
+  // done 是完整文本,仍做协议与内部伪代码清洗。
+  assert.deepEqual(toPublicAgentEvent({ type: 'done', content: '结论 如下:\n\n\ntext tool_ca' }), { type: 'done', content: '结论 如下:\n\ntext' });
+  assert.deepEqual(toPublicAgentEvent({ type: 'token', content: 'iNdEx++ result= composeOps.project.list_managed()project_list<tID | 项目名称 |\n您当前可以操作的项目如下:' }), { type: 'token', content: 'iNdEx++ result= composeOps.project.list_managed()project_list<tID | 项目名称 |\n您当前可以操作的项目如下:' });
   assert.deepEqual(toPublicAgentEvent({
     type: 'confirmation_required',
     tool: 'cron.create',

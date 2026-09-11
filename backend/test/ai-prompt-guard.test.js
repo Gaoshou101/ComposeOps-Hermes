@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { UNTRUSTED_GUARD, fenceUntrusted, formatWebSources, newFenceNonce, parseTextToolCalls, stripTextToolProtocol } from '../src/services/ai.js';
+import { UNTRUSTED_GUARD, callOpenAI, fenceUntrusted, formatWebSources, newFenceNonce, parseTextToolCalls, stripTextToolProtocol } from '../src/services/ai.js';
 
 test('ai-prompt-guard: 定界块包含 nonce 且首尾标记配对', () => {
   const nonce = newFenceNonce();
@@ -129,4 +129,41 @@ test('ai-tool-call: _icall 畸形或未闭合内容不会泄露', () => {
 test('ai-tool-call: 流式协议前缀与嵌套参数边界不会进入可见文本', () => {
   assert.equal(stripTextToolProtocol('正在查询 _ic'), '正在查询');
   assert.equal(stripTextToolProtocol('正在查询 _icall\n{"name":"project.list_managed","arguments":{"x":{"y":1}}}>完成'), '正在查询 完成');
+});
+
+test('ai-tool-call: 流式发射持回协议残片且不破坏分片边界空白', async () => {
+  const chunks = [
+    '检查结果:\n\n| 项目 | 状态 |\n| --- | --- |\n| composeops | 运行中 |\n\n',
+    '结论:需要重启 tool_',
+    'ca 与 <tool_call>{"name":"compose.restart","arguments":{}}</tool_call>',
+  ];
+  const sse = chunks
+    .map((chunk) => `data: ${JSON.stringify({ choices: [{ delta: { content: chunk } }] })}\n\n`)
+    .join('');
+  const originalFetch = globalThis.fetch;
+  const restoreFetch = () => { globalThis.fetch = originalFetch; };
+  globalThis.fetch = async () => new Response(sse, { status: 200 });
+  try {
+    const tokens = [];
+    const result = await callOpenAI({
+      baseUrl: 'http://ai.test/v1',
+      apiKey: 'key',
+      model: 'test-model',
+      messages: [],
+      stream: true,
+      onToken: (token) => tokens.push(token),
+    });
+    const streamed = tokens.join('');
+    // 分片边界的空行、表格结构与词间空格原样保留(不因逐片清洗而粘连)。
+    assert.ok(streamed.includes('| composeops | 运行中 |'));
+    assert.ok(streamed.includes('\n\n结论'));
+    // 'tool_' 残片被持回,'tool_ca' 与完整协议块都不进入可见文本。
+    assert.ok(!streamed.includes('tool'));
+    // 流式拼装结果与最终清洗后的全文一致:无残片泄露、无先发后删的错位。
+    assert.equal(streamed, result.content);
+    assert.equal(result.toolCalls.length, 1);
+    assert.equal(result.toolCalls[0].function.name, 'compose.restart');
+  } finally {
+    restoreFetch();
+  }
 });
