@@ -23,13 +23,11 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
 import { Bot, MessageCircle, Send, Square, UserRound, X } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import { useAgentConsole } from '../composables/useAgentConsole.js';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
-import { stripAgentProtocol } from '../lib/agent-text.js';
+import { renderAgentMarkdown } from '../lib/agent-markdown.js';
 
 const { open, context, closeAgent } = useAgentConsole();
 const sessionId = ref(null); const messages = ref([]); const input = ref(''); const running = ref(false); const scrollEl = ref(null); const inputEl = ref(null); let nextId = 0; let controller = null;
@@ -38,7 +36,7 @@ const contextSummary = computed(() => pageContext.value.summary || pageContext.v
 const defaultPrompt = computed(() => pageContext.value.mode === 'cron-editor' ? '根据当前表单帮我创建这个定时任务' : '请分析当前页面，并告诉我可以做什么');
 useEscapeKey({ active: open, onClose: closeAgent, layer: 'drawer', lockBody: true });
 function stringify(value) { try { return JSON.stringify(value, null, 2); } catch { return String(value); } }
-function renderMarkdown(value) { return DOMPurify.sanitize(marked.parse(stripAgentProtocol(value), { breaks: true, gfm: true })); }
+function renderMarkdown(value) { return renderAgentMarkdown(value); }
 function scrollBottom() { void nextTick(() => { if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight; }); }
 function focusInput() { void nextTick(() => inputEl.value?.focus()); }
 async function ensureSession() { if (sessionId.value) return; const result = await api.createAgentSession(); sessionId.value = Number(result.sessionId); }

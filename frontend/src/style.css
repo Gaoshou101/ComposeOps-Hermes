@@ -223,6 +223,31 @@ body[data-density='compact'] .data-table td { @apply !py-1.5 !px-2; }
   .message { @apply max-w-[88%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words; }
   .message-user { @apply bg-accent text-white; }
   .message-assistant { @apply bg-surface-800 text-surface-100; }
+  .agent-rich-markdown { @apply leading-7; }
+  .agent-rich-markdown p { @apply mb-3 last:mb-0; }
+  .agent-rich-markdown h1,
+  .agent-rich-markdown h2,
+  .agent-rich-markdown h3,
+  .agent-rich-markdown h4 { @apply mb-2 mt-4 font-semibold leading-snug text-surface-50 first:mt-0; }
+  .agent-rich-markdown h1 { @apply text-lg; }
+  .agent-rich-markdown h2 { @apply text-base; }
+  .agent-rich-markdown h3,
+  .agent-rich-markdown h4 { @apply text-sm; }
+  .agent-rich-markdown ul,
+  .agent-rich-markdown ol { @apply mb-3 mt-2 list-outside pl-6; }
+  .agent-rich-markdown ul { @apply list-disc; }
+  .agent-rich-markdown ol { @apply list-decimal; }
+  .agent-rich-markdown li { @apply my-1; }
+  .agent-rich-markdown blockquote { @apply my-3 border-l-2 border-cyan-700 bg-surface-950/40 px-3 py-2 text-surface-300; }
+  .agent-rich-markdown code { @apply rounded bg-surface-950 px-1.5 py-0.5 font-mono text-[.9em] text-cyan-200; }
+  .agent-rich-markdown pre { @apply my-3 max-w-full overflow-x-auto rounded-lg border border-surface-700 bg-[#0b0d10] p-3 text-xs leading-5; }
+  .agent-rich-markdown pre code { @apply bg-transparent p-0 text-emerald-200; }
+  .agent-rich-markdown table { @apply my-3 w-full min-w-[38rem] border-collapse text-left text-xs; }
+  .agent-rich-markdown th { @apply border border-surface-700 bg-surface-950/80 px-2.5 py-2 font-semibold text-surface-200; }
+  .agent-rich-markdown td { @apply border border-surface-800 px-2.5 py-2 align-top text-surface-300; }
+  .agent-rich-markdown tr:nth-child(even) td { @apply bg-surface-950/30; }
+  .agent-rich-markdown a { @apply text-cyan-300 underline decoration-cyan-700 underline-offset-2 hover:text-cyan-200; }
+  .agent-rich-markdown hr { @apply my-4 border-surface-700; }
   .tabs { @apply flex gap-1 border-b border-surface-800 overflow-x-auto; }
   .tabs button { @apply inline-flex items-center gap-1.5 px-3 py-2 text-sm text-surface-400 border-b-2 border-transparent whitespace-nowrap; }
   .tabs button.active { @apply text-surface-100 border-accent; }
@@ -286,8 +311,7 @@ body[data-density='compact'] .data-table td { @apply !py-1.5 !px-2; }
 .sparkline { @apply shrink-0 overflow-visible; }
 .spark-area { @apply opacity-25; }
 .metric-chip { @apply ml-1 inline-flex shrink-0 items-center rounded-full bg-surface-800/80 px-2 py-0.5 text-[10px] font-medium tabular-nums; }
-.ai-diagnosis { @apply whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-surface-200; }
-.ai-diagnosis .code-block { @apply my-2 rounded-lg border border-surface-700 bg-black/40 px-3 py-2 text-emerald-200; }
+.ai-diagnosis { @apply min-w-0 break-words text-[13px] leading-relaxed text-surface-200; }
 .ai-diagnose-bar { @apply flex shrink-0 flex-wrap items-center gap-2 border-t border-surface-800 bg-surface-900/80 px-3 py-2.5; }
 .storage-bar { @apply flex h-3 w-full gap-px overflow-hidden rounded-full bg-surface-800; }
 .storage-seg { @apply h-full transition-all duration-300; }

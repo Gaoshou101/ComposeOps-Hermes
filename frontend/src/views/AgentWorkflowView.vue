@@ -22,16 +22,14 @@
 
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
 import { Bot, Check, Eraser, Globe2, MessageCircle, MessageSquare, Pencil, Plus, RefreshCw, Send, ShieldAlert, Sparkles, Square, Trash2, UserRound } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import { stripAgentProtocol } from '../lib/agent-text.js';
-marked.setOptions({ breaks: true, gfm: true });
+import { renderAgentMarkdown } from '../lib/agent-markdown.js';
 const projects = ref([]); const sessions = ref([]); const memories = ref([]); const sessionId = ref(null); const input = ref(''); const messages = ref([]); const activity = ref([]); const loading = ref(false); const loadingHistory = ref(false); const running = ref(false); const webSearchEnabled = ref(false); const projectId = ref(''); const scrollEl = ref(null); const inputEl = ref(null); const editingSessionId = ref(null); const editingTitle = ref(''); let nextId = 0; let controller = null;
 const prompts = ['查看我现在可以操作的项目', '搜索 sherpa-onnx-matcha-zh-tts 的 Docker Compose 信息', '记住我偏好先查看日志再执行重启'];
 const selectedProject = computed(() => projects.value.find((project) => project.id === projectId.value)); const activeTitle = computed(() => sessions.value.find((session) => session.sessionId === sessionId.value)?.title || '新会话');
-function renderMarkdown(content) { return DOMPurify.sanitize(marked.parse(stripAgentProtocol(content))); }
+function renderMarkdown(content) { return renderAgentMarkdown(content); }
 function formatDate(value) { return value ? new Date(`${value.replace(' ', 'T')}Z`).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''; }
 function scrollBottom() { void nextTick(() => { if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight; }); } function focusInput() { void nextTick(() => inputEl.value?.focus()); }
 function appendActivity(label, text) { const item = { label, text: String(text || '') }; activity.value.push(item); }

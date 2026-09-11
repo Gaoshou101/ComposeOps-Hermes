@@ -40,7 +40,8 @@
         <div v-else ref="boxEl" class="card flex-1 min-h-[320px] overflow-auto p-4 space-y-3">
           <div v-for="message in messages" :key="message.id" class="flex" :class="message.role === 'user' ? 'justify-end' : 'justify-start'">
             <div class="max-w-[88%] min-w-0">
-              <div class="message whitespace-pre-wrap break-words" :class="message.role === 'user' ? 'message-user' : 'message-assistant'">{{ message.content }}</div>
+              <div v-if="message.role === 'user'" class="message whitespace-pre-wrap break-words message-user">{{ message.content }}</div>
+              <div v-else class="message message-assistant agent-rich-markdown" v-html="renderMarkdown(message.content)"></div>
               <div v-if="message.probes && message.probes.length" class="mt-2 space-y-2">
                 <div v-for="probe in message.probes" :key="probe.id" class="probe-card">
                   <div class="flex items-center gap-2">
@@ -66,7 +67,7 @@
               </div>
             </div>
           </div>
-          <div v-if="streaming" class="flex justify-start"><div class="message message-assistant">{{ buffer }}<span class="animate-pulse">|</span></div></div>
+          <div v-if="streaming" class="flex justify-start"><div class="message message-assistant agent-rich-markdown"><div v-html="renderMarkdown(buffer)"></div><span class="animate-pulse">|</span></div></div>
         </div>
 
         <div class="ai-composer">
@@ -150,6 +151,7 @@ import { Bot, Check, ChevronLeft, ChevronRight, Globe, History, LoaderCircle, Re
 import { useAiStore } from '../stores/ai.js'; 
 import { api, streamSse } from '../api/client.js';
 import { stripAgentProtocol } from '../lib/agent-text.js';
+import { renderAgentMarkdown } from '../lib/agent-markdown.js';
 import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 const route = useRoute(); const store = useAiStore(); const projects = ref([]); const projectId = ref(route.query.projectId || ''); const containerId = ref(route.query.containerId || ''); const messages = ref([]); const input = ref(''); const streaming = ref(false); const buffer = ref(''); const boxEl = ref(null); const inputEl = ref(null); let controller; let nextId = 0;
 const webSearch = ref(false);
@@ -169,6 +171,7 @@ const logLevels = [
   { value: 'info', label: 'INFO' },
 ];
 const presets = ['排查当前异常退出容器', '分析各容器内存消耗', '优化 Compose 配置'];
+function renderMarkdown(content) { return renderAgentMarkdown(content); }
 const containers = computed(() => projects.value.find((p) => p.id === projectId.value)?.containers || []);
 const selectedLogLines = computed(() => logLines.value.filter((log) => selectedLogIds.value.includes(log.id)));
 const selectedAllErrors = computed(() => {
