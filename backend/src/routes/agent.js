@@ -21,6 +21,7 @@ import { getAgent } from '../services/agent.js';
 import { generateSmartSuggestions } from '../services/agent-suggestions.js';
 import { agentStep, idField, limitField, numericId } from '../lib/schemas.js';
 import { redactRows, redactValue } from '../lib/redaction.js';
+import { toPublicAgentEvent } from '../lib/agent-public-events.js';
 
 export default async function agentRoutes(fastify) {
   // ===== Agent 编排端点 =====
@@ -303,7 +304,8 @@ export default async function agentRoutes(fastify) {
 
     const send = (event) => {
       if (reply.raw.destroyed || reply.raw.writableEnded) return;
-      reply.raw.write(`data: ${JSON.stringify(redactValue(event))}\n\n`);
+      const publicEvent = toPublicAgentEvent(event);
+      if (publicEvent) reply.raw.write(`data: ${JSON.stringify(publicEvent)}\n\n`);
     };
 
     const agent = getAgent();

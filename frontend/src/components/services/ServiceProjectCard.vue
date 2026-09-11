@@ -77,8 +77,8 @@
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-1.5">
               <span class="text-sm font-mono truncate">{{ container.name }}</span>
-              <span v-if="metrics[container.id]?.cpu != null" class="metric-chip" :class="metrics[container.id].cpu >= 85 ? 'bg-rose-950/50 text-rose-300' : metrics[container.id].cpu >= 60 ? 'bg-amber-950/50 text-amber-300' : 'text-emerald-300'">CPU {{ metrics[container.id].cpu.toFixed(1) }}%</span>
-              <span v-if="metrics[container.id]?.mem != null" class="metric-chip" :class="metrics[container.id].mem >= 90 ? 'bg-rose-950/50 text-rose-300' : 'text-emerald-300'">MEM {{ metrics[container.id].memUsageMB.toFixed(0) }}MB / {{ metrics[container.id].mem.toFixed(1) }}%</span>
+              <span v-if="metrics[container.id]?.cpu != null" class="metric-chip" :class="metrics[container.id].cpu >= 85 ? 'bg-rose-950/50 text-rose-300' : metrics[container.id].cpu >= 60 ? 'bg-amber-950/50 text-amber-300' : 'text-emerald-300'">CPU {{ numberValue(metrics[container.id].cpu).toFixed(1) }}%</span>
+              <span v-if="metrics[container.id]?.mem != null" class="metric-chip" :class="metrics[container.id].mem >= 90 ? 'bg-rose-950/50 text-rose-300' : 'text-emerald-300'">MEM {{ numberValue(metrics[container.id].memUsageMB).toFixed(0) }}MB / {{ numberValue(metrics[container.id].mem).toFixed(1) }}%</span>
             </div>
           <div class="text-muted truncate">{{ container.image }}<span v-if="container.ports.length"> · {{ portText(container) }}</span><span v-if="container.health" :class="healthClass(container.health)"> · {{ container.health }}</span></div>
           <div v-if="container.stoppedAt || container.startedAt" class="text-muted text-[11px]">{{ containerStateHint(container) }}</div>
@@ -204,12 +204,13 @@ function applyStats(rows) {
   const next = { ...metrics.value };
   for (const row of rows) {
     const prev = next[row.containerId] || { history: [] };
-    const history = [...prev.history, { cpuPercent: row.cpuPercent, memPercent: row.memPercent }];
+    const history = [...prev.history, { cpuPercent: numberValue(row.cpuPercent), memPercent: numberValue(row.memPercent) }];
     if (history.length > 26) history.shift();
-    next[row.containerId] = { cpu: row.cpuPercent, mem: row.memPercent, memUsageMB: row.memUsageMB, history };
+    next[row.containerId] = { cpu: numberValue(row.cpuPercent), mem: numberValue(row.memPercent), memUsageMB: numberValue(row.memUsageMB), history };
   }
   metrics.value = next;
 }
+function numberValue(value) { return Number.isFinite(Number(value)) ? Number(value) : 0; }
 function closeStats() {
   if (statsAbort) { try { statsAbort.abort(); } catch {} statsAbort = null; }
   if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }

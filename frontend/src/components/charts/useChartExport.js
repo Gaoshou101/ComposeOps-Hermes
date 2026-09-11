@@ -28,7 +28,7 @@ export function useChartExport() {
 
         visibleDatasets.forEach((ds) => {
           const point = ds.visibleData[i];
-          row.push(point ? point.value.toFixed(2) : '');
+          row.push(point ? numberValue(point.value).toFixed(2) : '');
         });
 
         csvContent += row.join(',') + '\n';
@@ -38,7 +38,7 @@ export function useChartExport() {
       csvContent = '时间,值\n';
       visiblePoints.forEach((point) => {
         const time = new Date(point.timestamp).toLocaleString('zh-CN');
-        csvContent += `${time},${point.value.toFixed(2)}\n`;
+        csvContent += `${time},${numberValue(point.value).toFixed(2)}\n`;
       });
     }
 
@@ -93,3 +93,5 @@ export function useChartExport() {
 
   return { showExportMenu, toggleExportMenu, exportToCSV, exportToPNG };
 }
+
+function numberValue(value) { return Number.isFinite(Number(value)) ? Number(value) : 0; }

@@ -38,7 +38,7 @@
         </div>
         <div class="stat-card">
           <div class="label">CPU 使用</div>
-          <div class="value">{{ report.summary.totalCPUPercent.toFixed(1) }}%</div>
+          <div class="value">{{ numberValue(report.summary.totalCPUPercent).toFixed(1) }}%</div>
         </div>
         <div class="stat-card">
           <div class="label">内存使用</div>
@@ -136,7 +136,7 @@
                 <td class="project-name">{{ proj.projectName }}</td>
                 <td>{{ proj.containerCount }}</td>
                 <td>{{ proj.runningCount }}</td>
-                <td>{{ proj.totalCPUPercent.toFixed(1) }}%</td>
+        <td>{{ numberValue(proj.totalCPUPercent).toFixed(1) }}%</td>
                 <td>{{ formatSize(proj.totalMemoryMB) }}</td>
               </tr>
             </tbody>
@@ -294,6 +294,7 @@ function formatSize(mb) {
   }
   return `${Math.round(mb)} MB`;
 }
+function numberValue(value) { return Number.isFinite(Number(value)) ? Number(value) : 0; }
 
 function severityLabel(s) {
   const map = { high: '高', medium: '中', low: '低' };
@@ -303,12 +304,12 @@ function severityLabel(s) {
 const memoryTrendPoints = computed(() => {
   if (!report.value || report.value.trends.length < 2) return '';
   const trends = report.value.trends;
-  const maxMem = Math.max(...trends.map(t => t.totalMemoryMB)) || 1;
+  const maxMem = Math.max(...trends.map(t => numberValue(t.totalMemoryMB))) || 1;
   const stepX = (chartWidth - chartPadding * 2) / (trends.length - 1);
   return trends
     .map((t, i) => {
       const x = chartPadding + i * stepX;
-      const y = chartHeight - chartPadding - ((t.totalMemoryMB / maxMem) * (chartHeight - chartPadding * 2));
+      const y = chartHeight - chartPadding - ((numberValue(t.totalMemoryMB) / maxMem) * (chartHeight - chartPadding * 2));
       return `${x},${y}`;
     })
     .join(' ');
@@ -317,12 +318,12 @@ const memoryTrendPoints = computed(() => {
 const cpuTrendPoints = computed(() => {
   if (!report.value || report.value.trends.length < 2) return '';
   const trends = report.value.trends;
-  const maxCpu = Math.max(...trends.map(t => t.totalCPUPercent)) || 1;
+  const maxCpu = Math.max(...trends.map(t => numberValue(t.totalCPUPercent))) || 1;
   const stepX = (chartWidth - chartPadding * 2) / (trends.length - 1);
   return trends
     .map((t, i) => {
       const x = chartPadding + i * stepX;
-      const y = chartHeight - chartPadding - ((t.totalCPUPercent / maxCpu) * (chartHeight - chartPadding * 2));
+      const y = chartHeight - chartPadding - ((numberValue(t.totalCPUPercent) / maxCpu) * (chartHeight - chartPadding * 2));
       return `${x},${y}`;
     })
     .join(' ');

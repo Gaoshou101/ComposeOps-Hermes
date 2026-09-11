@@ -260,7 +260,7 @@ watch([() => route.query.focus, () => store.projects], focusProject, { deep: tru
 onMounted(async () => {
   // 首次进入先拉项目列表,不依赖 WS 是否成功建立;
   // 后续 WS 打开成功会做一次非重连刷新,失败则降级轮询。
-  void store.refresh(false);
+  await store.refresh(false);
   const updates = await api.getUpdateSettings();
   updateSettings.value = updates;
 

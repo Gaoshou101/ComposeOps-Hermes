@@ -41,8 +41,8 @@ const visibleRows = computed(() =>
 );
 
 function formatValue(value) {
-  if (typeof value !== 'number' || Number.isNaN(value)) return '-';
-  return `${value.toFixed(1)}${props.unit}`;
+  if (!Number.isFinite(Number(value))) return '-';
+  return `${Number(value).toFixed(1)}${props.unit}`;
 }
 function formatTime(timestamp) {
   const date = new Date(timestamp);

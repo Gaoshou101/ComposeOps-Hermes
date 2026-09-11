@@ -88,10 +88,10 @@ export function normalizeCostReport(value) {
       volumes: { ...storage.volumes, active: numberOrZero(data.storage?.volumes?.active), sizeMB: numberOrZero(data.storage?.volumes?.sizeMB) },
       buildCache: { ...storage.buildCache, sizeMB: numberOrZero(data.storage?.buildCache?.sizeMB), reclaimableMB: numberOrZero(data.storage?.buildCache?.reclaimableMB) },
     },
-    containers: arrayOrEmpty(data.containers),
+    containers: arrayOrEmpty(data.containers).map((item) => ({ ...objectOrEmpty(item), totalCPUPercent: numberOrZero(item?.totalCPUPercent), totalMemoryMB: numberOrZero(item?.totalMemoryMB) })),
     images: arrayOrEmpty(data.images),
-    projects: arrayOrEmpty(data.projects),
-    trends: arrayOrEmpty(data.trends),
+    projects: arrayOrEmpty(data.projects).map((item) => ({ ...objectOrEmpty(item), containerCount: numberOrZero(item?.containerCount), runningCount: numberOrZero(item?.runningCount), totalCPUPercent: numberOrZero(item?.totalCPUPercent), totalMemoryMB: numberOrZero(item?.totalMemoryMB) })),
+    trends: arrayOrEmpty(data.trends).map((item) => ({ ...objectOrEmpty(item), totalCPUPercent: numberOrZero(item?.totalCPUPercent), totalMemoryMB: numberOrZero(item?.totalMemoryMB) })),
   };
 }
 

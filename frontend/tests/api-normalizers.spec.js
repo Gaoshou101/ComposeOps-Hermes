@@ -62,4 +62,13 @@ describe('API response normalizers', () => {
     expect(result.completed).toBe(0);
     expect(result.items).toHaveLength(2);
   });
+
+  it('将成本报告中的异常统计值归一化为数字', () => {
+    const result = normalizeCostReport({ projects: [{ totalCPUPercent: undefined }], trends: [{ totalMemoryMB: undefined }] });
+
+    expect(result.projects).toHaveLength(1);
+    expect(result.projects[0].totalCPUPercent).toBe(0);
+    expect(result.trends).toHaveLength(1);
+    expect(result.trends[0].totalMemoryMB).toBe(0);
+  });
 });

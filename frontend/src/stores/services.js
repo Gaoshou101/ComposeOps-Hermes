@@ -10,6 +10,7 @@ export const useServicesStore = defineStore('services', () => {
   const wsConnected = ref(false);
   let timer;
   let wsHook = null;
+  let refreshPromise = null;
 
   /**
    * SWR 语义刷新:
@@ -17,18 +18,21 @@ export const useServicesStore = defineStore('services', () => {
    * - 首次加载(无数据)才显示 loading。
    */
   async function refresh(force = false) {
+    if (refreshPromise && !force) return refreshPromise;
     const hasData = projects.value.length > 0;
     if (!hasData) loading.value = true;
     error.value = '';
-    try {
-      const data = await api.getProjects(force);
-      projects.value = data.projects || [];
-      lastLoadedAt.value = Date.now();
-    } catch (e) {
-      error.value = e.message;
-    } finally {
-      loading.value = false;
-    }
+    const requestPromise = (async () => {
+      try {
+        const data = await api.getProjects(force);
+        if (Array.isArray(data?.projects)) projects.value = data.projects;
+        lastLoadedAt.value = Date.now();
+      } catch (e) {
+        error.value = e.message;
+      } finally { loading.value = false; }
+    })();
+    refreshPromise = requestPromise;
+    try { await requestPromise; } finally { if (refreshPromise === requestPromise) refreshPromise = null; }
   }
 
   /**
@@ -36,9 +40,11 @@ export const useServicesStore = defineStore('services', () => {
    */
   function handleContainerEvent(event) {
     if (event.type === 'snapshot') {
-      // 初始快照:覆盖当前状态
-      projects.value = event.data?.projects || [];
-      lastLoadedAt.value = Date.now();
+      const snapshot = event.projects || event.data?.projects;
+      if (Array.isArray(snapshot) && (snapshot.length > 0 || projects.value.length === 0)) {
+        projects.value = snapshot;
+        lastLoadedAt.value = Date.now();
+      }
       return;
     }
     
