@@ -275,8 +275,8 @@ export default async function aiRoutes(fastify) {
         onToken: (t) => send('token', t),
         signal: controller.signal,
       });
-      addAiMessage('assistant', full, null, resolvedSessionId);
-      send('done', full);
+      addAiMessage('assistant', full.content, null, resolvedSessionId);
+      send('done', full.content);
       if (sources.length) send('sources', sources);
     } catch (e) {
       send('error', e.message);
@@ -412,8 +412,8 @@ ${evidence}`;
         onToken: (t) => send('token', t),
         signal: controller.signal,
       });
-      addAiMessage('assistant', full, { projectId, containerId: match.container.id }, resolvedSessionId);
-      send('done', full);
+      addAiMessage('assistant', full.content, { projectId, containerId: match.container.id }, resolvedSessionId);
+      send('done', full.content);
       if (sources.length) send('sources', sources);
     } catch (e) {
       send('error', e.message);

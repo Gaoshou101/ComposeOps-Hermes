@@ -23,6 +23,7 @@
 import { computed, ref, watch } from 'vue';
 import { useEscapeKey } from '../../composables/useEscapeKey.js';
 import { streamSse } from '../../api/client.js';
+import { stripAgentProtocol } from '../../lib/agent-text.js';
 import { useToastStore } from '../../stores/toast.js';
 import { Copy, FileCode2, KeyRound, Sparkles, X } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
@@ -68,6 +69,7 @@ async function start() {
   status.value = 'running';
   statusMessage.value = '';
   controller = new AbortController();
+  let rawText = '';
   try {
     await streamSse('/ai/diagnose', {
       projectId: props.projectId,
@@ -77,8 +79,8 @@ async function start() {
       rawLogs: props.rawLogs,
       envKeys: props.envKeys,
     }, (frame) => {
-      if (frame.type === 'token') { text.value += frame.data; }
-      else if (frame.type === 'done') { fullText.value = frame.data || text.value; text.value = fullText.value; status.value = 'done'; }
+      if (frame.type === 'token') { rawText += frame.data || ''; text.value = stripAgentProtocol(rawText); }
+      else if (frame.type === 'done') { fullText.value = stripAgentProtocol(frame.data || rawText); text.value = fullText.value; status.value = 'done'; }
       else if (frame.type === 'error') { status.value = 'error'; statusMessage.value = frame.data; }
     }, controller.signal);
   } catch (e) {

@@ -8,4 +8,11 @@ describe('Agent visible text protocol filter', () => {
     expect(stripAgentProtocol('<tool_call>{"name":"project.list_managed"')).toBe('');
     expect(stripAgentProtocol('tool_ca')).toBe('');
   });
+
+  it('removes the _icall protocol and preserves surrounding text', () => {
+    expect(stripAgentProtocol('limburg_icall\n{"name":"project.list_managed","arguments":{}}>')).toBe('limburg');
+    expect(stripAgentProtocol('前文_icall {"name":"x","arguments":{"nested":{"ok":true}}}>后文')).toBe('前文后文');
+    expect(stripAgentProtocol('前文_icall {"name":"x"')).toBe('前文');
+    expect(stripAgentProtocol('正在查询 _ic')).toBe('正在查询');
+  });
 });

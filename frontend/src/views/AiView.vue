@@ -149,6 +149,7 @@ import { useRoute } from 'vue-router';
 import { Bot, Check, ChevronLeft, ChevronRight, Globe, History, LoaderCircle, RefreshCw, ScrollText, Search, Send, Sparkles, Square, Stethoscope, TerminalSquare, Trash2 } from 'lucide-vue-next';
 import { useAiStore } from '../stores/ai.js'; 
 import { api, streamSse } from '../api/client.js';
+import { stripAgentProtocol } from '../lib/agent-text.js';
 import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 const route = useRoute(); const store = useAiStore(); const projects = ref([]); const projectId = ref(route.query.projectId || ''); const containerId = ref(route.query.containerId || ''); const messages = ref([]); const input = ref(''); const streaming = ref(false); const buffer = ref(''); const boxEl = ref(null); const inputEl = ref(null); let controller; let nextId = 0;
 const webSearch = ref(false);
@@ -255,12 +256,16 @@ async function diagnose() {
 }
 async function chat(path, body) {
   streaming.value = true; buffer.value = ''; controller = new AbortController(); scroll();
+  let rawBuffer = '';
   let currentMsg = null;
   try {
     await streamSse(path, body, (frame) => {
-      if (frame.type === 'token') buffer.value += frame.data;
+      if (frame.type === 'token') {
+        rawBuffer += frame.data || '';
+        buffer.value = stripAgentProtocol(rawBuffer);
+      }
       if (frame.type === 'done') {
-        currentMsg = { id: ++nextId, role: 'assistant', content: frame.data || buffer.value, sources: [], probes: [] };
+        currentMsg = { id: ++nextId, role: 'assistant', content: stripAgentProtocol(frame.data || rawBuffer), sources: [], probes: [] };
         messages.value.push(currentMsg);
         buffer.value = '';
         extractProbes(currentMsg);
@@ -269,7 +274,7 @@ async function chat(path, body) {
         if (currentMsg) currentMsg.sources = Array.isArray(frame.data) ? frame.data : [];
         else if (messages.value.length) messages.value[messages.value.length - 1].sources = Array.isArray(frame.data) ? frame.data : [];
       }
-      if (frame.type === 'error') { messages.value.push({ id: ++nextId, role: 'assistant', content: `请求失败:${frame.data}` }); buffer.value = ''; }
+      if (frame.type === 'error') { messages.value.push({ id: ++nextId, role: 'assistant', content: `请求失败:${stripAgentProtocol(frame.data)}` }); buffer.value = ''; rawBuffer = ''; }
       scroll();
     }, controller.signal);
   } catch (e) {

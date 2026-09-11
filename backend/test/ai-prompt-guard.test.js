@@ -104,3 +104,29 @@ test('ai-tool-call: 分片工具协议前缀不会泄露', () => {
   assert.equal(stripTextToolProtocol('tool_ca'), '');
   assert.equal(stripTextToolProtocol('<tool_call>{"name":"project.list_managed"'), '');
 });
+
+test('ai-tool-call: 解析 _icall 协议并支持嵌套参数', () => {
+  const parsed = parseTextToolCalls('_icall\n{"name":"project.list_managed","arguments":{"filter":{"managed":true}}}>');
+  assert.equal(parsed.content, '');
+  assert.equal(parsed.toolCalls.length, 1);
+  assert.equal(parsed.toolCalls[0].function.name, 'project.list_managed');
+  assert.equal(parsed.toolCalls[0].function.arguments, '{"filter":{"managed":true}}');
+});
+
+test('ai-tool-call: _icall 参数中的 > 不会提前截断', () => {
+  const parsed = parseTextToolCalls('_icall {"name":"cmd.exec","arguments":{"cmd":"cat a > b"}}>');
+  assert.equal(parsed.content, '');
+  assert.equal(parsed.toolCalls.length, 1);
+  assert.equal(JSON.parse(parsed.toolCalls[0].function.arguments).cmd, 'cat a > b');
+});
+
+test('ai-tool-call: _icall 畸形或未闭合内容不会泄露', () => {
+  assert.equal(stripTextToolProtocol('limburg_icall\n{"name":"project.list_managed","arguments":{}}>'), 'limburg');
+  assert.equal(stripTextToolProtocol('前文_icall {"name":"project.list_managed"'), '前文');
+  assert.equal(stripTextToolProtocol('_icall {bad json}>后文'), '后文');
+});
+
+test('ai-tool-call: 流式协议前缀与嵌套参数边界不会进入可见文本', () => {
+  assert.equal(stripTextToolProtocol('正在查询 _ic'), '正在查询');
+  assert.equal(stripTextToolProtocol('正在查询 _icall\n{"name":"project.list_managed","arguments":{"x":{"y":1}}}>完成'), '正在查询 完成');
+});
