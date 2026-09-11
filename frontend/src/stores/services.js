@@ -9,7 +9,7 @@ export const useServicesStore = defineStore('services', () => {
   const lastLoadedAt = ref(0);
   const wsConnected = ref(false);
   let timer;
-  let wsUnsubscribe = null;
+  let wsHook = null;
 
   /**
    * SWR 语义刷新:
@@ -43,7 +43,7 @@ export const useServicesStore = defineStore('services', () => {
     }
     
     if (event.type === 'container_event') {
-      const { projectId, action } = event;
+      const { projectId } = event;
       const project = projects.value.find((p) => p.id === projectId);
       if (!project) return;
 
@@ -61,35 +61,21 @@ export const useServicesStore = defineStore('services', () => {
   /**
    * 启动 WebSocket 实时订阅(优先);失败时降级到轮询
    */
-  function startWebSocket(onSocketReady) {
-    if (wsUnsubscribe) return; // 已连接
-    
-    if (typeof onSocketReady === 'function') {
-      wsUnsubscribe = onSocketReady({
-        onMessage: (event) => {
-          wsConnected.value = true;
-          handleContainerEvent(event);
-        },
-        onOpen: () => {
-          wsConnected.value = true;
-          error.value = '';
-        },
-        onClose: () => {
-          wsConnected.value = false;
-        },
-        onError: () => {
-          wsConnected.value = false;
-          // WebSocket 失败时降级到轮询
-          if (!timer) startAutoRefresh(5000);
-        },
-      });
-    }
+  function startWebSocket(hook) {
+    if (wsHook || !hook || typeof hook.connect !== 'function') return; // 已连接
+    wsHook = hook;
+    if (typeof hook.setErrorHandler === 'function') hook.setErrorHandler(() => {
+      wsConnected.value = false;
+      // WebSocket 失败时降级到轮询
+      if (!timer) startAutoRefresh(5000);
+    });
+    wsHook.connect();
   }
 
   function stopWebSocket() {
-    if (wsUnsubscribe) {
-      wsUnsubscribe();
-      wsUnsubscribe = null;
+    if (wsHook) {
+      try { wsHook.close(); } catch {}
+      wsHook = null;
     }
     wsConnected.value = false;
   }
@@ -111,6 +97,7 @@ export const useServicesStore = defineStore('services', () => {
     error, 
     lastLoadedAt, 
     wsConnected,
+    handleContainerEvent,
     refresh, 
     startAutoRefresh, 
     stopAutoRefresh,

@@ -228,48 +228,44 @@ async function openEnvFromQuery() {
   envProject.value = project;
 }
 watch(() => route.query.env, openEnvFromQuery);
-watch(autoRefresh, async (value) => {
+
+// WebSocket 实例只在 setup 顶层创建一次;autoRefresh 切换仅负责连接/断开。
+const containerSocket = useWebSocket(
+  () => wsUrl('/ws/containers'),
+  {
+    onMessage: (event) => {
+      store.wsConnected = true;
+      try { store.handleContainerEvent?.(JSON.parse(event.data)); } catch {}
+    },
+    onOpen: ({ resumed }) => {
+      store.wsConnected = true;
+      store.stopAutoRefresh(); // WS 连上后立即停掉降级轮询
+      if (!resumed) void store.refresh(false);
+    },
+    onClose: () => {
+      store.wsConnected = false;
+    },
+  }
+);
+
+watch(autoRefresh, (value) => {
   if (!value) {
     store.stopAutoRefresh();
     store.stopWebSocket();
     return;
   }
-  const preferences = await api.getPreferences();
-  // 优先使用 WebSocket,失败降级到轮询
-  const socket = useWebSocket(
-    () => wsUrl('/ws/containers'),
-    {
-      onMessage: (event) => {
-        // WebSocket 消息统一由 store 处理
-      },
-      onOpen: ({ resumed }) => {
-        if (!resumed) void store.refresh(false);
-      },
-    }
-  );
-  store.startWebSocket(() => socket);
+  store.startWebSocket(containerSocket);
 });
 watch([() => route.query.focus, () => store.projects], focusProject, { deep: true });
 onMounted(async () => {
-  const [preferences, updates] = await Promise.all([api.getPreferences(), api.getUpdateSettings()]);
+  // 首次进入先拉项目列表,不依赖 WS 是否成功建立;
+  // 后续 WS 打开成功会做一次非重连刷新,失败则降级轮询。
+  void store.refresh(false);
+  const updates = await api.getUpdateSettings();
   updateSettings.value = updates;
-  
-  // 自动刷新开启时使用 WebSocket
-  if (autoRefresh.value) {
-    const socket = useWebSocket(
-      () => wsUrl('/ws/containers'),
-      {
-        onMessage: (event) => {
-          // WebSocket 消息统一由 store 处理
-        },
-        onOpen: ({ resumed }) => {
-          if (!resumed) void store.refresh(false);
-        },
-      }
-    );
-    store.startWebSocket(() => socket);
-  }
-  
+
+  if (autoRefresh.value) store.startWebSocket(containerSocket);
+
   if (route.query.job) void pollJob(String(route.query.job));
   void openEnvFromQuery();
 });

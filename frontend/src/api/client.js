@@ -39,7 +39,12 @@ function doFetch(path, opts = {}) {
     }
     if (res.status === 204) return null;
     const ct = res.headers.get('content-type') || '';
-    return ct.includes('application/json') ? res.json() : res.text();
+    if (ct.includes('application/json')) {
+      const text = await res.text();
+      try { return text ? JSON.parse(text) : null; }
+      catch { return text; }
+    }
+    return res.text();
   });
 }
 function revalidate(key, path, opts) {

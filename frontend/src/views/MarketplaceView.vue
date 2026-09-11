@@ -101,15 +101,18 @@
         </div>
         <div class="card-actions">
           <button @click="viewTemplate(template)" class="btn-view">查看</button>
+          <button v-if="isDeployableTemplate(template)" @click="openDeploy(template)" class="btn-deploy">
+            <Rocket class="w-4 h-4" />部署
+          </button>
           <button
-            v-if="template.id.startsWith('custom-')"
+            v-if="isCustomTemplate(template)"
             @click="editTemplate(template)"
             class="btn-edit"
           >
             编辑
           </button>
           <button
-            v-if="template.id.startsWith('custom-')"
+            v-if="isCustomTemplate(template)"
             @click="deleteTemplate(template.id)"
             class="btn-delete"
           >
@@ -173,6 +176,42 @@
       </div>
     </div>
 
+    <!-- 部署模板模态框 -->
+    <div v-if="deployTarget" class="modal-overlay" @click.self="closeDeploy" :class="{ 'pointer-events-none': deploying }">
+      <div class="modal-content deploy-modal">
+        <div class="modal-header">
+          <h2>部署应用: {{ deployTarget.name }}</h2>
+          <button @click="closeDeploy" class="close-btn">×</button>
+        </div>
+        <div class="modal-body space-y-4">
+          <p class="template-description">{{ deployTarget.description || '暂无描述' }}</p>
+          <div class="form-group">
+            <label>项目名称</label>
+            <input v-model="deployProjectName" type="text" placeholder="留空使用默认名称" />
+          </div>
+          <div class="form-group">
+            <label>部署变量</label>
+            <p class="text-xs text-muted">按需填写,空值使用模板默认配置。</p>
+            <div v-if="deployVariables.length" class="space-y-2 mt-2">
+              <div v-for="field in deployVariables" :key="field.key" class="form-row">
+                <label>{{ field.label || field.key }}</label>
+                <input v-model="deployValues[field.key]" :type="field.type === 'password' ? 'password' : 'text'" :placeholder="field.default || ''" />
+              </div>
+            </div>
+            <p v-else class="text-xs text-muted mt-2">该模板无需额外配置。</p>
+          </div>
+          <p v-if="deployError" class="text-xs text-rose-400">{{ deployError }}</p>
+        </div>
+        <div class="modal-footer">
+          <button @click="closeDeploy" class="btn-cancel">取消</button>
+          <button @click="deployTemplate" class="btn-save" :disabled="deploying">
+            <LoaderCircle v-if="deploying" class="w-4 h-4 animate-spin" />
+            {{ deploying ? '部署中…' : '部署' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <ConfirmDialog
       :show="showDeleteDialog"
       title="删除自定义模板"
@@ -186,10 +225,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useToastStore } from '../stores/toast.js';
 import { api } from '../api/client.js';
 import ConfirmDialog from '../components/common/ConfirmDialog.vue';
+import { LoaderCircle, Rocket } from 'lucide-vue-next';
 
 const toast = useToastStore();
 
@@ -327,10 +367,94 @@ function closeModal() {
 }
 
 function getSourceLabel(id) {
-  if (id.startsWith('custom-')) return '自定义';
-  if (id.startsWith('community-')) return '社区';
+  if (typeof id === 'string' && id.startsWith('custom-')) return '自定义';
+  if (typeof id === 'string' && id.startsWith('community-')) return '社区';
   return '内置';
 }
+function isCustomTemplate(template) {
+  return typeof template?.id === 'string' && template.id.startsWith('custom-');
+}
+function isDeployableTemplate(template) {
+  const id = typeof template?.id === 'string' ? template.id : '';
+  return id && !id.startsWith('custom-') && !id.startsWith('community-');
+}
+
+const deployTarget = ref(null);
+const deployProjectName = ref('');
+const deployValues = ref({});
+const deploying = ref(false);
+const deployError = ref('');
+const deployVariables = computed(() => {
+  const template = deployTarget.value;
+  if (!template) return [];
+  const schema = template.envSchema || template.variables || [];
+  if (Array.isArray(schema)) return schema;
+  return Object.entries(schema).map(([name, config]) =>
+    config && typeof config === 'object' ? { key: name, ...config } : { key: name, default: config }
+  );
+});
+
+function openDeploy(template) {
+  deployTarget.value = template;
+  deployProjectName.value = '';
+  deployValues.value = {};
+  deployError.value = '';
+}
+
+function closeDeploy() {
+  if (deploying.value) return;
+  deployTarget.value = null;
+  deployProjectName.value = '';
+  deployValues.value = {};
+  deployError.value = '';
+}
+
+async function deployTemplate() {
+  if (!deployTarget.value || deploying.value) return;
+  const template = deployTarget.value;
+  deploying.value = true;
+  deployError.value = '';
+
+  const values = { ...deployValues.value };
+  for (const field of deployVariables.value) {
+    if ((values[field.key] === undefined || values[field.key] === '') && field.default !== undefined) {
+      values[field.key] = field.default;
+    }
+  }
+  if (deployProjectName.value.trim()) values.projectName = deployProjectName.value.trim();
+
+  let succeeded = false;
+  try {
+    await api.streamBlueprintDeploy(template.id, values, (frame) => {
+      if (frame.type === 'result') {
+        if (frame.data?.ok) {
+          succeeded = true;
+          toast.success(`应用 ${template.name} 已开始部署`);
+        } else if (frame.data?.message) {
+          deployError.value = frame.data.message;
+        }
+      } else if (frame.type === 'stderr' || frame.type === 'error') {
+        deployError.value = String(frame.data || '').slice(0, 500) || deployError.value;
+      }
+    });
+    if (succeeded) {
+      closeDeploy();
+      await Promise.all([loadTemplates(), loadStats()]);
+    }
+  } catch (err) {
+    deployError.value = err.message || '部署失败';
+  } finally {
+    deploying.value = false;
+  }
+}
+
+watch(deployTarget, (template) => {
+  if (!template) {
+    deployValues.value = {};
+    deployProjectName.value = '';
+    deployError.value = '';
+  }
+});
 
 onMounted(async () => {
   await Promise.all([loadStats(), loadTemplates()]);
@@ -626,12 +750,24 @@ button:hover {
 
 .btn-view,
 .btn-edit,
-.btn-delete {
+.btn-delete,
+.btn-deploy {
   flex: 1;
   min-width: fit-content;
   padding: 0.5rem 0.75rem;
   font-size: 0.8125rem;
   border-radius: 0.5rem;
+}
+
+.btn-deploy {
+  background: color-mix(in srgb, var(--accent-muted) 12%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--accent-muted) 35%, var(--border));
+  color: var(--accent-muted);
+}
+
+.btn-deploy:hover {
+  background: color-mix(in srgb, var(--accent-muted) 20%, var(--surface-3));
+  border-color: var(--accent-muted);
 }
 
 .btn-edit {
@@ -726,6 +862,25 @@ button:hover {
 .form-group textarea {
   resize: vertical;
   font-family: 'Monaco', 'Consolas', monospace;
+}
+
+.form-row {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.form-row label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.form-row input {
+  padding: 0.5rem 0.625rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: 0.875rem;
 }
 
 .modal-footer {

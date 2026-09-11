@@ -35,6 +35,11 @@ export function useWebSocket(url, options = {}) {
   const reconnectAttempts = ref(0);
   let reconnectTimer = null;
   let intentionallyClosed = false;
+  let activeErrorHandler = typeof onError === 'function' ? onError : null;
+
+  function setErrorHandler(handler) {
+    activeErrorHandler = typeof handler === 'function' ? handler : null;
+  }
 
   function resolveUrl() {
     if (typeof url === 'function') return url();
@@ -56,7 +61,7 @@ export function useWebSocket(url, options = {}) {
     try {
       socket = new WebSocket(target);
     } catch (error) {
-      if (onError) onError(error);
+      if (activeErrorHandler) activeErrorHandler(error);
       return;
     }
     ws.value = socket;
@@ -75,7 +80,7 @@ export function useWebSocket(url, options = {}) {
     };
 
     socket.onerror = () => {
-      if (onError) onError(new Error('WebSocket 连接错误'));
+      if (activeErrorHandler) activeErrorHandler(new Error('WebSocket 连接错误'));
     };
 
     socket.onclose = (event) => {
@@ -89,7 +94,7 @@ export function useWebSocket(url, options = {}) {
       }
       if (reconnectAttempts.value >= maxReconnectAttempts) {
         reconnecting.value = false;
-        if (onError) onError(new Error(`连接已断开,重连 ${maxReconnectAttempts} 次仍未成功`));
+        if (activeErrorHandler) activeErrorHandler(new Error(`连接已断开,重连 ${maxReconnectAttempts} 次仍未成功`));
         return;
       }
       // 指数退避:2s → 4s → 8s …,避免服务端重启期间高频重试
@@ -140,5 +145,5 @@ export function useWebSocket(url, options = {}) {
   // 仅在 setup 上下文中自动清理;函数式调用时由调用方负责 close()
   if (getCurrentInstance()) onUnmounted(close);
 
-  return { ws, connected, reconnecting, reconnectAttempts, connect, close, send };
+  return { ws, connected, reconnecting, reconnectAttempts, setErrorHandler, connect, close, send };
 }
