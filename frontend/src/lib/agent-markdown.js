@@ -55,15 +55,24 @@ function normalizeAgentMarkdown(value) {
  * 用户想看到的是渲染结果。语言为 html/svg/xml、或无语言但内容是 <svg>/<table>
  * 片段的代码块,渲染为富内容,并把源码收进 details 折叠;其余代码块原样保留。
  */
+/** 模型偶尔会把内部执行状态(trace JSON)当回复输出,整块剥离而非展示。 */
+const INTERNAL_TRACE_PATTERN = /"phase"\s*:\s*"(tool_|loop_|understanding|planning|executing|validating)|"existing_services"\s*:/i;
+
+const HTML_FRAGMENT_HINT = /<\/(div|p|span|section|table|svg|ul|ol|dl|details|article|header|main|figure)>/i;
+
 function renderableCodeBlocks(source) {
   return source.replace(/```([\w-]*)[ \t]*\n([\s\S]*?)\n```/g, (whole, lang, body) => {
     const code = body.trim();
+    // 内部执行状态/协议 JSON:不属于给用户的内容,整块丢弃
+    if (INTERNAL_TRACE_PATTERN.test(body)) return '';
     if (body.includes('```')) return whole;
     const langLower = String(lang || '').toLowerCase();
     const langOk = !langLower || ['html', 'svg', 'xml'].includes(langLower);
     if (!langOk) return whole;
-    // 只要代码块内出现 <svg>/<table> 片段即视为富内容(模型常把标题与 HTML 混在一个块里)
-    if (!/<(svg[\s>]|table[\s>])/i.test(code)) return whole;
+    // 富内容判定:含 <svg>/<table>,或整体是一段完整 HTML 片段(以标签开头、有闭合标签)
+    const richSvgTable = /<(svg[\s>]|table[\s>])/i.test(code);
+    const htmlFragment = /^<[a-zA-Z][^>]*>/.test(code) && HTML_FRAGMENT_HINT.test(code);
+    if (!richSvgTable && !(langOk && htmlFragment)) return whole;
     return `\n\n${code}\n\n<details><summary>查看源码</summary>\n\n\`\`\`${langLower || 'html'}\n${body}\n\`\`\`\n\n</details>\n\n`;
   });
 }
@@ -76,7 +85,9 @@ function wrapFullscreenBlocks(html) {
   );
   return html
     .replace(/<svg[\s\S]*?<\/svg>/gi, (match) => wrap(match))
-    .replace(/<table[\s\S]*?<\/table>/gi, (match) => wrap(match));
+    .replace(/<table[\s\S]*?<\/table>/gi, (match) => wrap(match))
+    // 顶层 div 片段(不含嵌套 div)也支持放大;嵌套 div 保持原样避免错误包裹
+    .replace(/<div(?:(?!<\/?(?:div[\s>]|table[\s>]|svg[\s>]))[\s\S])*?<\/div>/gi, (match) => (match.length > 60 ? wrap(match) : match));
 }
 
 /** 流式期间代码围栏可能尚未闭合:渲染时临时补虚拟闭合,让 SVG/表格渐进渲染而非裸奔源码。 */
