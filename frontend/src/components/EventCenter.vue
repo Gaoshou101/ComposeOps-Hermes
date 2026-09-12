@@ -8,7 +8,7 @@
     <section v-if="open" class="event-panel z-[50]">
       <header class="flex items-center justify-between border-b border-surface-800 px-4 py-3">
         <div><h2 class="text-sm font-semibold text-surface-100">事件中心</h2><p class="mt-0.5 text-muted">需要关注的运行状态与系统操作</p></div>
-        <button class="icon-btn" title="刷新" aria-label="刷新事件" :disabled="loading" @click="load"><RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" /></button>
+        <label class="toggle-label !gap-1.5 text-[11px]" title="页面在后台时,新告警弹出系统通知"><input type="checkbox" class="!w-8 !h-[18px]" :checked="desktopNotify" @change="toggleDesktopNotify" />通知</label><button class="icon-btn" title="刷新" aria-label="刷新事件" :disabled="loading" @click="load"><RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" /></button>
       </header>
       <div class="max-h-[min(68vh,32rem)] overflow-y-auto p-2">
         <div v-for="event in events" :key="event.key" class="event-item" :class="{ 'event-read': event.read }">
@@ -43,6 +43,7 @@
 import { computed, markRaw, onMounted, onUnmounted, ref } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useWebSocket } from '../composables/useWebSocket.js';
+import { useToastStore } from '../stores/toast.js';
 import { AlertTriangle, Bell, Check, ChevronRight, CircleCheckBig, CircleX, RefreshCw, RefreshCwOff, VolumeX } from 'lucide-vue-next';
 import { api, wsUrl } from '../api/client.js';
 import EmptyState from './common/EmptyState.vue';
@@ -53,6 +54,38 @@ const projects = ref([]);
 const operations = ref([]);
 const updates = ref({ lastResults: [] });
 const jobs = ref([]);
+const desktopNotify = ref(localStorage.getItem('composeops:desktop-notify') === '1');
+
+async function toggleDesktopNotify() {
+  if (desktopNotify.value) {
+    desktopNotify.value = false;
+    localStorage.setItem('composeops:desktop-notify', '0');
+    return;
+  }
+  if (!('Notification' in window)) {
+    useToastStore().error('当前浏览器不支持桌面通知');
+    return;
+  }
+  const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+  if (permission !== 'granted') {
+    useToastStore().error('浏览器通知权限被拒绝,请在浏览器设置中允许');
+    return;
+  }
+  desktopNotify.value = true;
+  localStorage.setItem('composeops:desktop-notify', '1');
+}
+
+function notifyDesktop(item) {
+  if (!desktopNotify.value || !('Notification' in window) || Notification.permission !== 'granted') return;
+  if (document.visibilityState === 'visible') return; // 页面在前台时不需要系统通知
+  try {
+    const notify = new Notification(`ComposeOps · ${item.title || '告警'}`, {
+      body: item.detail || '',
+      tag: `composeops-${item.id || Date.now()}`,
+    });
+    notify.onclick = () => { window.focus(); notify.close(); };
+  } catch {}
+}
 const alertEvents = ref([]);
 const expandedLogEventId = ref(null);
 let timer;
@@ -66,6 +99,7 @@ const eventStream = useWebSocket(() => wsUrl('/ws/events'), {
       const frame = JSON.parse(event.data);
       if (frame.type === 'event' && frame.data) {
         alertEvents.value = [frame.data, ...alertEvents.value.filter((item) => item.id !== frame.data.id)].slice(0, 60);
+        notifyDesktop(frame.data);
       }
     } catch {}
   },

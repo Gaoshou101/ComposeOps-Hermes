@@ -28,6 +28,8 @@ export function toPublicAgentEvent(event) {
       type: 'confirmation_required',
       executionId: String(event.executionId || ''),
       toolCallId: String(event.toolCallId || ''),
+      tool: String(event.tool || ''),
+      params: redactValue(event.params || {}),
       description: cleanText(event.description) || '该操作会修改系统状态,请确认是否继续。',
     };
   }

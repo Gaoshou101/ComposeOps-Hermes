@@ -15,11 +15,11 @@ test('公开 Agent 事件隐藏工具协议和内部工具字段', () => {
   assert.deepEqual(toPublicAgentEvent({
     type: 'confirmation_required',
     tool: 'cron.create',
-    params: { password: 'hidden' },
+    params: { password: 'hidden', name: 'backup' },
     executionId: 12,
     toolCallId: 'call-1',
     description: '创建定时任务',
-  }), { type: 'confirmation_required', executionId: '12', toolCallId: 'call-1', description: '创建定时任务' });
+  }), { type: 'confirmation_required', executionId: '12', toolCallId: 'call-1', tool: 'cron.create', params: { password: '[REDACTED]', name: 'backup' }, description: '创建定时任务' });
 });
 
 test('公开 Agent 事件保留用户需要的上下文和完成通知', () => {

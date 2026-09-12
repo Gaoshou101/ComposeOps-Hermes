@@ -12,7 +12,7 @@
         <article v-for="message in messages" :key="message.id" class="agent-drawer-message" :class="message.role">
           <div class="agent-drawer-avatar"><UserRound v-if="message.role === 'user'" class="h-3.5 w-3.5" /><Bot v-else class="h-3.5 w-3.5" /></div>
           <div class="min-w-0 max-w-[calc(100%-2rem)]"><div v-if="message.tools?.length" class="agent-drawer-tool-track"><span v-for="(tool, index) in message.tools" :key="index" class="agent-drawer-tool-chip" :class="tool.status"><i></i>{{ tool.tool }}<em v-if="tool.durationMs">{{ (tool.durationMs / 1000).toFixed(1) }}s</em></span></div><div v-if="message.role === 'assistant'" class="agent-drawer-markdown" v-html="renderMarkdown(message.content || (message.streaming ? '正在处理…' : ''))"></div><div v-else class="agent-drawer-user">{{ message.content }}</div>
-            <div v-if="message.confirmation" class="agent-drawer-confirm"><strong>需要确认后执行</strong><p>{{ message.confirmation.description }}</p><div class="mt-2 flex gap-2"><button class="btn-primary !py-1 !text-xs" :disabled="message.confirmation.busy" @click="approve(message)">确认执行</button><button class="btn-secondary !py-1 !text-xs" :disabled="message.confirmation.busy" @click="reject(message)">拒绝</button></div></div>
+            <div v-if="message.confirmation" class="agent-drawer-confirm"><strong>需要确认后执行<span v-if="message.confirmation.tool" class="ml-1.5 font-mono text-[11px] text-amber-200/80">{{ message.confirmation.tool }}</span></strong><p>{{ message.confirmation.description }}</p><details class="agent-confirm-params" @toggle="initParamsEdit($event, message)"><summary>查看 / 编辑参数</summary><textarea v-model="message.confirmation.paramsText" class="agent-confirm-params-text" rows="5" spellcheck="false"></textarea></details><div class="mt-2 flex gap-2"><button class="btn-primary !py-1 !text-xs" :disabled="message.confirmation.busy" @click="approveWithParams(message)">确认执行</button><button class="btn-secondary !py-1 !text-xs" :disabled="message.confirmation.busy" @click="reject(message)">拒绝</button></div></div>
           </div>
         </article>
       </div>
@@ -49,6 +49,24 @@ function renderMarkdown(value) { return renderAgentMarkdown(value); }
 function focusInput() { void nextTick(() => inputEl.value?.focus()); }
 function submit() { void sendMessage(input.value.trim(), { pageContext: pageContext.value }); }
 watch(open, (value) => { if (value) focusInput(); });
+function initParamsEdit(event, message) {
+  if (event.target.open && message.confirmation && message.confirmation.paramsText === undefined) {
+    message.confirmation.paramsText = JSON.stringify(message.confirmation.params || {}, null, 2);
+  }
+}
+function approveWithParams(message) {
+  let inputOverride = null;
+  const confirmation = message.confirmation;
+  if (confirmation?.paramsText !== undefined && confirmation.paramsText.trim()) {
+    try {
+      inputOverride = JSON.parse(confirmation.paramsText);
+    } catch {
+      message.content = '参数不是合法 JSON,请修正后再确认';
+      return;
+    }
+  }
+  void approve(message, inputOverride);
+}
 onBeforeUnmount(() => interrupt());
 </script>
 
@@ -61,6 +79,9 @@ onBeforeUnmount(() => interrupt());
 .agent-drawer-tool-chip.executing i { background: #22d3ee; }
 .agent-drawer-tool-chip.done i { background: #34d399; }
 .agent-drawer-tool-chip.failed i { background: #fb7185; }
-.agent-drawer-tool-chip.rejected i { background: #a78bfa; }.agent-drawer-confirm { margin-top: 8px; padding: 10px; border: 1px solid rgba(146,64,14,.7); border-radius: 7px; background: rgba(69,26,3,.35); font-size: 11px; }.agent-drawer-confirm p { margin-top: 4px; color: #fde68a; line-height: 1.55; }.agent-drawer-composer { padding: 12px 16px 16px; border-top: 1px solid #303641; background: #151920; }.agent-drawer-composer .agent-input { display: block; width: 100%; min-height: 76px; max-height: 160px; margin-bottom: 9px; resize: vertical; padding: 10px 12px; color: #f4f4f5; border: 1px solid #46505e; border-radius: 9px; outline: none; background: #0f1319; font-size: 12px; line-height: 1.6; }.agent-drawer-composer .agent-input:focus { border-color: #0891b2; box-shadow: 0 0 0 2px rgba(8,145,178,.16); }.agent-drawer-composer small { font-size: 10px; }.agent-drawer-composer button[type='submit'] { flex: 0 0 auto; }
+.agent-drawer-tool-chip.rejected i { background: #a78bfa; }.agent-drawer-confirm { margin-top: 8px; padding: 10px; border: 1px solid rgba(146,64,14,.7); border-radius: 7px; background: rgba(69,26,3,.35); font-size: 11px; }.agent-drawer-confirm p { margin-top: 4px; color: #fde68a; line-height: 1.55; }
+.agent-confirm-params { margin-top: 6px; }
+.agent-confirm-params summary { color: rgba(254, 243, 199, 0.85); font-size: 10px; cursor: pointer; }
+.agent-confirm-params-text { display: block; width: 100%; margin-top: 5px; padding: 6px 8px; color: #e4e4e7; border: 1px solid rgba(146, 64, 14, 0.5); border-radius: 6px; background: rgba(0, 0, 0, 0.3); font-family: ui-monospace, Menlo, monospace; font-size: 10px; outline: none; resize: vertical; }.agent-drawer-composer { padding: 12px 16px 16px; border-top: 1px solid #303641; background: #151920; }.agent-drawer-composer .agent-input { display: block; width: 100%; min-height: 76px; max-height: 160px; margin-bottom: 9px; resize: vertical; padding: 10px 12px; color: #f4f4f5; border: 1px solid #46505e; border-radius: 9px; outline: none; background: #0f1319; font-size: 12px; line-height: 1.6; }.agent-drawer-composer .agent-input:focus { border-color: #0891b2; box-shadow: 0 0 0 2px rgba(8,145,178,.16); }.agent-drawer-composer small { font-size: 10px; }.agent-drawer-composer button[type='submit'] { flex: 0 0 auto; }
 @media (max-width: 520px) { .agent-drawer-head, .agent-drawer-context, .agent-drawer-messages { padding-left: 12px; padding-right: 12px; } .agent-drawer-composer { padding: 10px 12px 12px; } .agent-drawer-composer small { max-width: 65%; line-height: 1.4; } }
 </style>

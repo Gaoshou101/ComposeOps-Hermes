@@ -141,12 +141,14 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
     scrollBottom();
   }
 
-  async function approve(message) {
+  async function approve(message, inputOverride = null) {
     const confirmation = message.confirmation;
     if (!confirmation || confirmation.busy) return;
     confirmation.busy = true;
     try {
-      await api.agentApprove({ executionId: confirmation.executionId, toolCallId: confirmation.toolCallId, approved: true });
+      const payload = { executionId: confirmation.executionId, toolCallId: confirmation.toolCallId, approved: true };
+      if (inputOverride && typeof inputOverride === 'object' && Object.keys(inputOverride).length) payload.input = inputOverride;
+      await api.agentApprove(payload);
       message.confirmation = null;
       onApproval?.(message, 'approved');
     } catch (error) {

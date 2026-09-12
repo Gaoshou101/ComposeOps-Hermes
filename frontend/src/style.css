@@ -3,11 +3,18 @@
 @tailwind utilities;
 
 html, body, #app { height: 100%; }
+:root {
+  --ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+  --ease-out-soft: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
 body {
   margin: 0;
-  letter-spacing: 0;
+  letter-spacing: 0.01em;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   background: #151920;
 }
 
@@ -17,7 +24,7 @@ body {
   background: rgba(26, 30, 37, 0.94);
   border-bottom: 1px solid rgba(69, 76, 91, 0.58);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.015);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(20px) saturate(1.6);
 }
 .app-sidebar {
   background: linear-gradient(180deg, rgba(27, 32, 40, 0.98), rgba(22, 26, 33, 0.99));
@@ -198,7 +205,33 @@ body[data-density='compact'] .data-table td { @apply !py-1.5 !px-2; }
   .count-badge { @apply text-xs px-1.5 py-0.5 bg-surface-800 text-surface-400 rounded font-mono tabular-nums; }
   .status-dot { @apply w-2 h-2 rounded-full shrink-0; }
   .toggle-label { @apply inline-flex items-center gap-1.5 text-sm text-surface-400; }
-  .toggle-label input { @apply accent-accent; }
+  .toggle-label input, .agent-toggle input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 38px;
+  height: 23px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #3a4150;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.22s var(--ease-spring);
+}
+.toggle-label input::after, .agent-toggle input::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 19px;
+  height: 19px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: transform 0.22s var(--ease-spring);
+}
+.toggle-label input:checked, .agent-toggle input:checked { background: #30d158; }
+.toggle-label input:checked::after, .agent-toggle input:checked::after { transform: translateX(15px); }
+.toggle-label input:active::after, .agent-toggle input:active::after { width: 21px; }
   .alert-error { @apply text-sm text-rose-300 border border-rose-900/60 bg-rose-950/30 rounded px-3 py-2; }
   .alert-warning { @apply text-sm text-amber-300 border border-amber-900/60 bg-amber-950/20 rounded px-3 py-2; }
   .alert-success { @apply text-sm text-emerald-300 border border-emerald-900/60 bg-emerald-950/20 rounded px-3 py-2; }
@@ -418,6 +451,9 @@ body[data-density='compact'] .data-table td { @apply !py-1.5 !px-2; }
 @keyframes message-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 .agent-message, .agent-drawer-message { animation: message-in .22s ease both; }
 .agent-messages { scroll-behavior: smooth; }
+.card { border-radius: 16px; }
+.nav-link:active, .agent-session-row:active { transform: scale(0.985); }
+.nav-link, .agent-session-row { transition: transform 0.12s var(--ease-out-soft), background 0.15s ease; }
 
 /* ===== 全局视觉打磨:背景光晕 / 滚动条 / 选区 / 卡片光效 ===== */
 body {
