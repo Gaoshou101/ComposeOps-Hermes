@@ -9,6 +9,7 @@
           <span class="hidden font-mono text-[11px] text-surface-500 sm:inline">{{ data.path || '.env' }}</span>
         </div>
         <div class="ml-auto flex items-center gap-2">
+          <select v-if="envFiles.length > 1 || activeFile !== '.env'" class="input !min-h-8 !w-auto !py-1 text-xs" :value="activeFile" @change="switchEnvFile($event.target.value)"><option v-for="item in envFiles" :key="item.name" :value="item.name">{{ item.name }}</option></select>
           <button class="icon-btn" title="重置为磁盘当前内容" aria-label="重置" @click="reload"><RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" /></button>
           <button class="icon-btn" title="关闭" aria-label="关闭" @click="close"><X class="h-4 w-4" /></button>
         </div>
@@ -118,6 +119,8 @@ const keyword = ref('');
 const rawText = ref('');
 const entries = ref([]);
 const data = ref({ path: '.env', examplePath: '', exists: false, exampleRaw: '' });
+const activeFile = ref('.env');
+const envFiles = ref([]);
 const revealed = ref(new Set());
 const confirm = ref(false);
 const pendingApply = ref(false);
@@ -140,13 +143,29 @@ function parseEntries(raw) {
 async function load() {
   loading.value = true;
   try {
-    const result = await api.getProjectEnv(props.project.id);
+    const result = await api.getProjectEnv(props.project.id, activeFile.value);
     data.value = result;
     rawText.value = result.raw || '';
     entries.value = (result.entries || []).map((entry) => ({ ...entry, _uid: ++uidSeq }));
+    if (result.file) activeFile.value = result.file;
   } catch (error) {
     toast.error(`读取环境变量失败:${error.message}`);
   } finally { loading.value = false; }
+}
+
+async function loadEnvFiles() {
+  try {
+    envFiles.value = (await api.getProjectEnvFiles(props.project.id)).files || [];
+    if (!envFiles.value.some((item) => item.name === activeFile.value)) {
+      envFiles.value.unshift({ name: activeFile.value, exists: false });
+    }
+  } catch { envFiles.value = [{ name: '.env', exists: true }]; }
+}
+
+function switchEnvFile(name) {
+  if (dirty.value && !window.confirm('当前有未保存修改,切换文件将丢失。继续?')) return;
+  activeFile.value = name;
+  load();
 }
 function reload() { if (!dirty.value || window.confirm('当前有未保存修改,重置将丢失。继续?')) load(); }
 function addRow() {
@@ -190,7 +209,7 @@ async function doSave(apply) {
   confirm.value = false;
   saving.value = true;
   try {
-    await api.saveProjectEnv(props.project.id, { raw: buildRaw() });
+    await api.saveProjectEnv(props.project.id, { file: activeFile.value, raw: buildRaw() });
     toast.success('环境变量更新成功');
     await load();
     emit('refresh');
@@ -206,6 +225,7 @@ async function doSave(apply) {
 useEscapeKey({ active: computed(() => true), onClose: close, layer: 'modal', lockBody: true });
 useEscapeKey({ active: computed(() => confirm.value), onClose: () => { confirm.value = false; }, layer: 'modal' });
 
-watch(() => props.project.id, () => { if (props.project.id) load(); });
+watch(() => props.project.id, () => { if (props.project.id) { load(); loadEnvFiles(); } });
 load();
+loadEnvFiles();
 </script>

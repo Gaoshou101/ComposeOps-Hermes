@@ -3,7 +3,7 @@ import { buildMountPlan } from '../services/mount-plan.js';
 import { readCompose, saveCompose } from '../services/compose-runner.js';
 import { pruneWorkspaceRunners, readWorkspaceCompose, saveWorkspaceCompose } from '../services/compose-workspace.js';
 import { prepareProjectAction } from '../services/project-action-runner.js';
-import { readProjectEnv, saveProjectEnv, applyProjectEnv, assertEnvAccess } from '../services/project-env.js';
+import { readProjectEnv, saveProjectEnv, applyProjectEnv, assertEnvAccess, listProjectEnvFiles, normalizeEnvFileName } from '../services/project-env.js';
 import { getProjectUpdates, upgradeProject, rollbackProject } from '../services/image-updater.js';
 import { readContainerStat } from '../services/stats.js';
 import { validateComposeSemantics, previewComposeChange } from '../services/compose-validator.js';
@@ -315,13 +315,30 @@ export default async function projectRoutes(fastify) {
     }
   });
 
-  // ---- 环境变量(.env)读取 / 保存 / 应用 ----
-  fastify.get('/:id/env', { schema: { params: idParams } }, async (request, reply) => {
+  // ---- 环境变量(.env 文件族:可读 .env / *.env / .env.example)----
+  fastify.get('/:id/env/files', { schema: { params: idParams } }, async (request, reply) => {
     const project = await projectOr404(request.params.id, reply);
     if (!project) return;
     try {
       assertEnvAccess(project);
-      return await readProjectEnv(project);
+      return { files: await listProjectEnvFiles(project) };
+    } catch (error) {
+      return reply.code(error.statusCode || 500).send({ error: 'env_files_failed', message: error.message });
+    }
+  });
+
+  fastify.get('/:id/env', {
+    schema: {
+      params: idParams,
+      querystring: { type: 'object', properties: { file: { type: 'string', maxLength: 128 } } },
+    },
+  }, async (request, reply) => {
+    const project = await projectOr404(request.params.id, reply);
+    if (!project) return;
+    const file = normalizeEnvFileName(request.query?.file) || '.env';
+    try {
+      assertEnvAccess(project);
+      return await readProjectEnv(project, file);
     } catch (error) {
       return reply.code(error.statusCode || 500).send({ error: 'env_read_failed', message: error.message });
     }
@@ -338,6 +355,7 @@ export default async function projectRoutes(fastify) {
         type: 'object',
         additionalProperties: false,
         properties: {
+          file: { type: 'string', maxLength: 128 },
           raw: { type: 'string', maxLength: CONTENT_MAX },
           entries: {
             type: 'array',
@@ -360,7 +378,8 @@ export default async function projectRoutes(fastify) {
     try {
       assertEnvAccess(project);
       const { raw, entries } = request.body || {};
-      const result = await saveProjectEnv(project, { raw, entries });
+      const file = normalizeEnvFileName(request.body?.file) || '.env';
+      const result = await saveProjectEnv(project, { raw, entries }, file);
       return result;
     } catch (error) {
       addOperation({ projectId: project.id, projectName: project.projectName, action: 'env.save', status: 'failed', detail: error.message });

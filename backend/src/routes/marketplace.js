@@ -3,6 +3,7 @@
  * 提供社区模板、自定义模板、收藏管理
  */
 import {
+  discoverTemplateWithAI,
   getAllTemplates,
   searchTemplates,
   getMarketplaceStats,
@@ -90,6 +91,25 @@ export default async function marketplaceRoutes(fastify) {
   });
 
   // 创建自定义模板
+  // AI 发现:按应用名生成可一键部署的模板草稿(仅返回草稿,入库走 custom 创建)
+  fastify.post('/templates/ai-discover', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['query'],
+        properties: { query: { type: 'string', minLength: 1, maxLength: 120 } },
+      },
+    },
+  }, async (req, reply) => {
+    try {
+      const template = await discoverTemplateWithAI(req.body?.query);
+      return { template };
+    } catch (error) {
+      return reply.code(error.statusCode || 502).send({ error: 'ai_discover_failed', message: error.message });
+    }
+  });
+
   fastify.post('/templates/custom', {
     schema: {
       description: '创建自定义模板',

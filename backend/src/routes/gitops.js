@@ -11,7 +11,7 @@ import {
   getGitOpsHistory,
   rollbackGitOpsRepo,
 } from '../services/gitops.js';
-import { addOperation } from '../lib/db.js';
+import { addOperation, getSetting } from '../lib/db.js';
 
 const repoIdParam = {
   type: 'object',
@@ -104,6 +104,27 @@ export default async function gitopsRoutes(fastify) {
         error: 'gitops_delete_failed',
         message: error.message,
       });
+    }
+  });
+
+  // POST /webhook/:id —— Git 平台 push 事件触发同步。
+  // 安全模型:全局 token(setting gitops.webhook_token)经 X-ComposeOps-Token 头或
+  // ?token= 校验;未配置 token 时 webhook 一律关闭(403),避免裸端点暴露。
+  fastify.post('/webhook/:id', { schema: { params: repoIdParam } }, async (request, reply) => {
+    const expected = getSetting('gitops.webhook_token', '');
+    const provided = String(request.headers['x-composeops-token'] || request.query?.token || '');
+    if (!expected) return reply.code(403).send({ error: 'webhook_disabled', message: '未配置 gitops.webhook_token,webhook 处于关闭状态' });
+    if (provided !== expected) return reply.code(401).send({ error: 'invalid_token', message: 'webhook token 不匹配' });
+    try {
+      const result = await syncGitOpsRepo(request.params.id);
+      addOperation({
+        action: 'gitops.webhook',
+        status: 'success',
+        detail: `${request.params.id}: ${result.commit?.slice(0, 7) || ''}`,
+      });
+      return result;
+    } catch (error) {
+      return reply.code(error.statusCode || 500).send({ error: 'gitops_webhook_failed', message: error.message });
     }
   });
 

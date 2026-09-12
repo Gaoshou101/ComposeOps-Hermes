@@ -225,6 +225,25 @@ const MIGRATIONS = [
       database.exec(`CREATE INDEX IF NOT EXISTS idx_metrics_type_time ON container_metrics(metric_type, timestamp DESC)`);
     },
   },
+  {
+    version: 5,
+    name: '数据卷备份记录',
+    up(database) {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS volume_backups (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id TEXT NOT NULL,
+          project_name TEXT NOT NULL,
+          volume TEXT NOT NULL,
+          file TEXT NOT NULL,
+          bytes INTEGER DEFAULT 0,
+          host TEXT NOT NULL DEFAULT 'local',
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      database.exec(`CREATE INDEX IF NOT EXISTS idx_volume_backups_project ON volume_backups(project_id, created_at DESC)`);
+    },
+  },
 ];
 
 /** 幂等加列:列已存在时直接返回 false,不抛错。 */
@@ -785,6 +804,71 @@ export function importUserData(payload) {
   });
   transaction();
   return { ok: true };
+}
+
+// ===== 数据卷备份 =====
+
+const VOLUME_BACKUP_KEEP = 20; // 每个卷最多保留的备份份数,与 compose 备份策略一致
+
+export function addVolumeBackup({ projectId, projectName, volume, file, bytes = 0, host = 'local' }) {
+  const result = db.prepare(
+    'INSERT INTO volume_backups(project_id, project_name, volume, file, bytes, host) VALUES(?, ?, ?, ?, ?, ?)'
+  ).run(projectId, projectName, volume, file, Number(bytes) || 0, host);
+  // 超限清理由服务层负责(pruneVolumeBackups 只查询,删文件与删行必须同处执行)
+  return Number(result.lastInsertRowid);
+}
+
+export function listVolumeBackups(projectId = '') {
+  const rows = projectId
+    ? db.prepare('SELECT * FROM volume_backups WHERE project_id = ? ORDER BY id DESC LIMIT 200').all(projectId)
+    : db.prepare('SELECT * FROM volume_backups ORDER BY id DESC LIMIT 500').all();
+  return rows.map((row) => ({
+    id: Number(row.id),
+    projectId: row.project_id,
+    projectName: row.project_name,
+    volume: row.volume,
+    file: row.file,
+    bytes: Number(row.bytes) || 0,
+    host: row.host,
+    createdAt: row.created_at,
+  }));
+}
+
+export function getVolumeBackup(id) {
+  const row = db.prepare('SELECT * FROM volume_backups WHERE id = ?').get(Number(id));
+  return row ? { id: Number(row.id), projectId: row.project_id, projectName: row.project_name, volume: row.volume, file: row.file, bytes: Number(row.bytes) || 0, host: row.host, createdAt: row.created_at } : null;
+}
+
+export function deleteVolumeBackupRow(id) {
+  return db.prepare('DELETE FROM volume_backups WHERE id = ?').run(Number(id)).changes > 0;
+}
+
+/** 同一(project, volume)只保留最近 N 份,返回被清理的记录(调用方负责删文件)。 */
+export function pruneVolumeBackups(projectId, volume, keep = VOLUME_BACKUP_KEEP) {
+  return db.prepare(`
+    SELECT * FROM volume_backups
+    WHERE project_id = ? AND volume = ? AND id NOT IN (
+      SELECT id FROM volume_backups WHERE project_id = ? AND volume = ? ORDER BY id DESC LIMIT ?
+    )
+  `).all(projectId, volume, projectId, volume, keep).map((row) => ({ id: Number(row.id), file: row.file }));
+}
+
+// ===== 会话/Agent 审计数据保留策略 =====
+
+/** 清理超过保留期的 AI 会话消息与 Agent 审计数据,返回各表删除行数。 */
+export function pruneAiData(retentionDays = 90) {
+  const days = Math.max(7, Math.min(Number(retentionDays) || 90, 3650));
+  const cutoff = new Date(Date.now() - days * 86400000).toISOString().slice(0, 19).replace('T', ' ');
+  const tx = db.transaction(() => {
+    const plans = db.prepare(`
+      DELETE FROM agent_executions WHERE plan_id IN (SELECT id FROM agent_plans WHERE created_at < ?)
+    `).run(cutoff);
+    // 反馈(rating/feedback_text)是 agent_plans 的列,随计划一并删除,无独立表
+    const oldPlans = db.prepare('DELETE FROM agent_plans WHERE created_at < ?').run(cutoff);
+    const history = db.prepare('DELETE FROM ai_history WHERE created_at < ?').run(cutoff);
+    return { plans: oldPlans.changes, executions: plans.changes, history: history.changes };
+  });
+  return tx();
 }
 
 export default db;

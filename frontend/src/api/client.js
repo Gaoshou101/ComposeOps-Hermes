@@ -138,7 +138,8 @@ export const api = {
   getComposeFile: (projectId, fileIndex = 0, force = false) => request(`/projects/${projectId}/compose?fileIndex=${fileIndex}`, { force }),
   saveComposeFile: (projectId, fileIndex, content) =>
     request(`/projects/${projectId}/compose`, { method: 'PUT', body: JSON.stringify({ fileIndex, content }) }),
-  getProjectEnv: (projectId, force = false) => request(`/projects/${projectId}/env`, { force }),
+  getProjectEnv: (projectId, file = '', force = false) => request(`/projects/${projectId}/env?${new URLSearchParams({ ...(file ? { file } : {}), ...(force ? { force: '1' } : {}) })}`),
+  getProjectEnvFiles: (projectId) => request(`/projects/${projectId}/env/files`),
   saveProjectEnv: (projectId, payload) => request(`/projects/${projectId}/env`, { method: 'PUT', body: JSON.stringify(payload) }),
   streamApplyEnv: (projectId, onFrame) => streamComposeControl(projectId, null, onFrame, `/projects/${projectId}/env/apply`, { restart: true }),
   getBackups: (projectId) => request(`/projects/${projectId}/backups`),
@@ -175,6 +176,12 @@ export const api = {
   getStorageDf: async () => normalizeStorageDf(await request('/ops/storage/df')),
   pruneStorage: (mode, confirm) => request('/ops/storage/prune', { method: 'POST', body: JSON.stringify({ mode, confirm }) }),
   getStorageResources: (force = false) => request('/ops/storage/resources', { force }),
+  getProjectVolumes: (projectId) => request(`/ops/storage/volume-volumes?projectId=${encodeURIComponent(projectId)}`),
+  getVolumeBackups: (projectId = '') => request(`/ops/storage/volume-backups${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`),
+  createVolumeBackup: (projectId, volume) => request('/ops/storage/volume-backups', { method: 'POST', body: JSON.stringify({ projectId, volume }) }),
+  restoreVolumeBackup: (id) => request(`/ops/storage/volume-backups/${id}/restore`, { method: 'POST' }),
+  deleteVolumeBackup: (id) => request(`/ops/storage/volume-backups/${id}`, { method: 'DELETE' }),
+  volumeBackupDownloadUrl: (id) => `/api/v1/ops/storage/volume-backups/${id}/download`,
   removeStorageResource: (kind, id) => request(`/ops/storage/resources/${kind}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   // app blueprints
   getBlueprints: () => request('/ops/blueprints'),
@@ -224,6 +231,7 @@ export const api = {
   importData: (payload) => request('/personal/import', { method: 'POST', body: JSON.stringify(payload) }),
   // marketplace
   getMarketplaceStats: () => request('/marketplace/stats'),
+  discoverAiTemplate: (query) => request('/marketplace/templates/ai-discover', { method: 'POST', body: JSON.stringify({ query }) }),
   searchMarketplaceTemplates: (params) => request(`/marketplace/templates/search?${params.toString()}`),
   toggleMarketplaceFavorite: (templateId, isFavorited) => request(`/marketplace/favorites/${templateId}`, { method: isFavorited ? 'DELETE' : 'POST' }),
   createMarketplaceTemplate: (payload) => request('/marketplace/templates/custom', { method: 'POST', body: JSON.stringify(payload) }),

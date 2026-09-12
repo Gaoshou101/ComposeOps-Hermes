@@ -17,6 +17,7 @@ const JOB_TYPES = {
   'prune-all': { label: 'Docker 深度清理', description: '深度清理孤儿卷与全部构建缓存(谨慎)' },
   'images-check': { label: '镜像更新检查', description: '全局检测纳管项目镜像是否有远程更新(写入雷达缓存)' },
   'pull-images': { label: '定时拉取镜像', description: '对所有可编辑项目执行 docker compose pull' },
+  'volume-backup': { label: '数据卷备份', description: '对所有纳管项目的命名卷执行 tar 备份,保留最近份数' },
 };
 
 /** 解析单个 cron 字段 → 匹配函数(纯函数,便于单测)。 */
@@ -268,6 +269,33 @@ async function executeJob(job) {
       case 'images-check': {
         const result = await checkAllUpdates();
         return `镜像更新检查完成,共 ${result.projects.length} 个项目`;
+      }
+      case 'volume-backup': {
+        const { listProjectVolumes, createVolumeBackup } = await import('./volume-backup.js');
+        const projects = (await scanProjects()).filter((project) => project.managed);
+        let backed = 0;
+        const errors = [];
+        for (const project of projects) {
+          let volumes;
+          try {
+            volumes = (await listProjectVolumes(project)).filter((item) => !item.skip && item.exists !== false);
+          } catch (error) {
+            errors.push(`${project.projectName}:${error.message}`);
+            continue;
+          }
+          for (const volume of volumes) {
+            try {
+              await createVolumeBackup(project, volume.name);
+              backed += 1;
+            } catch (error) {
+              errors.push(`${project.projectName}/${volume.name}:${error.message}`);
+            }
+          }
+        }
+        if (errors.length && !backed) throw new Error(`所有卷备份失败:${errors.slice(0, 3).join('; ')}`);
+        if (errors.length) throw new Error(`备份 ${backed} 个成功,${errors.length} 个失败:${errors.slice(0, 2).join('; ')}`);
+        if (!backed) throw new Error('没有找到可备份的命名卷');
+        return `数据卷备份完成,共 ${backed} 个卷`;
       }
       case 'pull-images': {
         const projects = (await scanProjects()).filter((project) => project.managed && project.editable);

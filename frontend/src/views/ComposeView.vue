@@ -3,7 +3,9 @@
     <div class="page-header">
       <div><h1 class="page-title">Compose 配置</h1><p class="page-subtitle">保存前执行 YAML 与 docker compose config 校验</p></div>
       <div class="page-actions">
+        <button class="btn-secondary" title="返回服务总览" @click="router.push('/services')"><ArrowLeft class="w-4 h-4" />返回</button>
         <select v-model="projectId" class="input min-w-52" @change="selectProject"><option value="">选择项目</option><option v-for="p in projects" :key="p.id" :value="p.id">{{ p.projectName }}</option></select>
+        <button v-if="projectId" class="btn-secondary" title="清除当前选择,回到引导页" @click="projectId = ''; selectProject()"><X class="w-4 h-4" /></button>
         <select v-if="project?.composeFiles.length > 1" v-model.number="fileIndex" class="input" @change="load"><option v-for="(file, i) in project.composeFiles" :key="file" :value="i">{{ shortName(file) }}</option></select>
         <button class="btn-secondary" :disabled="!content" @click="toggleEditorMode"><Layout class="w-4 h-4" />{{ editorMode === 'code' ? '可视化' : '代码' }}</button>
         <button class="btn-secondary" :disabled="!content" @click="validateSemantics"><ShieldCheck class="w-4 h-4" />语义校验</button>
@@ -173,7 +175,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useToastStore } from '../stores/toast.js';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
-import { AlignLeft, Eye, FileCode2, HardDrive, History, Layout, Network, Pencil, Plus, RotateCw, Save, ShieldAlert, ShieldCheck, Trash2, Undo2, Variable, X } from 'lucide-vue-next';
+import { AlignLeft, ArrowLeft, Eye, FileCode2, HardDrive, History, Layout, Network, Pencil, Plus, RotateCw, Save, ShieldAlert, ShieldCheck, Trash2, Undo2, Variable, X } from 'lucide-vue-next';
 import Skeleton from '../components/common/Skeleton.vue';
 import { diffLines } from '../lib/diff.js';
 // 移除硬编码模板,改用模板市场 API

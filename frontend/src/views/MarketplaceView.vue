@@ -3,6 +3,7 @@
     <header class="page-header">
       <h1>应用市场</h1>
       <div class="actions">
+        <button @click="openAiDiscover" class="btn-secondary" :disabled="aiDiscovering"><Sparkles class="w-4 h-4" :class="{ 'animate-pulse': aiDiscovering }" />{{ aiDiscovering ? 'AI 查找中…' : 'AI 找应用' }}</button>
         <button @click="showCreateModal = true" class="btn-primary">
           <span class="icon">+</span>
           创建模板
@@ -154,6 +155,37 @@
       </div>
     </div>
 
+    <!-- AI 发现应用模态框 -->
+    <div v-if="showAiModal" class="modal-overlay" @click.self="showAiModal = false">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>AI 找应用</h2>
+          <button @click="showAiModal = false" class="close-btn">×</button>
+        </div>
+        <div class="modal-body">
+          <p class="text-xs text-zinc-500 mb-3">输入应用名,Agent 会联网检索官方部署方式并生成可一键部署的 Compose 模板草稿,确认后保存为自定义模板。</p>
+          <div class="form-group">
+            <label>应用名称</label>
+            <input v-model="aiQuery" type="text" placeholder="例如: umami / immich / gitea" @keydown.enter="runAiDiscover" />
+          </div>
+          <div v-if="aiPreview" class="form-group">
+            <label>生成结果预览(确认后保存为自定义模板)</label>
+            <div class="rounded-lg border border-surface-700/60 bg-surface-950/50 p-3 text-xs space-y-2">
+              <p><b class="text-zinc-200">{{ aiPreview.name }}</b> <span class="ml-1 text-zinc-500">{{ aiPreview.category }}</span></p>
+              <p class="text-zinc-400">{{ aiPreview.description }}</p>
+              <p v-if="aiPreview.envSchema?.length" class="text-zinc-500">需要 {{ aiPreview.envSchema.length }} 个配置项:{{ aiPreview.envSchema.map((item) => item.key).join(', ') }}</p>
+              <pre class="probe-output max-h-40">{{ aiPreview.defaultCompose }}</pre>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button @click="showAiModal = false" class="btn-cancel">取消</button>
+          <button v-if="!aiPreview" @click="runAiDiscover" class="btn-save" :disabled="aiDiscovering || !aiQuery.trim()">{{ aiDiscovering ? '生成中…' : '生成模板' }}</button>
+          <button v-else @click="useAiTemplate" class="btn-save">填入创建表单</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 查看模板模态框 -->
     <div v-if="viewingTemplate" class="modal-overlay" @click.self="viewingTemplate = null">
       <div class="modal-content view-modal">
@@ -244,6 +276,10 @@ const onlyFavorites = ref(false);
 
 const showCreateModal = ref(false);
 const editingTemplate = ref(null);
+const aiDiscovering = ref(false);
+const showAiModal = ref(false);
+const aiQuery = ref('');
+const aiPreview = ref(null);
 const viewingTemplate = ref(null);
 const formData = ref({
   name: '',
@@ -358,6 +394,35 @@ async function confirmDelete() {
   } finally {
     pendingDeleteId.value = null;
   }
+}
+
+function openAiDiscover() {
+  aiQuery.value = '';
+  aiPreview.value = null;
+  showAiModal.value = true;
+}
+async function runAiDiscover() {
+  if (!aiQuery.value.trim() || aiDiscovering.value) return;
+  aiDiscovering.value = true;
+  try {
+    const { template } = await api.discoverAiTemplate(aiQuery.value.trim());
+    aiPreview.value = template;
+  } catch (error) {
+    useToastStore().error(error.message);
+  } finally {
+    aiDiscovering.value = false;
+  }
+}
+function useAiTemplate() {
+  if (!aiPreview.value) return;
+  formData.value = {
+    name: aiPreview.value.name || '',
+    category: aiPreview.value.category || 'Custom',
+    description: aiPreview.value.description || '',
+    defaultCompose: aiPreview.value.defaultCompose || '',
+  };
+  showAiModal.value = false;
+  showCreateModal.value = true;
 }
 
 function closeModal() {

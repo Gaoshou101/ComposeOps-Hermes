@@ -19,7 +19,7 @@
 
     <div class="flex items-center justify-between gap-3 border-b border-surface-800 pb-0">
       <div class="flex items-center gap-1">
-        <button v-for="tab in tabs" :key="tab.key" class="nav-link !flex-none px-3 py-2 text-sm" :class="{ 'nav-link-active': activeTab === tab.key }" @click="switchTab(tab.key)">{{ tab.label }}<span class="ml-2 count-badge">{{ (data?.counts?.[tab.countKey] ?? 0) }}</span></button>
+        <button v-for="tab in tabs" :key="tab.key" class="nav-link !flex-none px-3 py-2 text-sm" :class="{ 'nav-link-active': activeTab === tab.key }" @click="switchTab(tab.key)">{{ tab.label }}<span v-if="tab.countKey !== '__none__'" class="ml-2 count-badge">{{ (data?.counts?.[tab.countKey] ?? 0) }}</span></button>
       </div>
       <div class="flex items-center gap-2 pb-2">
         <span v-if="searchQuery || filterStatus" class="text-xs text-surface-400">显示 <b class="text-sky-300">{{ filteredRows.length }}</b> / {{ rows.length }}</span>
@@ -31,9 +31,13 @@
       </div>
     </div>
 
-    <Skeleton v-if="loading && !data" variant="table" :rows="6" label="资源清单加载中" />
+    <Skeleton v-if="loading && !data && activeTab !== 'backups'" variant="table" :rows="6" label="资源清单加载中" />
 
-    <section v-if="data" class="section-panel flex-1 mt-4">
+    <section v-if="activeTab === 'backups'" class="section-panel flex-1 mt-4">
+      <VolumeBackupPanel />
+    </section>
+
+    <section v-if="data && activeTab !== 'backups'" class="section-panel flex-1 mt-4">
       <div class="table-wrap">
         <table class="data-table">
           <thead>
@@ -81,6 +85,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { RefreshCw, Trash2 } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import Skeleton from '../components/common/Skeleton.vue';
+import VolumeBackupPanel from '../components/resources/VolumeBackupPanel.vue';
 
 const data = ref(null);
 const loading = ref(false);
@@ -97,6 +102,7 @@ const tabs = [
   { key: 'images', label: '镜像', countKey: 'images' },
   { key: 'volumes', label: '卷', countKey: 'volumes' },
   { key: 'networks', label: '网络', countKey: 'networks' },
+  { key: 'backups', label: '卷备份', countKey: '__none__' },
 ];
 const tabLabel = computed(() => tabs.find((t) => t.key === activeTab.value)?.label || '');
 

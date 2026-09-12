@@ -405,3 +405,16 @@ body[data-density='compact'] .data-table td { @apply !py-1.5 !px-2; }
 .agent-rich-markdown :deep(p),
 .agent-rich-markdown :deep(td),
 .agent-rich-markdown :deep(th) { overflow-wrap: anywhere; }
+
+/* ===== 富渲染:内嵌 SVG / details 折叠 / 语义标签 ===== */
+.agent-rich-markdown svg, .agent-markdown svg, .agent-drawer-markdown svg,
+.agent-rich-markdown :deep(svg), .agent-markdown :deep(svg), .agent-drawer-markdown :deep(svg) { max-width: 100%; height: auto; background: rgba(255,255,255,.02); border-radius: 8px; }
+.agent-rich-markdown details, .agent-markdown details, .agent-drawer-markdown details { margin: 8px 0; padding: 8px 10px; border: 1px solid #303641; border-radius: 8px; background: rgba(17,21,27,.6); }
+.agent-rich-markdown summary, .agent-markdown summary, .agent-drawer-markdown summary { cursor: pointer; color: #67e8f9; font-weight: 600; }
+.agent-rich-markdown kbd, .agent-markdown kbd, .agent-drawer-markdown kbd { padding: 1px 5px; border: 1px solid #3f4653; border-bottom-width: 2px; border-radius: 4px; background: #0f1319; font-size: .85em; }
+.agent-rich-markdown mark, .agent-markdown mark, .agent-drawer-markdown mark { padding: 0 3px; border-radius: 3px; background: rgba(250, 204, 21, .25); color: #fef08a; }
+
+/* ===== 聊天消息入场动画 ===== */
+@keyframes message-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.agent-message, .agent-drawer-message { animation: message-in .22s ease both; }
+.agent-messages { scroll-behavior: smooth; }

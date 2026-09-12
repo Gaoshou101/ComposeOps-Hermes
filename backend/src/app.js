@@ -57,7 +57,7 @@ export async function buildApp({ logger = { level: process.env.LOG_LEVEL || 'inf
     reply.header('X-Frame-Options', 'DENY');
     reply.header('Referrer-Policy', 'no-referrer');
     reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    reply.header('Content-Security-Policy', "default-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:");
+    reply.header('Content-Security-Policy', "default-src 'self'; connect-src 'self'; img-src 'self' data: https:; media-src 'self' https:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:");
     return payload;
   });
 
@@ -69,7 +69,9 @@ export async function buildApp({ logger = { level: process.env.LOG_LEVEL || 'inf
     const protectedPath = request.url.startsWith('/api/v1/') || request.url.startsWith('/ws/');
     const pathname = request.url.split('?')[0];
     const publicAuthPath = PUBLIC_AUTH_PATHS.includes(pathname);
-    if (protectedPath && !publicAuthPath && !isAuthenticated(request)) {
+    // GitOps webhook 有独立的 token 校验(未配置 token 时端点直接 403),不走会话认证。
+    const gitopsWebhookPath = pathname.startsWith('/api/v1/gitops/webhook/');
+    if (protectedPath && !publicAuthPath && !gitopsWebhookPath && !isAuthenticated(request)) {
       return reply.code(401).send({ error: 'unauthorized', message: '请先登录' });
     }
     if (request.url.startsWith('/ws/') && !validateOrigin(request)) {

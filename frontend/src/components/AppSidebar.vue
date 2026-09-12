@@ -42,11 +42,11 @@ const groups = [
     { to: '/marketplace', icon: Store, label: '应用市场' },
     { to: '/cron', icon: Clock3, label: '定时任务' },
     { to: '/gitops', icon: GitBranch, label: 'GitOps' },
-    { to: '/cost', icon: DollarSign, label: '成本分析' },
   ] },
   { label: '系统', items: [
     { to: '/resources', icon: HardDrive, label: '存储清理' },
     { to: '/operations', icon: History, label: '记录' },
+    { to: '/cost', icon: DollarSign, label: '成本分析' },
     { to: '/settings', icon: Settings, label: '设置' },
   ] },
 ];

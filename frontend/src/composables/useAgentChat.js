@@ -15,11 +15,50 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
   const running = ref(false);
   const sessionId = ref(null);
   const scrollEl = ref(null);
+  // 滚动跟随:用户向上回看时暂停自动滚底,回到底部(或手动点"回到底部")后恢复。
+  const atBottom = ref(true);
   let nextId = 0;
   let controller = null;
+  // token 节流:SSE 分片逐条追加会让 marked+DOMPurify 每个 chunk 全量重渲染,
+  // 长回复时一顿一顿;缓冲 120ms 合并刷新,流式更顺滑。
+  let tokenBuffer = '';
+  let bufferingAssistant = null;
+  let tokenTimer = null;
 
-  function scrollBottom() {
+  function flushTokens() {
+    if (tokenTimer) { clearTimeout(tokenTimer); tokenTimer = null; }
+    if (bufferingAssistant && tokenBuffer) {
+      bufferingAssistant.content += tokenBuffer;
+      tokenBuffer = '';
+    }
+    bufferingAssistant = null;
+  }
+
+  function queueToken(assistant, chunk) {
+    if (tokenTimer && bufferingAssistant && bufferingAssistant !== assistant) flushTokens();
+    bufferingAssistant = assistant;
+    tokenBuffer += chunk;
+    if (!tokenTimer) tokenTimer = setTimeout(flushTokens, 120);
+  }
+
+  function isNearBottom() {
+    const el = scrollEl.value;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
+
+  function onScroll() {
+    atBottom.value = isNearBottom();
+  }
+
+  function scrollBottom(force = false) {
+    if (!force && !atBottom.value) return; // 用户在回看历史,不打断
     void nextTick(() => { if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight; });
+  }
+
+  function scrollToBottom() {
+    atBottom.value = true;
+    scrollBottom(true);
   }
 
   async function ensureSession() {
@@ -46,12 +85,14 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
     input.value = '';
     running.value = true;
     controller = new AbortController();
-    scrollBottom();
+    atBottom.value = true; // 发送即回到底部
+    scrollBottom(true);
     try {
       await api.agentExecuteStream({ message: text, sessionId: sessionId.value, role: 'planner', ...extraPayload }, (event) => handleEvent(event, assistant), controller.signal);
     } catch (error) {
       if (error.name !== 'AbortError') assistant.content = `执行失败：${error.message}`;
     } finally {
+      flushTokens();
       assistant.streaming = false;
       assistant.confirmation = null;
       running.value = false;
@@ -60,15 +101,41 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
     }
   }
 
+  /** 工具执行轨迹:requested → executing → done/failed/rejected,供消息区展示。 */
+  function trackTool(assistant, event) {
+    if (!assistant.tools) assistant.tools = [];
+    const pending = [...assistant.tools].reverse().find((item) => item.tool === event.tool && ['requested', 'executing'].includes(item.status));
+    if (event.type === 'tool_requested') assistant.tools.push({ tool: event.tool, status: 'requested' });
+    else if (event.type === 'tool_executing') {
+      if (pending) pending.status = 'executing';
+      else assistant.tools.push({ tool: event.tool, status: 'executing' });
+    } else if (event.type === 'tool_result') {
+      const status = event.success ? 'done' : 'failed';
+      if (pending) { pending.status = status; pending.durationMs = event.durationMs; }
+      else assistant.tools.push({ tool: event.tool, status, durationMs: event.durationMs });
+    } else if (event.type === 'tool_error') {
+      if (pending) pending.status = 'failed';
+      else assistant.tools.push({ tool: event.tool, status: 'failed' });
+    } else if (event.type === 'tool_rejected') {
+      if (pending) pending.status = 'rejected';
+      else assistant.tools.push({ tool: event.tool, status: 'rejected' });
+    }
+  }
+
   function handleEvent(event, assistant) {
-    if (event.type === 'token') assistant.content += event.content;
-    else if (event.type === 'confirmation_required') assistant.confirmation = { ...event, busy: false };
-    else if (event.type === 'context_data' && event.kind === 'projects') assistant.projects = event.projects;
+    if (event.type === 'token') {
+      queueToken(assistant, event.content);
+      scrollBottom();
+    } else if (event.type === 'confirmation_required') {
+      flushTokens();
+      assistant.confirmation = { ...event, busy: false };
+    } else if (event.type === 'context_data' && event.kind === 'projects') assistant.projects = event.projects;
     else if (event.type === 'context_data' && event.kind === 'search_sources') assistant.searchSources = event.sources;
     else if (event.type === 'action_completed' && event.kind === 'cron_created') window.dispatchEvent(new CustomEvent('composeops:cron-agent-created', { detail: event.result || {} }));
-    else if (event.type === 'interrupted') { assistant.confirmation = null; assistant.content += `${assistant.content ? '\n\n' : ''}${stripAgentProtocol(event.reason || '执行已中断')}`; }
-    else if (event.type === 'error') { assistant.confirmation = null; assistant.content += `${assistant.content ? '\n\n' : ''}${stripAgentProtocol(event.content || 'Agent 执行失败')}`; }
-    else if (event.type === 'done' && event.content) assistant.content = stripAgentProtocol(event.content);
+    else if (event.type.startsWith('tool_')) { trackTool(assistant, event); }
+    else if (event.type === 'interrupted') { flushTokens(); assistant.confirmation = null; assistant.content += `${assistant.content ? '\n\n' : ''}${stripAgentProtocol(event.reason || '执行已中断')}`; }
+    else if (event.type === 'error') { flushTokens(); assistant.confirmation = null; assistant.content += `${assistant.content ? '\n\n' : ''}${stripAgentProtocol(event.content || 'Agent 执行失败')}`; }
+    else if (event.type === 'done') { flushTokens(); if (event.content) assistant.content = stripAgentProtocol(event.content); }
     onEventExtra?.(event, assistant);
     scrollBottom();
   }
@@ -103,5 +170,5 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
 
   function interrupt() { controller?.abort(); }
 
-  return { messages, input, running, sessionId, scrollEl, scrollBottom, nextMessageId, ensureSession, resetSession, sendMessage, approve, reject, interrupt };
+  return { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, ensureSession, resetSession, sendMessage, approve, reject, interrupt };
 }

@@ -4,6 +4,11 @@ import { listBlueprints, deployBlueprint } from '../services/app-blueprints.js';
 import { checkAllUpdates } from '../services/image-updater.js';
 import { getNotificationConfig, saveNotificationConfig, sendNotification } from '../services/notifications.js';
 import { getAlertEventConfig } from '../services/health-alerter.js';
+import {
+  listProjectVolumes, createVolumeBackup, restoreVolumeBackup, deleteVolumeBackup,
+  listBackups, openBackupStream,
+} from '../services/volume-backup.js';
+import { findProject } from '../services/scanner.js';
 import { addOperation } from '../lib/db.js';
 import { listAlertEvents, updateAlertEvent, pruneAlertEvents } from '../services/events.js';
 import { notificationConfigBody } from '../lib/schemas.js';
@@ -99,6 +104,85 @@ export default async function opsRoutes(fastify) {
       return { ok: true, ...result };
     } catch (error) {
       return reply.code(error.statusCode || 502).send({ error: 'resource_remove_failed', message: error.message });
+    }
+  });
+
+  // ---- 数据卷备份:helper 容器 tar 方案,仅命名卷 ----
+  fastify.get('/storage/volume-volumes', {
+    schema: { querystring: { type: 'object', required: ['projectId'], properties: { projectId: { type: 'string', maxLength: 128 } } } },
+  }, async (request, reply) => {
+    try {
+      const project = await findProject(request.query.projectId);
+      if (!project) return reply.code(404).send({ error: 'project_not_found', message: '项目不存在或当前不可见' });
+      if (!project.managed) return reply.code(403).send({ error: 'project_not_managed', message: '项目尚未加入管理' });
+      return { volumes: await listProjectVolumes(project) };
+    } catch (error) {
+      return reply.code(error.statusCode || 502).send({ error: 'volume_list_failed', message: error.message });
+    }
+  });
+
+  fastify.get('/storage/volume-backups', {
+    schema: { querystring: { type: 'object', properties: { projectId: { type: 'string', maxLength: 128 } } } },
+  }, async (request) => ({ backups: await listBackups(request.query.projectId || '') }));
+
+  // volume 名不设 enum:由服务端校验字符集与 compose 归属。
+  fastify.post('/storage/volume-backups', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['projectId', 'volume'],
+        properties: { projectId: { type: 'string', maxLength: 128 }, volume: { type: 'string', maxLength: 128 } },
+      },
+    },
+  }, async (request, reply) => {
+    try {
+      const { projectId, volume } = request.body || {};
+      const project = await findProject(projectId);
+      if (!project) return reply.code(404).send({ error: 'project_not_found', message: '项目不存在或当前不可见' });
+      if (!project.managed) return reply.code(403).send({ error: 'project_not_managed', message: '项目尚未加入管理' });
+      const volumes = await listProjectVolumes(project);
+      const match = volumes.find((item) => item.name === volume);
+      if (!match) return reply.code(404).send({ error: 'volume_not_found', message: 'compose 中未引用该卷' });
+      if (match.skip) return reply.code(400).send({ error: 'volume_not_supported', message: match.skip });
+      if (match.exists === false) return reply.code(404).send({ error: 'volume_missing', message: '该卷尚未在当前宿主上创建' });
+      return await createVolumeBackup(project, volume);
+    } catch (error) {
+      return reply.code(error.statusCode || 502).send({ error: 'volume_backup_failed', message: error.message });
+    }
+  });
+
+  fastify.post('/storage/volume-backups/:id/restore', {
+    schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer', minimum: 1 } } } },
+  }, async (request, reply) => {
+    try {
+      return await restoreVolumeBackup(request.params.id);
+    } catch (error) {
+      return reply.code(error.statusCode || 502).send({ error: 'volume_restore_failed', message: error.message });
+    }
+  });
+
+  fastify.delete('/storage/volume-backups/:id', {
+    schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer', minimum: 1 } } } },
+  }, async (request, reply) => {
+    try {
+      return await deleteVolumeBackup(request.params.id);
+    } catch (error) {
+      return reply.code(error.statusCode || 502).send({ error: 'volume_backup_delete_failed', message: error.message });
+    }
+  });
+
+  fastify.get('/storage/volume-backups/:id/download', {
+    schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer', minimum: 1 } } } },
+  }, async (request, reply) => {
+    try {
+      const { stream, fileName, bytes } = await openBackupStream(request.params.id);
+      reply.header('Content-Type', 'application/gzip');
+      reply.header('Content-Disposition', `attachment; filename="${fileName}"`);
+      if (bytes) reply.header('Content-Length', bytes);
+      return reply.send(stream);
+    } catch (error) {
+      return reply.code(error.statusCode || 502).send({ error: 'volume_backup_download_failed', message: error.message });
     }
   });
 

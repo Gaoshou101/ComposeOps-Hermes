@@ -5,7 +5,8 @@
  */
 
 import { getActivityDocker } from './docker-hosts.js';
-import db from '../lib/db.js';
+import db, { pruneAiData } from '../lib/db.js';
+import { getSetting, setSetting } from '../lib/db.js';
 
 /** 给一个 Promise 加超时,避免 Docker API 调用挂起时采集循环无限堆积。 */
 function withTimeout(promise, ms, label) {
@@ -175,12 +176,34 @@ export function startMetricsCollection(intervalSeconds = 30) {
     });
   }, intervalSeconds * 1000);
   
-  // 每小时清理一次过期数据
+  // 每小时清理一次过期数据;AI 会话/Agent 审计按天粒度顺带清理(每天最多跑一次)
   const pruneIntervalId = setInterval(() => {
     pruneMetrics().catch(error => {
       console.error('清理过期指标失败:', error.message);
     });
+    pruneAiDataOnceDaily();
   }, 60 * 60 * 1000);
   
   return { intervalId, pruneIntervalId };
+}
+
+/**
+ * AI 会话/Agent 审计保留策略:每天(UTC)最多执行一次,保留天数由
+ * setting retention.ai_days 控制(默认 90 天,7..3650)。
+ */
+let lastAiPruneDay = '';
+export function pruneAiDataOnceDaily() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (lastAiPruneDay === today) return;
+  lastAiPruneDay = today;
+  const retentionDays = Number(getSetting('retention.ai_days', '90')) || 90;
+  try {
+    const result = pruneAiData(retentionDays);
+    setSetting('retention.ai_last_pruned_at', new Date().toISOString());
+    if (result.history || result.plans) {
+      console.log(`[retention] 已清理 AI 历史 ${result.history} 条、Agent 计划 ${result.plans} 个、执行记录 ${result.executions} 条`);
+    }
+  } catch (error) {
+    console.error('[retention] AI 数据清理失败:', error.message);
+  }
 }

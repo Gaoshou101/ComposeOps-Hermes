@@ -36,9 +36,14 @@ export function toPublicAgentEvent(event) {
     if (event.tool === 'project.list_managed' && Array.isArray(result)) return { type: 'context_data', kind: 'projects', projects: result };
     if (event.tool === 'web.search' && Array.isArray(result?.sources)) return { type: 'context_data', kind: 'search_sources', sources: result.sources };
     if (event.tool === 'cron.create') return { type: 'action_completed', kind: 'cron_created', result: result || {} };
-    return null;
+    // 通用工具结果:只透出工具名/成败/耗时,结果体(日志、配置数据)不带给前端。
+    return { type: 'tool_result', tool: String(event.tool || ''), success: !!event.result?.success, durationMs: Number(event.result?.durationMs || 0) };
   }
-  if (event.type === 'tool_error' || event.type === 'error') return { type: 'error', content: cleanError(event.error || event.content) || 'Agent 执行失败' };
+  if (event.type === 'tool_requested') return { type: 'tool_requested', tool: String(event.tool || '') };
+  if (event.type === 'tool_executing') return { type: 'tool_executing', tool: String(event.tool || '') };
+  if (event.type === 'tool_rejected') return { type: 'tool_rejected', tool: String(event.tool || '') };
+  if (event.type === 'tool_error') return { type: 'tool_error', tool: String(event.tool || ''), error: cleanError(event.error) };
+  if (event.type === 'error') return { type: 'error', content: cleanError(event.error || event.content) || 'Agent 执行失败' };
   if (event.type === 'interrupted') return { type: 'interrupted', reason: cleanText(event.reason || event.content) || '执行已中断' };
   return null;
 }

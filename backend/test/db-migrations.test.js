@@ -28,7 +28,9 @@ test('db-migrations: runMigrations 对空库应用全部迁移并更新 user_ver
   assert.ok(applied.includes(2));
   assert.ok(applied.includes(3));
   assert.ok(applied.includes(4));
-  assert.equal(db.pragma('user_version', { simple: true }), 4);
+  assert.ok(applied.includes(5));
+  assert.equal(db.pragma('user_version', { simple: true }), 5);
+  assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'volume_backups'").get());
   assert.ok(db.prepare('PRAGMA table_info(project_preferences)').all().some((c) => c.name === 'managed'));
   assert.ok(db.prepare('PRAGMA table_info(ai_history)').all().some((c) => c.name === 'session_id'));
   assert.ok(db.prepare('PRAGMA table_info(agent_plans)').all().some((c) => c.name === 'progress_stage'));
@@ -43,10 +45,10 @@ test('db-migrations: 已应用版本跳过,重放返回空数组', () => {
     CREATE TABLE alert_events(id INTEGER PRIMARY KEY, logs TEXT);
     CREATE TABLE agent_plans(id INTEGER PRIMARY KEY, rating INTEGER, feedback_text TEXT, feedback_at TEXT, progress_stage TEXT, progress_percent INTEGER, current_step_index INTEGER, updated_at TEXT, project_id TEXT, container_id TEXT);
   `);
-  db.pragma('user_version = 4');
+  db.pragma('user_version = 5');
   const applied = runMigrations(db);
   assert.deepEqual(applied, []);
-  assert.equal(db.pragma('user_version', { simple: true }), 4);
+  assert.equal(db.pragma('user_version', { simple: true }), 5);
 });
 
 test('db-migrations: 真实 user_version=0 历史库(列已在)幂等升到 v4', async () => {
@@ -68,7 +70,7 @@ test('db-migrations: 真实 user_version=0 历史库(列已在)幂等升到 v4',
   assert.ok(applied.includes(2));
   assert.ok(applied.includes(3));
   assert.ok(applied.includes(4));
-  assert.equal(reopened.pragma('user_version', { simple: true }), 4);
+  assert.equal(reopened.pragma('user_version', { simple: true }), 5);
   reopened.close();
   rmSync(dir, { recursive: true, force: true });
 });
