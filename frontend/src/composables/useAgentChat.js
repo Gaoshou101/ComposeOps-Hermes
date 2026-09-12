@@ -174,23 +174,43 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
   /** 富内容块"放大查看"(页面内浮层,类似豆包)的状态与点击委托。 */
   const zoomOpen = ref(false);
   const zoomContent = ref('');
+  const zoomScale = ref(1);
+
+  function openZoom(block) {
+    zoomContent.value = block.querySelector('.rich-block-body')?.innerHTML || block.innerHTML;
+    zoomScale.value = 1;
+    zoomOpen.value = true;
+  }
 
   function handleRichBlockClick(event) {
     const button = event.target.closest?.('.rich-zoom-btn');
-    if (!button) return;
-    const block = button.closest('.rich-block');
-    if (!block) return;
-    zoomContent.value = block.querySelector('.rich-block-body')?.innerHTML || block.innerHTML;
-    zoomOpen.value = true;
+    const target = event.target;
+    // 点击 SVG/图片本体也可直接放大(豆包式)
+    const hitMedia = target.closest?.('.rich-block') && target.matches?.('svg, svg *, img');
+    if (button) {
+      const block = button.closest('.rich-block');
+      if (block) openZoom(block);
+      return;
+    }
+    if (hitMedia) {
+      openZoom(target.closest('.rich-block'));
+    }
+  }
+
+  function onZoomWheel(event) {
+    if (!zoomOpen.value) return;
+    const direction = event.deltaY > 0 ? -0.1 : 0.1;
+    zoomScale.value = Math.min(4, Math.max(0.5, Math.round((zoomScale.value + direction) * 10) / 10));
   }
 
   function closeZoom() {
     zoomOpen.value = false;
     zoomContent.value = '';
+    zoomScale.value = 1;
   }
 
   // Esc 关闭放大浮层,并锁定背景滚动(复用全局弹层 Esc 分层体系)
   useEscapeKey({ active: zoomOpen, layer: 'modal', onClose: closeZoom, lockBody: true });
 
-  return { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, ensureSession, resetSession, sendMessage, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, closeZoom };
+  return { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, ensureSession, resetSession, sendMessage, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom };
 }

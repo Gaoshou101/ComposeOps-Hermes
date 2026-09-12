@@ -208,16 +208,65 @@ export async function listBackups(projectId = '') {
   return listVolumeBackups(projectId);
 }
 
-/** 下载备份文件(仅本地宿主;远程宿主的文件在远端文件系统上)。 */
+/** 备份文件是否存在且可下载。 */
+async function resolveBackupFile(record) {
+  const host = getActiveHost();
+  const isLocal = (host?.id || 'local') === 'local' || host?.type === 'local';
+  if (isLocal) {
+    const target = path.join(getBackupDir(), record.file);
+    const info = await stat(target).catch(() => null);
+    if (!info) throw Object.assign(new Error('备份文件已不存在(可能被清理)'), { statusCode: 410 });
+    return { kind: 'local', path: target, bytes: info.size };
+  }
+  return { kind: 'remote' };
+}
+
+/** 下载备份文件:本地宿主走文件流;远程宿主经 helper 容器 cat 流式转发。 */
+export async function streamBackupToReply(id, reply) {
+  const record = getVolumeBackup(id);
+  if (!record) throw Object.assign(new Error('备份记录不存在'), { statusCode: 404 });
+  const resolved = await resolveBackupFile(record);
+  reply.header('Content-Type', 'application/gzip');
+  reply.header('Content-Disposition', `attachment; filename="${record.file}"`);
+  if (resolved.kind === 'local') {
+    reply.header('Content-Length', resolved.bytes);
+    return reply.send(createReadStream(resolved.path));
+  }
+  // 远程宿主:一次性 helper 容器读取文件,demux 后只把 stdout 转发给浏览器
+  const docker = getActivityDocker();
+  await ensureHelperImage(docker);
+  const container = await docker.createContainer({
+    Image: HELPER_IMAGE,
+    Cmd: ['sh', '-c', `cat "/backup/${record.file}"`],
+    HostConfig: { Binds: volumeBinds(record.volume, 'ro') },
+    Labels: { 'composeops.role': 'volume-backup' },
+  });
+  try {
+    const attach = await container.attach({ stream: true, stdout: true, stderr: true, logs: false });
+    await container.start();
+    const demux = demuxStream();
+    attach.pipe(demux);
+    demux.stderr.resume();
+    demux.stdout.pipe(reply.raw);
+    container.wait().finally(() => {
+      reply.raw.end();
+      container.remove({ force: true }).catch(() => {});
+    });
+    return reply;
+  } catch (error) {
+    await container.remove({ force: true }).catch(() => {});
+    reply.raw.destroy();
+    throw Object.assign(new Error(`远程备份读取失败:${error.message}`), { statusCode: 502 });
+  }
+}
+
+/** 兼容旧调用:本地宿主文件流(仅用于测试与本地快捷路径)。 */
 export async function openBackupStream(id) {
   const record = getVolumeBackup(id);
   if (!record) throw Object.assign(new Error('备份记录不存在'), { statusCode: 404 });
-  const host = getActiveHost();
-  if ((host?.id || 'local') !== 'local' && host?.type !== 'local') {
-    throw Object.assign(new Error('远程宿主上的备份不支持浏览器下载,请在宿主机上直接取用'), { statusCode: 400 });
+  const resolved = await resolveBackupFile(record);
+  if (resolved.kind !== 'local') {
+    throw Object.assign(new Error('远程宿主上的备份请使用流式下载'), { statusCode: 400 });
   }
-  const target = path.join(getBackupDir(), record.file);
-  const info = await stat(target).catch(() => null);
-  if (!info) throw Object.assign(new Error('备份文件已不存在(可能被清理)'), { statusCode: 410 });
-  return { stream: createReadStream(target), fileName: record.file, bytes: info.size };
+  return { stream: createReadStream(resolved.path), fileName: record.file, bytes: resolved.bytes };
 }

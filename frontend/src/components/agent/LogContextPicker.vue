@@ -32,7 +32,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { Check, RefreshCw, Search } from 'lucide-vue-next';
 import { api } from '../../api/client.js';
 
@@ -41,8 +41,15 @@ const props = defineProps({
 });
 const emit = defineEmits(['attach']);
 
+const MEMORY_KEY = 'composeops:logpicker';
 const projectId = ref('');
 const containerId = ref('');
+
+try {
+  const remembered = JSON.parse(localStorage.getItem(MEMORY_KEY) || '{}');
+  projectId.value = remembered.projectId || '';
+  containerId.value = remembered.containerId || '';
+} catch {}
 const logLines = ref([]);
 const loading = ref(false);
 const query = ref('');
@@ -63,11 +70,19 @@ const lines = computed(() => logLines.value.filter((line) => selected.value.incl
 function levelClass(level) {
   return { error: 'text-rose-400', warn: 'text-amber-400', info: 'text-zinc-500' }[level] || 'text-zinc-500';
 }
-function onProjectChange() { containerId.value = ''; logLines.value = []; selected.value = []; }
-function onContainerChange() { logLines.value = []; selected.value = []; if (containerId.value) loadLogs(); }
+function onProjectChange() { containerId.value = ''; logLines.value = []; selected.value = []; remember(); }
+function remember() {
+  try { localStorage.setItem(MEMORY_KEY, JSON.stringify({ projectId: projectId.value, containerId: containerId.value })); } catch {}
+}
+function onContainerChange() { logLines.value = []; selected.value = []; remember(); if (containerId.value) loadLogs(); }
 function clear() { selected.value = []; }
 function emitAttach() { emit('attach', { text: lines.value.join('\n').slice(0, 50000), count: lines.value.length }); }
 watch(selected, emitAttach);
+
+onMounted(() => {
+  // 恢复记忆的项目/容器后自动拉取日志,省一次点击
+  if (projectId.value && containerId.value) loadLogs();
+});
 
 async function loadLogs() {
   if (!projectId.value || !containerId.value) return;

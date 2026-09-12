@@ -7,6 +7,7 @@ import {
   setPassword,
   verifyPassword,
 } from '../lib/auth.js';
+import { getSetting, setSetting } from '../lib/db.js';
 
 /**
  * 口令类字段只做类型与长度上限校验,不搬业务规则(如至少 10 位):
@@ -18,8 +19,35 @@ import {
 const PASSWORD_MAX = 200;
 const passwordField = { type: 'string', maxLength: PASSWORD_MAX };
 
+// 登录失败锁定:持久化到 SQLite(服务重启不重置),内存缓存减少读写。
+const LOCKOUT_KEY = 'auth.login_lockouts';
+let lockoutCache = null;
+
+function loadLockouts() {
+  if (lockoutCache) return lockoutCache;
+  try {
+    lockoutCache = new Map(Object.entries(JSON.parse(getSetting(LOCKOUT_KEY, '{}'))));
+  } catch {
+    lockoutCache = new Map();
+  }
+  return lockoutCache;
+}
+
+function saveLockouts() {
+  const map = loadLockouts();
+  const now = Date.now();
+  for (const [key, entry] of map) {
+    if (entry.resetAt <= now) map.delete(key);
+  }
+  setSetting(LOCKOUT_KEY, JSON.stringify(Object.fromEntries(map)));
+}
+
 export default async function authRoutes(fastify) {
-  const attempts = new Map();
+  const attempts = {
+    get: (key) => loadLockouts().get(key),
+    set: (key, entry) => { loadLockouts().set(key, entry); saveLockouts(); },
+    delete: (key) => { if (loadLockouts().delete(key)) saveLockouts(); },
+  };
   fastify.get('/status', async (request) => ({
     setupRequired: !isConfigured(),
     authenticated: isAuthenticated(request),

@@ -31,7 +31,7 @@ test('公开 Agent 事件保留用户需要的上下文和完成通知', () => {
   });
   // 通用工具结果只透出工具名/成败/耗时,结果体不外带
   assert.deepEqual(toPublicAgentEvent({ type: 'tool_result', tool: 'compose.ps', result: { success: true, result: {}, durationMs: 120 } }), {
-    type: 'tool_result', tool: 'compose.ps', success: true, durationMs: 120,
+    type: 'tool_result', tool: 'compose.ps', success: true, durationMs: 120, summary: '{}',
   });
   assert.deepEqual(toPublicAgentEvent({ type: 'tool_requested', tool: 'config.inspect' }), { type: 'tool_requested', tool: 'config.inspect' });
   assert.deepEqual(toPublicAgentEvent({ type: 'tool_executing', tool: 'config.inspect' }), { type: 'tool_executing', tool: 'config.inspect' });

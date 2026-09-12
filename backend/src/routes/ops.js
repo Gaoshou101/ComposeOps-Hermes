@@ -6,7 +6,7 @@ import { getNotificationConfig, saveNotificationConfig, sendNotification } from 
 import { getAlertEventConfig } from '../services/health-alerter.js';
 import {
   listProjectVolumes, createVolumeBackup, restoreVolumeBackup, deleteVolumeBackup,
-  listBackups, openBackupStream,
+  listBackups, streamBackupToReply,
 } from '../services/volume-backup.js';
 import { findProject } from '../services/scanner.js';
 import { addOperation } from '../lib/db.js';
@@ -176,12 +176,12 @@ export default async function opsRoutes(fastify) {
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer', minimum: 1 } } } },
   }, async (request, reply) => {
     try {
-      const { stream, fileName, bytes } = await openBackupStream(request.params.id);
-      reply.header('Content-Type', 'application/gzip');
-      reply.header('Content-Disposition', `attachment; filename="${fileName}"`);
-      if (bytes) reply.header('Content-Length', bytes);
-      return reply.send(stream);
+      return await streamBackupToReply(request.params.id, reply);
     } catch (error) {
+      if (reply.raw.headersSent) {
+        reply.raw.destroy();
+        return reply;
+      }
       return reply.code(error.statusCode || 502).send({ error: 'volume_backup_download_failed', message: error.message });
     }
   });

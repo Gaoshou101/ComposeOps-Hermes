@@ -36,8 +36,12 @@ export function toPublicAgentEvent(event) {
     if (event.tool === 'project.list_managed' && Array.isArray(result)) return { type: 'context_data', kind: 'projects', projects: result };
     if (event.tool === 'web.search' && Array.isArray(result?.sources)) return { type: 'context_data', kind: 'search_sources', sources: result.sources };
     if (event.tool === 'cron.create') return { type: 'action_completed', kind: 'cron_created', result: result || {} };
-    // 通用工具结果:只透出工具名/成败/耗时,结果体(日志、配置数据)不带给前端。
-    return { type: 'tool_result', tool: String(event.tool || ''), success: !!event.result?.success, durationMs: Number(event.result?.durationMs || 0) };
+    // 通用工具结果:只透出工具名/成败/耗时 + 脱敏截断的摘要,完整结果体不带给前端。
+    let summary = '';
+    try {
+      summary = JSON.stringify(result).slice(0, 240);
+    } catch {}
+    return { type: 'tool_result', tool: String(event.tool || ''), success: !!event.result?.success, durationMs: Number(event.result?.durationMs || 0), summary };
   }
   if (event.type === 'tool_requested') return { type: 'tool_requested', tool: String(event.tool || '') };
   if (event.type === 'tool_executing') return { type: 'tool_executing', tool: String(event.tool || '') };
