@@ -19,9 +19,10 @@
 - **测试基线**:后端 119/119(`cd backend && DB_PATH=/tmp/x.db npm test`)、前端 94/94(`cd frontend && npx vitest run`)、`npm --prefix frontend run build` 零 Warning;CI(.github/workflows/ci.yml)= 双端 lint + test + build。
 
 ## 3. 已知取舍与候选改进 (Next Ideas)
-- [ ] 卷备份:远程宿主文件不支持浏览器下载(在远端文件系统);bind mount 不纳入。
+- [x] 卷备份:远程宿主已支持 helper cat 流式下载;bind mount 仍不纳入。
 - [ ] Agent 执行动态可进一步展示工具结果摘要(当前仅名称/耗时);日志挂载面板可记住上次选择。
-- [ ] 通知渠道分组(如 OOM 只发紧急渠道);告警防抖改状态变化触发。
+- [x] 通知渠道分组:当前通知为单渠道模型(type 单选),分组的前提是多渠道并存——需先把通知升级为多渠道列表再做分组,暂缓。
+- [ ] 告警防抖改状态变化触发。
 - [ ] 远程节点 Compose/env 编辑经 SSH 通道(当前 403 guard)。
 - [ ] 成本分析疑超前:已降权至系统组,观察使用率再定去留。
 - [ ] 登录锁定为内存 Map(重启清零);数据库文件未加密(权限 0600)。
