@@ -7,7 +7,7 @@
         <div class="flex items-center gap-1"><button class="icon-btn" title="中断执行" :disabled="!running" @click="interrupt"><Square class="h-4 w-4" /></button><button class="icon-btn" title="关闭 Agent" @click="closeAgent"><X class="h-4 w-4" /></button></div>
       </header>
       <div class="agent-drawer-context"><span>已携带当前页面上下文</span><small>{{ contextSummary }}</small></div>
-      <div ref="scrollEl" class="agent-drawer-messages">
+      <div ref="scrollEl" class="agent-drawer-messages" @click="handleRichBlockClick">
         <div v-if="!messages.length" class="agent-drawer-empty"><MessageCircle class="h-6 w-6 text-cyan-400" /><p>可以询问当前页面的数据、状态或操作方式。</p><button class="preset-chip" @click="input = defaultPrompt; focusInput()">{{ defaultPrompt }}</button></div>
         <article v-for="message in messages" :key="message.id" class="agent-drawer-message" :class="message.role">
           <div class="agent-drawer-avatar"><UserRound v-if="message.role === 'user'" class="h-3.5 w-3.5" /><Bot v-else class="h-3.5 w-3.5" /></div>
@@ -31,7 +31,7 @@ import { renderAgentMarkdown } from '../lib/agent-markdown.js';
 
 const { open, context, closeAgent } = useAgentConsole();
 const chat = useAgentChat();
-const { messages, input, running, scrollEl, sendMessage, approve, reject, interrupt } = chat;
+const { messages, input, running, scrollEl, sendMessage, approve, reject, interrupt, handleRichBlockClick } = chat;
 const inputEl = ref(null);
 const pageContext = computed(() => ({ page: context.value.page || '当前页面', route: window.location.hash.replace(/^#/, '') || '/', mode: context.value.mode || '运维问答与操作', summary: context.value.summary || '', state: context.value.state || '' }));
 const contextSummary = computed(() => pageContext.value.summary || pageContext.value.state || '路由与页面状态已同步');

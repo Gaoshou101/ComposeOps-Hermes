@@ -170,5 +170,18 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
 
   function interrupt() { controller?.abort(); }
 
-  return { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, ensureSession, resetSession, sendMessage, approve, reject, interrupt };
+  /** 富内容块全屏按钮的点击委托(消息容器上绑定一次)。 */
+  function handleRichBlockClick(event) {
+    const button = event.target.closest?.('.rich-fullscreen-btn');
+    if (!button) return;
+    const block = button.closest('.rich-block');
+    if (!block) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.();
+      return;
+    }
+    block.requestFullscreen?.().catch(() => {});
+  }
+
+  return { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, ensureSession, resetSession, sendMessage, approve, reject, interrupt, handleRichBlockClick };
 }

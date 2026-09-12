@@ -68,8 +68,19 @@ function renderableCodeBlocks(source) {
   });
 }
 
+/** 给净化后的 SVG/表格包上可全屏查看的块(按钮事件由消息容器委托处理)。 */
+function wrapFullscreenBlocks(html) {
+  const wrap = (inner) => (
+    `<div class="rich-block"><div class="rich-block-body">${inner}</div>` +
+    '<button type="button" class="rich-fullscreen-btn" title="全屏查看(再点或按 Esc 退出)"><span aria-hidden="true">⛶</span></button></div>'
+  );
+  return html
+    .replace(/<svg[\s\S]*?<\/svg>/gi, (match) => wrap(match))
+    .replace(/<table[\s\S]*?<\/table>/gi, (match) => wrap(match));
+}
+
 export function renderAgentMarkdown(value) {
   const source = renderableCodeBlocks(normalizeAgentMarkdown(stripAgentProtocol(value)));
   if (!source.trim()) return '';
-  return DOMPurify.sanitize(marked.parse(source), SANITIZE_CONFIG);
+  return wrapFullscreenBlocks(DOMPurify.sanitize(marked.parse(source), SANITIZE_CONFIG));
 }
