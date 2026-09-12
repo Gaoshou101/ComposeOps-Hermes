@@ -4,6 +4,21 @@ import { resolve } from 'node:path';
 import { stripAgentProtocol } from '../src/lib/agent-text.js';
 import { renderAgentMarkdown } from '../src/lib/agent-markdown.js';
 
+describe('富内容流式渲染', () => {
+  it('未闭合代码块中的 SVG 在流式期间也渐进渲染', () => {
+    const streaming = '如下:\n\n```\n<svg viewBox="0 0 10 10"><circle r="4"/></svg>';
+    const html = renderAgentMarkdown(streaming);
+    expect(html).toContain('<circle');
+    expect(html).not.toContain('```');
+  });
+
+  it('已闭合普通代码块不受补闭合影响', () => {
+    const html = renderAgentMarkdown('```bash\necho hi\n```');
+    expect(html).toContain('echo hi');
+    expect(html).not.toContain('<details>');
+  });
+});
+
 describe('agent-protocol-core 副本同步', () => {
   it('与后端副本字节一致(dotenv 同一约定)', () => {
     const frontendCopy = readFileSync(resolve('src/lib/agent-protocol-core.js'));

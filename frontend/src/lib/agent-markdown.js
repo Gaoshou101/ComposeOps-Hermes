@@ -79,8 +79,14 @@ function wrapFullscreenBlocks(html) {
     .replace(/<table[\s\S]*?<\/table>/gi, (match) => wrap(match));
 }
 
+/** 流式期间代码围栏可能尚未闭合:渲染时临时补虚拟闭合,让 SVG/表格渐进渲染而非裸奔源码。 */
+function closeDanglingFence(source) {
+  const fenceCount = (source.match(/```/g) || []).length;
+  return fenceCount % 2 ? `${source}\n\`\`\`` : source;
+}
+
 export function renderAgentMarkdown(value) {
-  const source = renderableCodeBlocks(normalizeAgentMarkdown(stripAgentProtocol(value)));
+  const source = renderableCodeBlocks(closeDanglingFence(normalizeAgentMarkdown(stripAgentProtocol(value))));
   if (!source.trim()) return '';
   return wrapFullscreenBlocks(DOMPurify.sanitize(marked.parse(source), SANITIZE_CONFIG));
 }
