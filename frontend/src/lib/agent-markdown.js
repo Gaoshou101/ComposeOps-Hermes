@@ -50,8 +50,26 @@ function normalizeAgentMarkdown(value) {
   return output.join('\n').replace(/([：:])\s*(\|[^\n]+\|)\n(\|[-:| ]+\|)/g, '$1\n\n$2\n$3');
 }
 
+/**
+ * 富内容代码块启发式:模型常把 HTML/SVG 表格图表包进 ```html 代码块,
+ * 用户想看到的是渲染结果。语言为 html/svg/xml、或无语言但内容是 <svg>/<table>
+ * 片段的代码块,渲染为富内容,并把源码收进 details 折叠;其余代码块原样保留。
+ */
+function renderableCodeBlocks(source) {
+  return source.replace(/```([\w-]*)[ \t]*\n([\s\S]*?)\n```/g, (whole, lang, body) => {
+    const code = body.trim();
+    if (body.includes('```')) return whole;
+    const langLower = String(lang || '').toLowerCase();
+    const langOk = !langLower || ['html', 'svg', 'xml'].includes(langLower);
+    if (!langOk) return whole;
+    // 只要代码块内出现 <svg>/<table> 片段即视为富内容(模型常把标题与 HTML 混在一个块里)
+    if (!/<(svg[\s>]|table[\s>])/i.test(code)) return whole;
+    return `\n\n${code}\n\n<details><summary>查看源码</summary>\n\n\`\`\`${langLower || 'html'}\n${body}\n\`\`\`\n\n</details>\n\n`;
+  });
+}
+
 export function renderAgentMarkdown(value) {
-  const source = normalizeAgentMarkdown(stripAgentProtocol(value));
+  const source = renderableCodeBlocks(normalizeAgentMarkdown(stripAgentProtocol(value)));
   if (!source.trim()) return '';
   return DOMPurify.sanitize(marked.parse(source), SANITIZE_CONFIG);
 }
