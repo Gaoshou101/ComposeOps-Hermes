@@ -36,6 +36,10 @@ test('agent: attachedLogs 以不可信定界块注入 Prompt 且不落入会话�
       (event) => events.push(event),
     );
     assert.equal(result.finalContent, '收到');
+    // 思考/执行进度 trace 进入公开事件流(执行动态面板数据源)
+    const traces = events.filter((event) => event.type === 'trace');
+    assert.ok(traces.some((event) => event.trace?.phase === 'loop_started'), '应有 loop_started 轨迹');
+    assert.ok(traces.every((event) => typeof event.trace?.content === 'string'), 'trace 必须带可展示内容');
 
     const system = captured.messages.find((message) => message.role === 'system');
     const user = captured.messages.at(-1);

@@ -67,6 +67,64 @@ function createTextToolCall(payload, calls) {
   });
 }
 
+/** 找到从 text[start](='{')开始的平衡 JSON 块的结束下标;未闭合返回 -1。 */
+function findBalancedJsonEnd(text, start) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (escaped) { escaped = false; continue; }
+    if (ch === '\\') { escaped = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * 裸工具调用协议兜底:不同模型的文本协议变体层出不穷(实测出现 "ichern {...}" 等),
+ * 但核心形态一致 —— [可选短标记行] + {"name":"工具","arguments":{...}}。
+ * 统一剥离出可见文本,并通过 onCall 转成真实工具调用(未知工具由 Agent 侧拒绝回喂自纠)。
+ * 仅处理非代码围栏区域;中文行不会被误当标记词。
+ */
+function stripBareToolCallProtocol(text, calls) {
+  const segments = text.split(/(```[\s\S]*?(?:```|$))/g);
+  // 组 2 只吞 '{'(lookahead 验证后续是 "name"),确保 jsonStart 指向 '{';未完成的 JSON 也算命中,由 findBalancedJsonEnd 返回 -1 走"剥到段尾"分支
+  const markerPattern = /(?:^|\n)((?:(?![\u4e00-\u9fff])[^\n{}]){0,32})?\n?[ \t]*(\{(?=\s*"name"\s*:))/g;
+  const rebuilt = segments.map((segment, index) => {
+    if (index % 2 === 1) return segment; // 代码围栏段原样保留
+    let result = '';
+    let cursor = 0;
+    let match;
+    markerPattern.lastIndex = 0;
+    while ((match = markerPattern.exec(segment)) !== null) {
+      const jsonStart = match.index + match[0].length - 1;
+      const jsonEnd = findBalancedJsonEnd(segment, jsonStart);
+      if (jsonEnd < 0) {
+        // 标记 + 未写完的 JSON:属于协议残片,剥离到段尾(流式期间由持回机制保证不回缩)
+        result += segment.slice(cursor, match.index);
+        cursor = segment.length;
+        markerPattern.lastIndex = segment.length;
+        continue;
+      }
+      if (calls) {
+        try { createTextToolCall(JSON.parse(segment.slice(jsonStart, jsonEnd + 1)), calls); } catch {}
+      }
+      result += segment.slice(cursor, match.index);
+      cursor = jsonEnd + 1;
+      markerPattern.lastIndex = cursor;
+    }
+    return result + segment.slice(cursor);
+  });
+  return rebuilt.join('');
+}
+
 function sanitizeTextToolProtocol(text) {
   const source = String(text || '');
   const calls = [];
@@ -79,8 +137,9 @@ function sanitizeTextToolProtocol(text) {
     .replace(/<\/?tool_call[\s\S]*?<\/tool_call>/gi, '')
     .replace(/<tool_call>[\s\S]*$/gi, '');
   const scanned = scanIcallProtocols(withoutOpenXml, (payload) => createTextToolCall(payload, calls));
+  const bareStripped = stripBareToolCallProtocol(scanned.content, calls);
   return {
-    content: scanned.content
+    content: bareStripped
       .replace(/<\/?tool(?:[_ ]?[a-z]*)?/gi, '')
       .replace(/\btool_(?:call|calls|ca)\b/gi, '')
       .replace(/[ \t]+\n/g, '\n').trim(),

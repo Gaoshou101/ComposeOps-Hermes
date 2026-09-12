@@ -46,6 +46,10 @@ export function toPublicAgentEvent(event) {
     return { type: 'tool_result', tool: String(event.tool || ''), success: !!event.result?.success, durationMs: Number(event.result?.durationMs || 0), summary };
   }
   if (event.type === 'tool_requested') return { type: 'tool_requested', tool: String(event.tool || '') };
+  // 思考/执行进度轨迹:元数据已脱敏,只透出阶段与一句话内容,供"执行动态"面板实时展示
+  if (event.type === 'trace' && event.trace) {
+    return { type: 'trace', phase: String(event.trace.phase || ''), content: cleanText(String(event.trace.content || '')).slice(0, 200) };
+  }
   if (event.type === 'tool_executing') return { type: 'tool_executing', tool: String(event.tool || '') };
   if (event.type === 'tool_rejected') return { type: 'tool_rejected', tool: String(event.tool || '') };
   if (event.type === 'tool_error') return { type: 'tool_error', tool: String(event.tool || ''), error: cleanError(event.error) };

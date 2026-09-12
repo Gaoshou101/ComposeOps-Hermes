@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import { toPublicAgentEvent } from '../src/lib/agent-public-events.js';
 
 test('公开 Agent 事件隐藏工具协议和内部工具字段', () => {
-  assert.equal(toPublicAgentEvent({ type: 'trace', trace: { content: 'tool_call secret' } }), null);
+  // trace 思考/执行进度现在透出给"执行动态"面板:phase 保留,内容经协议词清洗
+  const traceEvent = toPublicAgentEvent({ type: 'trace', trace: { phase: 'tool_executing', content: '正在执行 tool_call 步骤' } });
+  assert.equal(traceEvent.type, 'trace');
+  assert.equal(traceEvent.phase, 'tool_executing');
+  assert.ok(!/tool_call/.test(traceEvent.content), 'trace 内容中的协议词必须被清洗');
   // token 分片必须在 ai.js 发射层(全量、有状态)完成协议剥离后原样透传:
   // 逐 token 清洗会吃掉分片边界的空白与换行,造成表格/代码块与正文粘连、英文空格丢失。
   assert.deepEqual(toPublicAgentEvent({ type: 'token', content: '回答 \n\n| 项目 | 状态 |' }), { type: 'token', content: '回答 \n\n| 项目 | 状态 |' });

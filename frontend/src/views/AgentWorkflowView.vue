@@ -61,7 +61,17 @@ const quickPrompts = ['列出我可以操作的项目和状态', '帮我生成�
 const deleteDialog = reactive({ show: false, id: '' });
 const clearDialog = ref(false);
 const chat = useAgentChat({
-  onEventExtra: (event) => { if (event.type === 'confirmation_required') appendActivity('需要确认 ', '请确认这项变更'); },
+  onEventExtra: (event) => {
+    if (event.type === 'confirmation_required') appendActivity('需要确认 ', '请确认这项变更');
+    else if (event.type === 'trace' && event.content) {
+      const phaseLabels = {
+        loop_started: '开始', loop_iteration: `第 ${event.traceRound || ''} 轮`, tool_requested: '请求工具',
+        tool_executing: '执行工具', tool_executed: '工具完成', tool_error: '工具失败', tool_rejected: '已拒绝',
+        interrupted: '已中断', loop_completed: '完成',
+      };
+      appendActivity(phaseLabels[event.phase] || event.phase, event.content);
+    }
+  },
   onApproval: (message, kind) => { if (kind === 'approved') appendActivity('已确认 ', '变更继续执行'); else appendActivity('已拒绝 ', '变更未执行'); },
 });
 const { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, resetSession, sendMessage, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom } = chat;

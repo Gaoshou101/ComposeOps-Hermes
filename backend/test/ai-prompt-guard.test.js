@@ -131,6 +131,23 @@ test('ai-tool-call: 流式协议前缀与嵌套参数边界不会进入可见文
   assert.equal(stripTextToolProtocol('正在查询 _icall\n{"name":"project.list_managed","arguments":{"x":{"y":1}}}>完成'), '正在查询 完成');
 });
 
+test('ai-tool-call: 未知标记词+工具 JSON 的裸协议变体剥离并转为真实调用', () => {
+  // 实测泄漏形态:模型输出 "ichern\n{\"name\":...,\"arguments\":{}}"
+  const parsed = parseTextToolCalls('首先列出已纳管的项目。\nichern\n{"name": "project.list_managed", "arguments": {}}');
+  assert.equal(parsed.content, '首先列出已纳管的项目。');
+  assert.equal(parsed.toolCalls.length, 1);
+  assert.equal(parsed.toolCalls[0].function.name, 'project.list_managed');
+  // 流式未闭合:标记+残缺 JSON 剥到段尾,不外泄
+  const streaming = parseTextToolCalls('开始处理。\nichern\n{"name": "project.list_managed", "arg');
+  assert.equal(streaming.content, '开始处理。');
+  assert.ok(!streaming.content.includes('"name"'));
+  // 代码围栏内的示例 JSON 不受影响;中文行不误吞
+  const fenced = parseTextToolCalls('```json\n{"name": "x", "arguments": {}}\n```');
+  assert.ok(fenced.content.includes('"name"'));
+  const cjk = parseTextToolCalls('配置如下:\n{"设置": "值"}\n完');
+  assert.ok(cjk.content.includes('设置'));
+});
+
 test('ai-tool-call: 流式发射持回协议残片且不破坏分片边界空白', async () => {
   const chunks = [
     '检查结果:\n\n| 项目 | 状态 |\n| --- | --- |\n| composeops | 运行中 |\n\n',
