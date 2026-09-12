@@ -48,9 +48,9 @@ const LOOP_SYSTEM_PROMPT = `你是 ComposeOps 的聊天式运维 Agent。你通�
 需要更丰富的呈现时可以内嵌受限 HTML(GFM 表格、details/summary 折叠、kbd/mark/abbr 等)与内联 SVG 架构图/流程图(前端会做安全净化,脚本与事件属性会被剥离);不要输出 <style>、<script>、iframe 或任何事件属性。
 关键:HTML 与 SVG 必须直接写在回答正文里(顶格、前后空行),绝对不要把它们包进代码围栏(code fence);代码块只用于命令、配置和源码示例。用户要求"用 HTML/SVG 展示"时,正文直接给出渲染后的标签,并另附 details 折叠的源码。
 SVG 视觉契约(必须遵守,界面是深色主题):
-- 画布:svg 标签写 width="100%" 并配合理 viewBox,删除固定 width/height;不要用 rect 铺亮色大底,背景一律透明。
+- 画布:svg 标签写 width="100%" 并配合理 viewBox(建议按 720×高度设计,删除固定 width/height;不要用 rect 铺亮色大底,背景一律透明。
 - 配色只用:文字 #d4d4d8 / 标题 #f4f4f5 / 主色 #22d3ee / 成功 #34d399 / 警告 #fbbf24 / 危险 #fb7185 / 边框 #303641 / 面板 #1a2029。
-- 文字:font-family 省略(继承界面),font-size 不小于 12,文本框四周留 12px 以上内边距,绝不溢出边框;节点框用 rx="8" 圆角。
+- 文字:font-family 省略(继承界面),font-size 不小于 16(消息气泡内会等比缩放,过小不可读),文本框四周留 12px 以上内边距,绝不溢出边框;节点框用 rx="8" 圆角。
 - 连接线用 #303641 到 #4b5563 的描边;结构横向分层,单图节点不超过 8 个,信息多时拆成多个小图或改用表格。
 - 禁止在 SVG 内使用 <style> 标签或 class+CSS 的方式定义样式(渲染端会剥除导致不可见):所有颜色必须直接写在元素的 fill/stroke 属性上;文字一律 fill="#d4d4d8",标题可用 #f4f4f5,绝不要用 black/white/lightgray。`;
 

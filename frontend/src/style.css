@@ -189,7 +189,7 @@ body[data-density='compact'] .data-table td { @apply !py-1.5 !px-2; }
   .page-subtitle { @apply text-sm text-surface-400 mt-1.5 leading-5; }
   .section-title { @apply text-sm font-semibold tracking-wide text-surface-100; }
   .section-panel { @apply card p-4 sm:p-5; }
-  .metric-grid { @apply grid gap-3 sm:grid-cols-2 2xl:grid-cols-4; }
+  .metric-grid { @apply grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5; }
   .metric-tile { @apply card flex min-h-24 items-center gap-3 p-4 text-left transition-all duration-150 active:scale-[0.99] hover:-translate-y-0.5 hover:border-surface-700 hover:bg-surface-900; }
   .metric-tile.active { @apply border-accent/70 bg-accent/5 ring-1 ring-accent/20; }
   .metric-icon { @apply grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-surface-950/70; }
@@ -427,21 +427,22 @@ body[data-density='compact'] .data-table td { @apply !py-1.5 !px-2; }
 /* assistant 气泡继承 .message 的 whitespace-pre-wrap 会让 marked 输出里
    标签间的换行变成可见空行,markdown 整体显乱;富文本容器必须恢复 normal。 */
 .agent-rich-markdown { white-space: normal; }
-.agent-rich-markdown :deep(table),
 .agent-rich-markdown table { margin-left: auto; margin-right: auto; }
+.agent-markdown table, .agent-drawer-markdown table { margin-left: auto; margin-right: auto; }
 .agent-rich-markdown pre,
 .agent-rich-markdown pre code,
-.agent-rich-markdown :deep(pre),
-.agent-rich-markdown :deep(pre code) { overflow-wrap: normal; word-break: normal; white-space: pre; }
+.agent-markdown pre, .agent-markdown pre code,
+.agent-drawer-markdown pre, .agent-drawer-markdown pre code { overflow-wrap: normal; word-break: normal; white-space: pre; }
 .agent-rich-markdown p,
 .agent-rich-markdown li,
-.agent-rich-markdown :deep(p),
-.agent-rich-markdown :deep(td),
-.agent-rich-markdown :deep(th) { overflow-wrap: anywhere; }
+.agent-rich-markdown td,
+.agent-rich-markdown th,
+.agent-markdown p, .agent-markdown td, .agent-markdown th,
+.agent-drawer-markdown p, .agent-drawer-markdown td, .agent-drawer-markdown th { overflow-wrap: anywhere; }
 
 /* ===== 富渲染:内嵌 SVG / details 折叠 / 语义标签 ===== */
 .agent-rich-markdown svg, .agent-markdown svg, .agent-drawer-markdown svg,
-.agent-rich-markdown :deep(svg), .agent-markdown :deep(svg), .agent-drawer-markdown :deep(svg) { max-width: 100%; height: auto; background: rgba(255,255,255,.02); border-radius: 8px; }
+.agent-rich-markdown svg, .agent-markdown svg, .agent-drawer-markdown svg { max-width: 100%; height: auto; background: rgba(255,255,255,.02); border-radius: 8px; }
 .agent-rich-markdown details, .agent-markdown details, .agent-drawer-markdown details { margin: 8px 0; padding: 8px 10px; border: 1px solid #303641; border-radius: 8px; background: rgba(17,21,27,.6); }
 .agent-rich-markdown summary, .agent-markdown summary, .agent-drawer-markdown summary { cursor: pointer; color: #67e8f9; font-weight: 600; }
 .agent-rich-markdown kbd, .agent-markdown kbd, .agent-drawer-markdown kbd { padding: 1px 5px; border: 1px solid #3f4653; border-bottom-width: 2px; border-radius: 4px; background: #0f1319; font-size: .85em; }
@@ -525,10 +526,11 @@ body {
 
 /* ===== SVG 画布化治理:统一深色画布、亮色 fill 兜底重映射 ===== */
 .agent-markdown svg:not(:empty), .agent-drawer-markdown svg:not(:empty), .agent-rich-markdown svg:not(:empty),
-.agent-markdown :deep(svg:not(:empty)), .agent-drawer-markdown :deep(svg:not(:empty)), .agent-rich-markdown :deep(svg:not(:empty)) {
+.agent-markdown svg:not(:empty), .agent-drawer-markdown svg:not(:empty), .agent-rich-markdown svg:not(:empty) {
   display: block;
   margin: 10px auto;
   padding: 14px;
+  min-width: 680px;
   max-height: 420px;
   border: 1px solid #303641;
   border-radius: 10px;
@@ -575,7 +577,7 @@ body {
 .app-sidebar .nav-link { scroll-margin-top: 8px; }
 
 /* ===== 富内容块全屏查看 ===== */
-.rich-block { position: relative; }
+.rich-block { position: relative; overflow-x: auto; }
 .rich-block .rich-zoom-btn {
   position: absolute;
   top: 8px;
@@ -641,3 +643,5 @@ body {
 .rich-zoom-close:hover { color: #67e8f9; border-color: #155e75; }
 .rich-zoom-card svg { max-height: 78vh; width: auto; max-width: 100%; }
 .rich-zoom-card table { font-size: 14px; width: 100%; }
+
+.rich-block:fullscreen svg:not(:empty) { min-width: 0; }
