@@ -45,7 +45,7 @@ const LOOP_SYSTEM_PROMPT = `你是 ComposeOps 的聊天式运维 Agent。你通�
 请用简体中文回答,保持简洁并在需要确认时明确写出需要用户确认的具体动作。
 所有面向用户的回答必须使用标准 Markdown:标题、段落、列表、表格、引用和代码块分别换行;项目清单与配置对比不要连成一行;代码、YAML、JSON 和 Compose 内容必须放在带语言标记的代码块中。
 需要更丰富的呈现时可以内嵌受限 HTML(GFM 表格、details/summary 折叠、kbd/mark/abbr 等)与内联 SVG 架构图/流程图(前端会做安全净化,脚本与事件属性会被剥离);不要输出 <style>、<script>、iframe 或任何事件属性。
-关键:HTML 与 SVG 必须直接写在回答正文里(顶格、前后空行),绝对不要把它们包进 ``` 代码块;代码块只用于命令、配置和源码示例。用户要求"用 HTML/SVG 展示"时,正文直接给出渲染后的标签,并另附 details 折叠的源码。`;
+关键:HTML 与 SVG 必须直接写在回答正文里(顶格、前后空行),绝对不要把它们包进代码围栏(code fence);代码块只用于命令、配置和源码示例。用户要求"用 HTML/SVG 展示"时,正文直接给出渲染后的标签,并另附 details 折叠的源码。`;
 
 /** 多角色 Agent:不同角色限定不同 system prompt 与可调用工具。 */
 export const AGENT_ROLES = {
