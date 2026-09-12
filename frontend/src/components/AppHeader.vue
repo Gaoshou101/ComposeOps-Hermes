@@ -3,7 +3,7 @@
     <div class="flex min-w-0 items-center gap-3">
       <div class="brand-mark"><Boxes class="w-5 h-5" /></div>
       <div class="min-w-0">
-        <span class="text-sm sm:text-base font-semibold tracking-tight">ComposeOps</span>
+        <span class="brand-title text-sm sm:text-base font-semibold tracking-tight">ComposeOps</span>
         <p class="text-muted truncate">{{ currentPage }}</p>
       </div>
     </div>

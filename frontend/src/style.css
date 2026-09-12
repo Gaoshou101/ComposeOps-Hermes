@@ -486,3 +486,36 @@ body {
 
 /* 状态点呼吸更柔 */
 .status-dot { box-shadow: 0 0 6px rgba(52, 211, 153, 0.6); }
+
+/* ===== SVG 画布化治理:统一深色画布、亮色 fill 兜底重映射 ===== */
+.agent-markdown svg:not(:empty), .agent-drawer-markdown svg:not(:empty), .agent-rich-markdown svg:not(:empty),
+.agent-markdown :deep(svg:not(:empty)), .agent-drawer-markdown :deep(svg:not(:empty)), .agent-rich-markdown :deep(svg:not(:empty)) {
+  display: block;
+  margin: 10px auto;
+  padding: 14px;
+  max-height: 420px;
+  border: 1px solid #303641;
+  border-radius: 10px;
+  background:
+    radial-gradient(600px 200px at 50% 0%, rgba(34, 211, 238, 0.04), transparent 70%),
+    #10141a;
+}
+.agent-markdown svg text, .agent-drawer-markdown svg text, .agent-rich-markdown svg text { font-family: inherit; }
+/* 模型常输出 lightgray/white 亮色大底,暗色主题下刺眼:presentation attribute 可被 CSS 覆盖 */
+.agent-markdown svg [fill="lightgray"], .agent-markdown svg [fill="lightgrey"], .agent-markdown svg [fill="white"], .agent-markdown svg [fill="#fff"], .agent-markdown svg [fill="#ffffff"],
+.agent-drawer-markdown svg [fill="lightgray"], .agent-drawer-markdown svg [fill="lightgrey"], .agent-drawer-markdown svg [fill="white"], .agent-drawer-markdown svg [fill="#fff"], .agent-drawer-markdown svg [fill="#ffffff"],
+.agent-rich-markdown svg [fill="lightgray"], .agent-rich-markdown svg [fill="lightgrey"], .agent-rich-markdown svg [fill="white"], .agent-rich-markdown svg [fill="#fff"], .agent-rich-markdown svg [fill="#ffffff"] {
+  fill: #1a2029;
+  stroke: #303641;
+}
+.agent-markdown svg [stroke="black"], .agent-drawer-markdown svg [stroke="black"], .agent-rich-markdown svg [stroke="black"] { stroke: #4b5563; }
+.agent-markdown svg [fill="black"], .agent-drawer-markdown svg [fill="black"], .agent-rich-markdown svg [fill="black"] { fill: #d4d4d8; }
+
+/* ===== 品牌与侧栏细节 ===== */
+.brand-title {
+  background: linear-gradient(92deg, #f4f4f5 20%, #67e8f9 80%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.app-sidebar .nav-link { scroll-margin-top: 8px; }
