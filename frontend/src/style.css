@@ -545,7 +545,25 @@ body {
   stroke: #303641;
 }
 .agent-markdown svg [stroke="black"], .agent-drawer-markdown svg [stroke="black"], .agent-rich-markdown svg [stroke="black"] { stroke: #4b5563; }
-.agent-markdown svg [fill="black"], .agent-drawer-markdown svg [fill="black"], .agent-rich-markdown svg [fill="black"] { fill: #d4d4d8; }
+/* 文字默认浅色(模型习惯 fill=black,暗底上不可见;CSS 覆盖 presentation attribute) */
+.agent-markdown svg text, .agent-markdown svg tspan,
+.agent-drawer-markdown svg text, .agent-drawer-markdown svg tspan,
+.agent-rich-markdown svg text, .agent-rich-markdown svg tspan { fill: #d4d4d8; }
+/* 黑色填充的形状重映射为面板色+描边(仅形状,文字已单独处理) */
+.agent-markdown svg :is(rect, circle, ellipse, polygon, path)[fill="black"],
+.agent-markdown svg :is(rect, circle, ellipse, polygon, path)[fill="#000"],
+.agent-markdown svg :is(rect, circle, ellipse, polygon, path)[fill="#000000"],
+.agent-drawer-markdown svg :is(rect, circle, ellipse, polygon, path)[fill="black"],
+.agent-drawer-markdown svg :is(rect, circle, ellipse, polygon, path)[fill="#000"],
+.agent-drawer-markdown svg :is(rect, circle, ellipse, polygon, path)[fill="#000000"],
+.agent-rich-markdown svg :is(rect, circle, ellipse, polygon, path)[fill="black"],
+.agent-rich-markdown svg :is(rect, circle, ellipse, polygon, path)[fill="#000"],
+.agent-rich-markdown svg :is(rect, circle, ellipse, polygon, path)[fill="#000000"] { fill: #262c37; stroke: #4b5563; }
+/* SVG 内残留 class(其 <style> 被剥除)的元素:给出基础可见性 */
+.agent-markdown svg [class]:not([fill]):not([stroke]),
+.agent-drawer-markdown svg [class]:not([fill]):not([stroke]),
+.agent-rich-markdown svg [class]:not([fill]):not([stroke]) { fill: #262c37; stroke: #4b5563; }
+.agent-markdown svg text[class], .agent-drawer-markdown svg text[class], .agent-rich-markdown svg text[class] { fill: #d4d4d8; stroke: none; }
 
 /* ===== 品牌与侧栏细节 ===== */
 .brand-title {
