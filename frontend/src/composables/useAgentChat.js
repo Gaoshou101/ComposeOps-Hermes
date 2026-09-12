@@ -1,4 +1,5 @@
 import { nextTick, ref } from 'vue';
+import { useEscapeKey } from './useEscapeKey.js';
 import { api } from '../api/client.js';
 import { stripAgentProtocol } from '../lib/agent-text.js';
 
@@ -170,18 +171,26 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
 
   function interrupt() { controller?.abort(); }
 
-  /** 富内容块全屏按钮的点击委托(消息容器上绑定一次)。 */
+  /** 富内容块"放大查看"(页面内浮层,类似豆包)的状态与点击委托。 */
+  const zoomOpen = ref(false);
+  const zoomContent = ref('');
+
   function handleRichBlockClick(event) {
-    const button = event.target.closest?.('.rich-fullscreen-btn');
+    const button = event.target.closest?.('.rich-zoom-btn');
     if (!button) return;
     const block = button.closest('.rich-block');
     if (!block) return;
-    if (document.fullscreenElement) {
-      document.exitFullscreen?.();
-      return;
-    }
-    block.requestFullscreen?.().catch(() => {});
+    zoomContent.value = block.querySelector('.rich-block-body')?.innerHTML || block.innerHTML;
+    zoomOpen.value = true;
   }
 
-  return { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, ensureSession, resetSession, sendMessage, approve, reject, interrupt, handleRichBlockClick };
+  function closeZoom() {
+    zoomOpen.value = false;
+    zoomContent.value = '';
+  }
+
+  // Esc 关闭放大浮层,并锁定背景滚动(复用全局弹层 Esc 分层体系)
+  useEscapeKey({ active: zoomOpen, layer: 'modal', onClose: closeZoom, lockBody: true });
+
+  return { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, ensureSession, resetSession, sendMessage, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, closeZoom };
 }

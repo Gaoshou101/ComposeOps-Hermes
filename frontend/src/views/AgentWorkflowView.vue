@@ -20,6 +20,14 @@
     </div>
     <ConfirmDialog :show="deleteDialog.show" title="删除会话" message="删除该会话及其全部消息?" tone="warning" confirm-text="删除" @confirm="confirmDeleteSession" @cancel="deleteDialog.show = false" />
     <ConfirmDialog :show="clearDialog" title="清空当前会话" message="确认清空当前会话的全部消息?" tone="danger" confirm-text="清空" @confirm="confirmClearSession" @cancel="clearDialog = false" />
+    <teleport to="body">
+      <div v-if="zoomOpen" class="rich-zoom-mask" @click.self="closeZoom()">
+        <div class="rich-zoom-card agent-markdown">
+          <button class="rich-zoom-close" title="关闭(Esc)" @click="closeZoom">×</button>
+          <div class="rich-zoom-content" v-html="zoomContent"></div>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
@@ -49,7 +57,7 @@ const chat = useAgentChat({
   onEventExtra: (event) => { if (event.type === 'confirmation_required') appendActivity('需要确认 ', '请确认这项变更'); },
   onApproval: (message, kind) => { if (kind === 'approved') appendActivity('已确认 ', '变更继续执行'); else appendActivity('已拒绝 ', '变更未执行'); },
 });
-const { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, resetSession, sendMessage, approve, reject, interrupt, handleRichBlockClick } = chat;
+const { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, resetSession, sendMessage, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, closeZoom } = chat;
 const prompts = ['查看我现在可以操作的项目', '搜索 sherpa-onnx-matcha-zh-tts 的 Docker Compose 信息', '记住我偏好先查看日志再执行重启'];
 const sessionQueryLower = computed(() => sessionQuery.value.trim().toLowerCase());
 const filteredSessions = computed(() => {

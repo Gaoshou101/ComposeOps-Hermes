@@ -72,7 +72,7 @@ function renderableCodeBlocks(source) {
 function wrapFullscreenBlocks(html) {
   const wrap = (inner) => (
     `<div class="rich-block"><div class="rich-block-body">${inner}</div>` +
-    '<button type="button" class="rich-fullscreen-btn" title="全屏查看(再点或按 Esc 退出)"><span aria-hidden="true">⛶</span></button></div>'
+    '<button type="button" class="rich-zoom-btn" title="放大查看(Esc 关闭)"><span aria-hidden="true">⤢</span></button></div>'
   );
   return html
     .replace(/<svg[\s\S]*?<\/svg>/gi, (match) => wrap(match))

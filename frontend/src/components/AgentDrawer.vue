@@ -18,6 +18,14 @@
       </div>
       <form class="agent-drawer-composer" @submit.prevent="submit"><textarea ref="inputEl" v-model="input" class="agent-input" rows="3" placeholder="询问当前页面或让 Agent 执行任务…" @keydown.enter.exact.prevent="submit"></textarea><div class="flex items-center justify-between gap-2"><small class="text-surface-500">{{ running ? '执行中，可随时中断' : '需要修改时会先请求确认' }}</small><button class="btn-primary" type="submit" :disabled="running || !input.trim()"><Send class="h-4 w-4" />发送</button></div></form>
     </aside>
+    <teleport to="body">
+      <div v-if="zoomOpen" class="rich-zoom-mask" @click.self="closeZoom()">
+        <div class="rich-zoom-card agent-markdown">
+          <button class="rich-zoom-close" title="关闭(Esc)" @click="closeZoom">×</button>
+          <div class="rich-zoom-content" v-html="zoomContent"></div>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
@@ -31,7 +39,7 @@ import { renderAgentMarkdown } from '../lib/agent-markdown.js';
 
 const { open, context, closeAgent } = useAgentConsole();
 const chat = useAgentChat();
-const { messages, input, running, scrollEl, sendMessage, approve, reject, interrupt, handleRichBlockClick } = chat;
+const { messages, input, running, scrollEl, sendMessage, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, closeZoom } = chat;
 const inputEl = ref(null);
 const pageContext = computed(() => ({ page: context.value.page || '当前页面', route: window.location.hash.replace(/^#/, '') || '/', mode: context.value.mode || '运维问答与操作', summary: context.value.summary || '', state: context.value.state || '' }));
 const contextSummary = computed(() => pageContext.value.summary || pageContext.value.state || '路由与页面状态已同步');

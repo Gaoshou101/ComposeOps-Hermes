@@ -59,7 +59,8 @@ export function useEscapeKey({ active, onClose, enabled, layer = 'modal', lockBo
   window.addEventListener('keydown', onKeydown);
 
   watch(
-    () => route.fullPath,
+    // route 在无 router 上下文(纯函数式调用/单测)时为 undefined,防御性可选
+    () => route?.fullPath,
     () => {
       if (active.value) onClose();
       else removeLayer();

@@ -522,7 +522,7 @@ body {
 
 /* ===== 富内容块全屏查看 ===== */
 .rich-block { position: relative; }
-.rich-block .rich-fullscreen-btn {
+.rich-block .rich-zoom-btn {
   position: absolute;
   top: 8px;
   right: 8px;
@@ -539,21 +539,51 @@ body {
   opacity: 0;
   transition: opacity 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
-.rich-block:hover .rich-fullscreen-btn { opacity: 1; }
-.rich-block .rich-fullscreen-btn:hover { color: #67e8f9; border-color: #155e75; }
-@media (hover: none) { .rich-block .rich-fullscreen-btn { opacity: 0.75; } }
-.rich-block:fullscreen {
+.rich-block:hover .rich-zoom-btn { opacity: 1; }
+.rich-block .rich-zoom-btn:hover { color: #67e8f9; border-color: #155e75; }
+@media (hover: none) { .rich-block .rich-zoom-btn { opacity: 0.75; } }
+/* ===== 富内容放大浮层(页面内 lightbox) ===== */
+.rich-zoom-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
   display: grid;
   place-items: center;
-  width: 100%;
-  height: 100%;
   padding: 4vh 4vw;
-  overflow: auto;
-  background: #0b0e13;
+  background: rgba(2, 4, 8, 0.72);
+  backdrop-filter: blur(6px);
+  animation: zoom-fade 0.15s ease;
 }
-.rich-block:fullscreen .rich-block-body { width: 100%; max-width: 1400px; margin: auto; }
-.rich-block:fullscreen svg { max-height: 84vh; width: auto; max-width: 100%; margin: 0; }
-.rich-block:fullscreen table { width: 100%; font-size: 14px; }
-.rich-block:fullscreen .rich-fullscreen-btn { position: fixed; top: 20px; right: 20px; opacity: 1; }
-/* SVG 画布样式在全屏内继承:让画布填满可用空间 */
-.rich-block:fullscreen .agent-canvas, .rich-block:fullscreen svg:not(:empty) { border-color: #262c37; }
+.rich-zoom-card {
+  position: relative;
+  width: min(1400px, 94vw);
+  max-height: 88vh;
+  overflow: auto;
+  padding: 30px 34px;
+  border: 1px solid #303641;
+  border-radius: 16px;
+  background: #10141a;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+  animation: zoom-pop 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+@keyframes zoom-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes zoom-pop { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
+.rich-zoom-close {
+  position: fixed;
+  top: 18px;
+  right: 22px;
+  z-index: 5;
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: #d4d4d8;
+  border: 1px solid #3f4653;
+  border-radius: 999px;
+  background: rgba(11, 14, 19, 0.85);
+  font-size: 18px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.rich-zoom-close:hover { color: #67e8f9; border-color: #155e75; }
+.rich-zoom-card svg { max-height: 78vh; width: auto; max-width: 100%; }
+.rich-zoom-card table { font-size: 14px; width: 100%; }
