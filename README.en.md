@@ -61,29 +61,18 @@ Auto-discover Compose projects, manage services, edit configs, stream logs, diag
 </tr>
 </table>
 
-### 🤖 AI Enhancement
+### 🤖 AI Ops Agent
 
-<table>
-<tr>
-<td width="50%">
+Single chat entry (the standalone AI diagnosis page has been merged in), powered by a native tool-loop engine:
 
-**🔍 Diagnostic Assistant**
-- One-click diagnosis: auto-attach configs + recent logs + container probes
-- Multi-turn Q&A: follow-up questions for complex issues
-- Context-aware: understands Docker/Compose specifics
-
-</td>
-<td width="50%">
-
-**⚡ Agent Workflow**
-- Natural language → automated operations (28 tools)
-- Risk-aware: 4-level classification (Low/Medium/High/Critical)
-- Step-by-step confirmation: batch review for high-risk actions
-- Auto-rollback: restore configs on failure
-
-</td>
-</tr>
-</table>
+- 🛠️ **47 tools**: project discovery / lifecycle / scaling / config read-write & rollback / networks & volumes / security audit / diagnostic probes / maintenance / cron / long-term memory
+- ⚠️ **Risk levels + step-by-step confirmation**: high-risk actions require explicit approval, fully audited
+- 📎 **Log mounting**: pick container log lines as evidence attached to your message (untrusted-fence guarded)
+- 🌐 **Web search**: optional toggle with cited sources
+- 🧠 **Long-term memory**: remembers your ops preferences on request
+- 🖼️ **Rich rendering**: markdown tables / embedded HTML / SVG diagrams, with in-page zoom
+- 💬 **Tool traces**: request/execute/result status and duration for every tool call
+- 📄 Global page-agent drawer with automatic page context; streaming output, session history, quick prompts
 
 ### 🔔 Alerts & Notifications
 
@@ -98,6 +87,10 @@ Auto-discover Compose projects, manage services, edit configs, stream logs, diag
 - **Batch operations**: Multi-project parallel execution with SSE streaming progress
 - **Health checks**: Service availability monitoring with scoring
 - **Backup & restore**: Config versioning with diff comparison
+- **Volume backup**: tar.gz snapshots of named volumes via helper containers, with restore/download and cron scheduling
+- **GitOps**: keep compose files in sync from a Git repo (polling + webhook trigger), with rollback history
+- **Marketplace**: built-in blueprints + custom templates + AI-assisted app discovery
+- **Scheduled jobs**: DB dumps, safe/deep Docker cleanup, image update checks, scheduled pulls, volume backups
 
 ---
 
@@ -117,7 +110,7 @@ cd ComposeOps
 docker compose up -d --build
 ```
 
-Open **http://localhost:3001** in your browser. First-time setup will prompt for an admin password (min 10 characters).
+Open **http://<host-ip>:28765** in your browser (default mapping `0.0.0.0:28765 -> 3001`; change to `127.0.0.1:28765:3001` for localhost-only). First-time setup will prompt for an admin password (min 10 characters).
 
 ### Remote Access
 
@@ -125,7 +118,7 @@ ComposeOps manages Docker Engine via `/var/run/docker.sock` — **exposing port 
 
 **Option 1: Tailscale** (Recommended - Zero-config VPN)
 ```bash
-tailscale serve --bg http://127.0.0.1:3001
+tailscale serve --bg http://127.0.0.1:28765
 # Access via https://your-machine.your-tailnet.ts.net
 ```
 
@@ -157,9 +150,9 @@ TRUST_PROXY=1
 
 ### 🔑 API Key Protection
 
-- ✅ AI provider keys stored in database, never in browser
-- ✅ Server-side proxy for all AI API calls
-- ✅ Keys never exposed in frontend code or network traffic
+- ✅ AI provider keys stored in local SQLite (file permission 0600), never in browser
+- ✅ Server-side proxy for all AI API calls; masked in UI responses
+- ⚠️ The database file itself is not encrypted — keep host access under control
 
 ### ⚠️ Threat Model
 

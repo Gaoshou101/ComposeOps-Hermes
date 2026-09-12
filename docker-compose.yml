@@ -44,8 +44,9 @@ services:
     restart: unless-stopped
     init: true
     ports:
-      # Personal-safe default: only expose on this host. Use Tailscale or a TLS
-      # reverse proxy for remote access instead of publishing to the LAN/Internet.
+      # Published on all interfaces (change to "127.0.0.1:28765:3001" for
+      # localhost-only). For remote access prefer Tailscale or a TLS reverse
+      # proxy instead of publishing to the LAN/Internet.
       - "0.0.0.0:28765:3001"
     volumes:
       # Talk to the host Docker engine (dockerode + `docker compose` CLI).

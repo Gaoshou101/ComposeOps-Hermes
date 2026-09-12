@@ -8,15 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Container Terminal Component**: Terminal emulator using xterm.js
-  - WebSocket-based terminal connection to containers
-  - Fit addon for responsive terminal sizing
-  - Ready for integration into container detail pages
-- **Docker Run Converter**: Convert `docker run` commands to docker-compose YAML format
-  - Dedicated converter view at `/converter` route
-  - Parses complex docker run commands with port mappings, volumes, environment variables, networks
-  - One-click copy to clipboard for generated YAML
-  - Integration with compose editor via custom events
+- **AI Ops Agent**: single chat entry with a native tool-loop engine (47 tools)
+  - Risk-graded confirmation gate, full audit trail, long-term memory, optional web search with sources
+  - Container-log mounting into prompts with untrusted-fence guarding
+  - Rich rendering: markdown tables, embedded HTML, SVG diagrams with in-page zoom lightbox
+  - Tool execution traces, quick prompt library, streaming output with follow-scroll and session search
+- **Data volume backup**: named-volume tar.gz snapshots via helper containers
+  - Backup / restore / download / delete UI in Storage view; cron job type `volume-backup`
+  - Keeps the latest 20 snapshots per volume; directory configurable via `backup.volume_dir`
+- **GitOps webhook**: `POST /gitops/webhook/:id` with token auth (`gitops.webhook_token`, disabled unless configured)
+- **Marketplace AI discovery**: web-search-assisted app template drafts, saved via custom templates after review
+- **Env file family**: edit `.env`, `*.env` and `.env.example` per project with a file switcher
+- **Scheduled jobs**: new `volume-backup` cron type alongside db-backup/prune/image jobs
+
+### Changed
+- Merged the standalone AI diagnosis page into the Agent page (`/ai` redirects to `/agent`); removed `/ai/chat` and `/ai/exec`
+- Chat UX: follow-scroll with jump-to-bottom pill, 120 ms token coalescing for smooth streaming, message copy button
+- Navigation de-conflicted: 实时监控 / 历史指标 / 存储清理; cost analysis moved to the System group
+- Route-level keep-alive with idle chunk prefetch and page transitions for snappier sidebar switching
+- Container-event refresh debounce (800 ms) to avoid request storms; EventCenter polling reduced to 60 s
+- Visual polish: background glow, slim scrollbars, sidebar active gradient, card hover glow, assistant bubble panel, brand gradient title
+- Documentation: README facts corrected (47 tools, port 28765 mapping, API-key storage wording), volume backup / GitOps / marketplace sections added
+
+### Fixed
+- Agent streaming corruption from per-chunk text sanitization (protocol stripping now stateful at the emission layer with prefix hold-back)
+- Missing `stripAgentProtocol` import crashing the page-agent drawer on first token
+- Flaky backend tests caused by concurrent SQLite access (tests now serialized)
 
 ## [1.0.0] - 2026-09-04
 
