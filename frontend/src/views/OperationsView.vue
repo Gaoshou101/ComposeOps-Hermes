@@ -107,7 +107,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onActivated, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useRoute, useRouter } from 'vue-router';
 import { Activity, CircleCheckBig, CircleX, Eye, History, ListChecks, LoaderCircle, RefreshCw, Search, Sparkles, TriangleAlert, X } from 'lucide-vue-next';
@@ -270,6 +270,8 @@ watch(() => route.query.job, (id) => {
   }
 });
 onMounted(async () => { await load(); if (route.query.job) await openJob(String(route.query.job), false); });
+let opsActivatedOnce = false;
+onActivated(() => { if (opsActivatedOnce) void load(); opsActivatedOnce = true; });
 onUnmounted(() => {
   clearTimeout(jobPollTimer);
   if (jobStreamController) {

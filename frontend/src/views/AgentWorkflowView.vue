@@ -15,20 +15,27 @@
         <div ref="scrollEl" class="agent-messages"><div v-if="loadingHistory" class="agent-loading">正在恢复会话…</div><div v-else-if="!messages.length" class="agent-welcome"><div class="agent-welcome-mark"><MessageCircle class="h-6 w-6" /></div><h2>这是一段新的运维会话</h2><p>可以先问我有哪些项目，也可以直接描述你要检查或修改的内容。</p><div class="agent-prompts"><button v-for="prompt in prompts" :key="prompt" class="preset-chip" @click="input = prompt; focusInput()"><Sparkles class="h-3.5 w-3.5 text-cyan-400" />{{ prompt }}</button></div></div><article v-for="message in messages" :key="message.id" class="agent-message" :class="message.role === 'user' ? 'user' : 'assistant'"><div class="agent-avatar"><UserRound v-if="message.role === 'user'" class="h-4 w-4" /><Bot v-else class="h-4 w-4" /></div><div class="agent-message-body"><div v-if="message.role === 'assistant'" class="agent-markdown" v-html="renderMarkdown(message.content || (message.streaming ? '正在处理…' : ''))"></div><div v-else class="agent-user-text">{{ message.content }}</div><div v-if="message.projects?.length" class="agent-project-grid"><div v-for="project in message.projects" :key="project.id" class="agent-project-card"><div class="flex items-center justify-between gap-2"><strong>{{ project.name }}</strong><span :class="project.editable ? 'text-emerald-400' : 'text-amber-400'">{{ project.editable ? '可编辑' : '仅控制' }}</span></div><p>{{ project.composeMode || 'containers' }} · {{ project.services?.length || 0 }} 个服务</p><button @click="selectProject(project)">固定为当前项目</button></div></div><div v-if="message.confirmation" class="agent-confirm"><div class="flex items-start gap-2"><ShieldAlert class="mt-0.5 h-4 w-4 shrink-0 text-amber-400" /><div class="min-w-0"><strong>需要确认后执行</strong><p>{{ message.confirmation.description }}</p></div></div><div class="mt-3 flex gap-2"><button class="btn-primary !py-1.5 !text-xs" :disabled="message.confirmation.busy" @click="approve(message)"><Check class="h-3.5 w-3.5" />确认执行</button><button class="btn-secondary !py-1.5 !text-xs" :disabled="message.confirmation.busy" @click="reject(message)">拒绝</button></div></div><div v-if="message.searchSources?.length" class="agent-sources"><div><Globe2 class="h-3.5 w-3.5" />参考来源</div><a v-for="source in message.searchSources" :key="source.url || source.title" :href="source.url" target="_blank" rel="noreferrer">{{ source.title || source.url || '搜索结果' }}<small>{{ source.snippet }}</small></a></div></div></article></div>
         <div class="agent-composer"><textarea ref="inputEl" v-model="input" class="agent-input" rows="3" placeholder="告诉 Agent 你想查看或操作什么…（Enter 发送，Shift+Enter 换行）" @keydown.enter.exact.prevent="submit"></textarea><div class="agent-composer-foot"><span>{{ running ? 'Agent 正在执行，你仍可以继续编辑输入内容' : '会话与上下文会自动保存' }}</span><button class="btn-primary" :disabled="running || !input.trim()" title="发送消息" @click="submit"><Send class="h-4 w-4" />发送</button></div></div>
       </main>
-      <aside class="agent-inspector"><section class="card agent-inspector-card"><div class="agent-inspector-title"><span>当前上下文</span><button v-if="projectId" class="text-xs text-zinc-500 hover:text-cyan-300" @click="projectId = ''">清除</button></div><p v-if="selectedProject" class="text-sm text-cyan-300">{{ selectedProject.projectName }}</p><p v-else>未固定项目，Agent 会先从纳管项目中识别。</p></section><section class="card agent-inspector-card agent-activity-panel"><div class="agent-inspector-title"><span>执行动态</span><em v-if="running">运行中</em></div><div v-if="!activity.length" class="text-zinc-600">需要确认的变更会显示在这里。</div><div v-for="(item, index) in activity" :key="index" class="agent-activity-row"><b>{{ item.label }}</b><span>{{ item.text }}</span></div></section><section class="card agent-inspector-card"><div class="agent-inspector-title"><span>长期记忆</span><button class="text-xs text-cyan-400 hover:text-cyan-300" @click="loadMemories">刷新</button></div><p v-if="!memories.length">还没有保存的长期记忆。只有你明确要求“记住”时才会保存。</p><div v-for="memory in memories.slice(0, 5)" :key="memory.memoryKey" class="agent-memory"><strong>{{ memory.memoryKey }}</strong><span>{{ memory.value }}</span></div></section></aside>
+      <aside class="agent-inspector"><LogContextPicker :projects="projects" @attach="onAttach" /><section class="card agent-inspector-card"><div class="agent-inspector-title"><span>当前上下文</span><button v-if="projectId" class="text-xs text-zinc-500 hover:text-cyan-300" @click="projectId = ''">清除</button></div><p v-if="selectedProject" class="text-sm text-cyan-300">{{ selectedProject.projectName }}</p><p v-else>未固定项目，Agent 会先从纳管项目中识别。</p></section><section class="card agent-inspector-card agent-activity-panel"><div class="agent-inspector-title"><span>执行动态</span><em v-if="running">运行中</em></div><div v-if="!activity.length" class="text-zinc-600">需要确认的变更会显示在这里。</div><div v-for="(item, index) in activity" :key="index" class="agent-activity-row"><b>{{ item.label }}</b><span>{{ item.text }}</span></div></section><section class="card agent-inspector-card"><div class="agent-inspector-title"><span>长期记忆</span><button class="text-xs text-cyan-400 hover:text-cyan-300" @click="loadMemories">刷新</button></div><p v-if="!memories.length">还没有保存的长期记忆。只有你明确要求“记住”时才会保存。</p><div v-for="memory in memories.slice(0, 5)" :key="memory.memoryKey" class="agent-memory"><strong>{{ memory.memoryKey }}</strong><span>{{ memory.value }}</span></div></section></aside>
     </div>
+    <ConfirmDialog :show="deleteDialog.show" title="删除会话" message="删除该会话及其全部消息?" tone="warning" confirm-text="删除" @confirm="confirmDeleteSession" @cancel="deleteDialog.show = false" />
+    <ConfirmDialog :show="clearDialog" title="清空当前会话" message="确认清空当前会话的全部消息?" tone="danger" confirm-text="清空" @confirm="confirmClearSession" @cancel="clearDialog = false" />
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import { Bot, Check, Eraser, Globe2, MessageCircle, MessageSquare, Pencil, Plus, RefreshCw, Send, ShieldAlert, Sparkles, Square, Trash2, UserRound } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import { stripAgentProtocol } from '../lib/agent-text.js';
 import { renderAgentMarkdown } from '../lib/agent-markdown.js';
 import { useAgentChat } from '../composables/useAgentChat.js';
+import ConfirmDialog from '../components/common/ConfirmDialog.vue';
+import LogContextPicker from '../components/agent/LogContextPicker.vue';
 
 const projects = ref([]); const sessions = ref([]); const memories = ref([]); const activity = ref([]); const loading = ref(false); const loadingHistory = ref(false); const webSearchEnabled = ref(false); const projectId = ref(''); const inputEl = ref(null); const editingSessionId = ref(null); const editingTitle = ref('');
+const attachedLogs = ref('');
+const deleteDialog = reactive({ show: false, id: '' });
+const clearDialog = ref(false);
 const chat = useAgentChat({
   onEventExtra: (event) => { if (event.type === 'confirmation_required') appendActivity('需要确认 ', '请确认这项变更'); },
   onApproval: (message, kind) => { if (kind === 'approved') appendActivity('已确认 ', '变更继续执行'); else appendActivity('已拒绝 ', '变更未执行'); },
@@ -40,17 +47,32 @@ function renderMarkdown(content) { return renderAgentMarkdown(content); }
 function formatDate(value) { return value ? new Date(`${value.replace(' ', 'T')}Z`).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''; }
 function focusInput() { void nextTick(() => inputEl.value?.focus()); }
 function appendActivity(label, text) { const item = { label, text: String(text || '') }; activity.value.push(item); }
+function onAttach({ text }) { attachedLogs.value = text || ''; }
 async function loadProjects() { loading.value = true; try { projects.value = ((await api.getProjects(true)).projects || []).filter((project) => project.managed); } catch { projects.value = []; } finally { loading.value = false; } }
-async function loadSessions() { sessions.value = (await api.getAiSessions(50, 'agent')).sessions || []; } async function loadMemories() { try { memories.value = (await api.getAiMemories(20)).memories || []; } catch { memories.value = []; } }
+async function loadSessions() { sessions.value = (await api.getAiSessions(50)).sessions || []; } async function loadMemories() { try { memories.value = (await api.getAiMemories(20)).memories || []; } catch { memories.value = []; } }
 function newSession() { resetSession(); activity.value = []; focusInput(); }
 async function openSession(id) { if (running.value) return; sessionId.value = Number(id); loadingHistory.value = true; activity.value = []; try { const data = await api.getAiHistory(sessionId.value); messages.value = (data.messages || []).filter((item) => ['user', 'assistant'].includes(item.role)).map((item) => ({ id: nextMessageId(), role: item.role, content: stripAgentProtocol(item.content) })); } finally { loadingHistory.value = false; scrollBottom(); } }
-async function deleteSession(id) { if (running.value || !window.confirm('删除这个会话及其消息？')) return; await api.clearAiHistory(id); sessions.value = sessions.value.filter((session) => session.sessionId !== id); if (sessionId.value === id) newSession(); }
-async function clearCurrentSession() { if (!sessionId.value || !window.confirm('清空当前会话消息？')) return; await api.clearAiHistory(sessionId.value); messages.value = []; await loadSessions(); }
+function deleteSession(id) { deleteDialog.id = id; deleteDialog.show = true; }
+async function confirmDeleteSession() {
+  const id = deleteDialog.id;
+  deleteDialog.show = false;
+  if (!id || running.value) return;
+  await api.clearAiHistory(id);
+  sessions.value = sessions.value.filter((session) => session.sessionId !== id);
+  if (sessionId.value === id) newSession();
+}
+function clearCurrentSession() { if (!sessionId.value || !messages.value.length || running.value) return; clearDialog.value = true; }
+async function confirmClearSession() {
+  clearDialog.value = false;
+  await api.clearAiHistory(sessionId.value);
+  messages.value = [];
+  await loadSessions();
+}
 function beginRename(session) { editingSessionId.value = session.sessionId; editingTitle.value = session.title || ''; }
 function cancelRename() { editingSessionId.value = null; editingTitle.value = ''; }
 async function saveRename(session) { if (editingSessionId.value !== session.sessionId) return; const title = editingTitle.value.trim(); if (!title || title === session.title) { cancelRename(); return; } try { await api.renameAgentSession(session.sessionId, title); session.title = title; } catch (error) { window.alert(error.message); } finally { cancelRename(); } }
 function selectProject(project) { projectId.value = project.id; input.value = `后续操作项目 ${project.name}`; focusInput(); }
-async function submit() { const text = input.value.trim(); if (!text) return; await sendMessage(text, { projectId: projectId.value || undefined, webSearchEnabled: webSearchEnabled.value }); await Promise.all([loadSessions(), loadMemories()]); }
+async function submit() { const text = input.value.trim(); if (!text) return; await sendMessage(text, { projectId: projectId.value || undefined, webSearchEnabled: webSearchEnabled.value, attachedLogs: attachedLogs.value || undefined }); await Promise.all([loadSessions(), loadMemories()]); }
 onMounted(async () => { await Promise.all([loadProjects(), loadSessions(), loadMemories()]); if (sessions.value.length) await openSession(sessions.value[0].sessionId); else focusInput(); });
 </script>
 

@@ -12,10 +12,11 @@
 - 镜像必须保持字节一致:`backend/src/lib/dotenv.js` ⇄ `frontend/src/lib/dotenv.js`;`backend/src/lib/agent-protocol-core.js` ⇄ `frontend/src/lib/agent-protocol-core.js`(改一处就同步另一处,两侧 sync 测试会比对字节兜底)。
 
 ## AI Agent
+- AI 助手已**单页化**到 `/agent`(原 `/ai` 页面已删除并重定向):会话、日志挂载(LogContextPicker → execute-stream `attachedLogs`)、确认门、长期记忆都在这一页;`/ai/chat` 与 `/ai/exec` 路由已删,`/ai/diagnose` 仍供日志页诊断弹窗使用。
 - 执行路径收敛为 Tool Loop 单通道:`POST /ai/agent/execute-stream`(SSE)+ `POST /ai/agent/approve` 确认门;早期 plan/execute/confirm/feedback/export 等规划管线端点已删除,勿再引用。
 - 会话历史单一通道:后端从 DB 读,前端不回传 `history`;token 分片由后端发射层保证干净,前端**原样追加,禁止逐分片清洗**(会吃掉分片边界空白,导致 Markdown 表格/代码块粘连)。
 - 前端聊天逻辑在 `frontend/src/composables/useAgentChat.js`(工作台与全局抽屉共用);页面上下文采集在 `useAgentConsole.js`(抽屉关闭时不做快照)。
-- 路由层:`router.js` 的 `preloadRouteChunks()` 在空闲时预取全部 chunk;App.vue 对 14 个无流式/轮询的页面做 keep-alive(**新增流式/定时轮询页面时务必排除**,否则 interval/ws 在后台保活泄漏);页面切换走 `page-fade` 过渡。
+- 路由层:`router.js` 的 `preloadRouteChunks()` 在空闲时预取全部 chunk;App.vue 对 13 个无流式/轮询的页面做 keep-alive(**新增流式/定时轮询页面时务必排除**,否则 interval/ws 在后台保活泄漏);页面切换走 `page-fade` 过渡。
 
 ## 常用命令
 - 前端构建: `cd frontend && npm run build`(零 Warning;`chunkSizeWarningLimit: 3000`)

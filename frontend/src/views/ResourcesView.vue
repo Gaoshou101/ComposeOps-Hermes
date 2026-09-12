@@ -1,7 +1,7 @@
 <template>
   <div class="page-shell page-shell-workspace">
     <div class="page-header">
-      <div><h1 class="page-title">存储资源</h1><p class="page-subtitle">批量清理悬空镜像、孤儿卷与闲置网络</p></div>
+      <div><h1 class="page-title">存储清理</h1><p class="page-subtitle">批量清理悬空镜像、孤儿卷与闲置网络</p></div>
       <div class="page-actions">
         <button v-if="selected.length > 0" class="btn-danger" :disabled="busy" @click="batchRemove"><Trash2 class="w-4 h-4" />批量删除 ({{ selected.length }})</button>
         <button class="btn-secondary" :disabled="loading" @click="refresh"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />刷新</button>

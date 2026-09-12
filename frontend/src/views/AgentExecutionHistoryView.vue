@@ -100,7 +100,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onActivated, onMounted, ref } from 'vue';
 import { api } from '../api/client.js';
 import { RefreshCw, ChevronDown, CircleCheck, CircleX, Clock, AlertCircle } from 'lucide-vue-next';
 import EmptyState from '../components/common/EmptyState.vue';
@@ -244,6 +244,8 @@ function resultBorderClass(status) {
 }
 
 onMounted(() => load());
+let historyActivatedOnce = false;
+onActivated(() => { if (historyActivatedOnce) void load(); historyActivatedOnce = true; });
 </script>
 
 <style scoped>

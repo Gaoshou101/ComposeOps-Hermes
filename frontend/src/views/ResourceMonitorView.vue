@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="mb-4 flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-zinc-100">资源监控</h1>
+        <h1 class="text-2xl font-bold text-zinc-100">历史指标</h1>
         <p class="mt-1 text-sm text-zinc-400">实时容器资源使用情况与告警配置</p>
       </div>
       <button @click="showAlertModal = true" class="btn-primary">

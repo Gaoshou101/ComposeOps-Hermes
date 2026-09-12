@@ -24,7 +24,7 @@
 </template>
 
 <script setup>
-import { Boxes, Clock3, FileCode2, ScrollText, TerminalSquare, Bot, ChartNoAxesCombined, HardDrive, History, Settings, Store, Workflow, Activity, GitBranch, DollarSign, Package } from 'lucide-vue-next';
+import { Boxes, Clock3, FileCode2, ScrollText, TerminalSquare, Bot, ChartNoAxesCombined, HardDrive, History, Settings, Store, Activity, GitBranch, DollarSign, Package } from 'lucide-vue-next';
 const groups = [
   { label: '运行', items: [
     { to: '/services', icon: Boxes, label: '服务' },
@@ -34,10 +34,9 @@ const groups = [
   { label: '排障', items: [
     { to: '/logs', icon: ScrollText, label: '日志' },
     { to: '/shell', icon: TerminalSquare, label: '终端' },
-    { to: '/ai', icon: Bot, label: 'AI' },
-    { to: '/agent', icon: Workflow, label: 'Agent' },
-    { to: '/monitor', icon: ChartNoAxesCombined, label: '监控' },
-    { to: '/metrics', icon: Activity, label: '资源监控' },
+    { to: '/agent', icon: Bot, label: 'AI 助手' },
+    { to: '/monitor', icon: ChartNoAxesCombined, label: '实时监控' },
+    { to: '/metrics', icon: Activity, label: '历史指标' },
   ] },
   { label: '扩展', items: [
     { to: '/marketplace', icon: Store, label: '应用市场' },
@@ -46,7 +45,7 @@ const groups = [
     { to: '/cost', icon: DollarSign, label: '成本分析' },
   ] },
   { label: '系统', items: [
-    { to: '/resources', icon: HardDrive, label: '资源' },
+    { to: '/resources', icon: HardDrive, label: '存储清理' },
     { to: '/operations', icon: History, label: '记录' },
     { to: '/settings', icon: Settings, label: '设置' },
   ] },

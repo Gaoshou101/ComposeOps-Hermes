@@ -51,7 +51,7 @@ import { preloadRouteChunks } from './router.js';
 // 保住输入中状态、滚动位置与重组件(Monaco/终端/会话),切回页面零重建。
 // 刻意排除 Logs/Monitor/ResourceMonitor —— 三页有日志流或定时轮询,保活会后台持续拉数据。
 const keepAliveViews = [
-  'ServicesView', 'ComposeView', 'ShellView', 'AiView', 'AgentWorkflowView', 'AgentExecutionHistoryView',
+  'ServicesView', 'ComposeView', 'ShellView', 'AgentWorkflowView', 'AgentExecutionHistoryView',
   'OperationsView', 'SettingsView', 'MarketplaceView', 'ConverterView', 'GitOpsView', 'CostAnalysisView',
   'CronTasksView', 'ResourcesView',
 ];
