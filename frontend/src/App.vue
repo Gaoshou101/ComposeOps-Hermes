@@ -12,7 +12,13 @@
       <AppSidebar />
       <main class="app-main flex-1 min-w-0 overflow-auto">
         <div class="mx-auto h-full min-h-full w-full max-w-7xl px-4 py-5 sm:px-6 sm:py-6 lg:px-8 xl:px-10 2xl:px-14">
-          <router-view />
+          <router-view v-slot="{ Component }">
+            <transition name="page-fade" mode="out-in">
+              <keep-alive :include="keepAliveViews">
+                <component :is="Component" />
+              </keep-alive>
+            </transition>
+          </router-view>
         </div>
       </main>
     </div>
@@ -39,6 +45,16 @@ import { useAuthStore } from './stores/auth.js';
 import { useServicesStore } from './stores/services.js';
 import { useToastStore } from './stores/toast.js';
 import { useAgentConsole } from './composables/useAgentConsole.js';
+import { preloadRouteChunks } from './router.js';
+
+// keep-alive 白名单(SFC 文件名即组件名):
+// 保住输入中状态、滚动位置与重组件(Monaco/终端/会话),切回页面零重建。
+// 刻意排除 Logs/Monitor/ResourceMonitor —— 三页有日志流或定时轮询,保活会后台持续拉数据。
+const keepAliveViews = [
+  'ServicesView', 'ComposeView', 'ShellView', 'AiView', 'AgentWorkflowView', 'AgentExecutionHistoryView',
+  'OperationsView', 'SettingsView', 'MarketplaceView', 'ConverterView', 'GitOpsView', 'CostAnalysisView',
+  'CronTasksView', 'ResourcesView',
+];
 
 const auth = useAuthStore();
 const servicesStore = useServicesStore();
@@ -76,6 +92,9 @@ onErrorCaptured((error) => {
 onMounted(() => {
   applyDensity();
   startPageTracking();
+  // 空闲时预取路由 chunk,首访页面不再因下载+解析顿一下
+  if ('requestIdleCallback' in window) requestIdleCallback(() => preloadRouteChunks(), { timeout: 4000 });
+  else setTimeout(() => preloadRouteChunks(), 1500);
   window.addEventListener('composeops:runtime-error', onRuntimeError);
   window.addEventListener('composeops:operation-started', onOperationStarted);
   window.addEventListener('composeops:unauthorized', expire);

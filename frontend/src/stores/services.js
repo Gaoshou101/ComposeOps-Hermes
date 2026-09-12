@@ -11,6 +11,7 @@ export const useServicesStore = defineStore('services', () => {
   let timer;
   let wsHook = null;
   let refreshPromise = null;
+  let containerEventDebounce = null;
 
   /**
    * SWR 语义刷新:
@@ -53,14 +54,10 @@ export const useServicesStore = defineStore('services', () => {
       const project = projects.value.find((p) => p.id === projectId);
       if (!project) return;
 
-      // 容器状态变化:立即刷新该项目(乐观更新)
-      void api.getProjects(true).then((data) => {
-        const updated = data.projects?.find((p) => p.id === projectId);
-        if (updated) {
-          const idx = projects.value.findIndex((p) => p.id === projectId);
-          if (idx !== -1) projects.value[idx] = updated;
-        }
-      });
+      // 容器事件常成簇到达(启停/健康翻转),逐事件全量刷新会形成请求风暴;
+      // 800ms 去抖合并为一次强制扫描,期间沿用现有数据,避免渲染卡顿。
+      clearTimeout(containerEventDebounce);
+      containerEventDebounce = setTimeout(() => { containerEventDebounce = null; void refresh(true); }, 800);
     }
   }
 

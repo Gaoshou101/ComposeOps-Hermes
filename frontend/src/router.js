@@ -27,3 +27,15 @@ export default createRouter({
   history: createWebHashHistory(),
   routes,
 });
+
+/**
+ * 空闲时预取全部路由 chunk:首访每个页面不再触发下载+解析,
+ * 消除"第一次切到某页顿一下"的感知。失败静默,进入页面时仍会正常加载。
+ */
+export function preloadRouteChunks() {
+  for (const route of routes) {
+    if (typeof route.component === 'function') {
+      route.component().catch(() => {});
+    }
+  }
+}

@@ -209,6 +209,6 @@ function toggleLogs(eventItem) {
 function toggle() { open.value = !open.value; if (open.value) { load(); connectEventStream(); } else eventStream.close(); }
 useEscapeKey({ active: open, onClose: () => { open.value = false; }, layer: 'event' });
 
-onMounted(() => { load(); timer = setInterval(load, 30000); });
+onMounted(() => { load(); timer = setInterval(load, 60000); });
 onUnmounted(() => { clearInterval(timer); eventStream.close(); });
 </script>

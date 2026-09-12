@@ -383,3 +383,25 @@ body[data-density='compact'] .data-table td { @apply !py-1.5 !px-2; }
 .source-badge { @apply inline-flex max-w-full items-center gap-1 truncate rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent transition-colors hover:bg-accent/20; }
 .web-search-toggle { @apply inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] text-surface-400 transition-colors hover:text-surface-200; }
 .web-search-toggle input { @apply sr-only; }
+
+/* ===== 路由切换过渡:极短淡入,切换感知顺滑且不拖慢节奏 ===== */
+.page-fade-enter-active { transition: opacity 0.13s ease, transform 0.13s ease; }
+.page-fade-leave-active { transition: opacity 0.09s ease; }
+.page-fade-enter-from { opacity: 0; transform: translateY(3px); }
+.page-fade-leave-to { opacity: 0; }
+
+/* ===== AI/Agent Markdown 通用修正 ===== */
+/* assistant 气泡继承 .message 的 whitespace-pre-wrap 会让 marked 输出里
+   标签间的换行变成可见空行,markdown 整体显乱;富文本容器必须恢复 normal。 */
+.agent-rich-markdown { white-space: normal; }
+.agent-rich-markdown :deep(table),
+.agent-rich-markdown table { margin-left: auto; margin-right: auto; }
+.agent-rich-markdown pre,
+.agent-rich-markdown pre code,
+.agent-rich-markdown :deep(pre),
+.agent-rich-markdown :deep(pre code) { overflow-wrap: normal; word-break: normal; white-space: pre; }
+.agent-rich-markdown p,
+.agent-rich-markdown li,
+.agent-rich-markdown :deep(p),
+.agent-rich-markdown :deep(td),
+.agent-rich-markdown :deep(th) { overflow-wrap: anywhere; }

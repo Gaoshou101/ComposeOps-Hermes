@@ -38,7 +38,7 @@
           </div>
         </template>
         <div v-else ref="boxEl" class="card flex-1 min-h-[320px] overflow-auto p-4 space-y-3">
-          <div v-for="message in messages" :key="message.id" class="flex" :class="message.role === 'user' ? 'justify-end' : 'justify-start'">
+          <div v-for="message in messages" :key="message.id" class="mx-auto flex w-full max-w-3xl" :class="message.role === 'user' ? 'justify-end' : 'justify-start'">
             <div class="max-w-[88%] min-w-0">
               <div v-if="message.role === 'user'" class="message whitespace-pre-wrap break-words message-user">{{ message.content }}</div>
               <div v-else class="message message-assistant agent-rich-markdown" v-html="renderMarkdown(message.content)"></div>
@@ -67,7 +67,7 @@
               </div>
             </div>
           </div>
-          <div v-if="streaming" class="flex justify-start"><div class="message message-assistant agent-rich-markdown"><div v-html="renderMarkdown(buffer)"></div><span class="animate-pulse">|</span></div></div>
+          <div v-if="streaming" class="mx-auto flex w-full max-w-3xl justify-start"><div class="message message-assistant agent-rich-markdown"><div v-html="renderMarkdown(buffer)"></div><span class="animate-pulse">|</span></div></div>
         </div>
 
         <div class="ai-composer">
