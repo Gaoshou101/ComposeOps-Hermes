@@ -127,9 +127,11 @@ const filtered = computed(() => {
   if (levelFilter.value) result = result.filter((line) => (line.level || classifyLevel(line.data)) === levelFilter.value);
   const needle = search.value.trim();
   if (needle) {
-    const regex = needle.length > 2 && needle.startsWith('/') && needle.endsWith('/')
-      ? new RegExp(needle.slice(1, -1), 'i')
-      : null;
+    let regex = null;
+    if (needle.length > 2 && needle.startsWith('/') && needle.endsWith('/')) {
+      try { regex = new RegExp(needle.slice(1, -1), 'i'); }
+      catch { regex = null; }
+    }
     result = result.filter((line) => regex ? regex.test(line.data) : line.data.toLowerCase().includes(needle.toLowerCase()));
   }
   return result;
@@ -137,12 +139,16 @@ const filtered = computed(() => {
 
 onMounted(async () => {
   nextTick(syncViewport);
-  projects.value = (await api.getProjects()).projects.filter((project) => project.managed);
-  const prefs = await api.getPreferences();
-  tail.value = prefs.logTail;
-  if (containerId.value && projects.value.some((project) => project.id === projectId.value)) connect();
-  // 仅当 URL 只有 projectId 时进入聚合模式(带 containerId 则单容器)
-  aggregateMode.value = !!(route.query.projectId && !route.query.containerId);
+  try {
+    projects.value = (await api.getProjects()).projects.filter((project) => project.managed);
+    const prefs = await api.getPreferences();
+    tail.value = prefs.logTail;
+    // 仅当 URL 只有 projectId 时进入聚合模式(带 containerId 则单容器)
+    aggregateMode.value = !!(route.query.projectId && !route.query.containerId);
+    if (containerId.value && projects.value.some((project) => project.id === projectId.value)) connect();
+  } catch (loadError) {
+    error.value = loadError.message || '日志页面加载失败';
+  }
   window.addEventListener('composeops:host-changed', onHostChanged);
   if (boxEl.value) {
     resizeObserver = new ResizeObserver(() => syncViewport());
@@ -150,7 +156,7 @@ onMounted(async () => {
   }
 });
 
-function onHostChanged() { disconnect(); projects.value = []; void reloadProjects(); }
+function onHostChanged() { disconnect(); clearLines(); projects.value = []; void reloadProjects(); }
 async function reloadProjects() {
   try {
     projects.value = (await api.getProjects()).projects.filter((project) => project.managed);
@@ -202,9 +208,19 @@ function append(item) {
   const level = item.level || classifyLevel(item.data);
   item.level = level;
   lines.value.push(item);
-  if (lines.value.length > 5000) lines.value.splice(0, lines.value.length - 5000);
   levelCounts.value[level] = (levelCounts.value[level] || 0) + 1;
   if (level === 'error') { errorLines.value += 1; sawError.value = true; retainedCount.value += 1; }
+  if (lines.value.length > 5000) {
+    const removed = lines.value.splice(0, lines.value.length - 5000);
+    for (const oldLine of removed) {
+      const oldLevel = oldLine.level || classifyLevel(oldLine.data);
+      levelCounts.value[oldLevel] = Math.max(0, (levelCounts.value[oldLevel] || 0) - 1);
+      if (oldLevel === 'error') {
+        errorLines.value = Math.max(0, errorLines.value - 1);
+        retainedCount.value = Math.max(0, retainedCount.value - 1);
+      }
+    }
+  }
   if (autoScroll.value && !autoScrollPaused.value) scheduleFollow();
 }
 function clearLines() {
@@ -259,7 +275,7 @@ function download() {
   a.href = URL.createObjectURL(blob);
   a.download = `composeops-${Date.now()}.log`;
   a.click();
-  URL.revokeObjectURL(a.href);
+  setTimeout(() => URL.revokeObjectURL(a.href), 0);
 }
 onBeforeUnmount(() => {
   disconnect();

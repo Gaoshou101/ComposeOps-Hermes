@@ -5,7 +5,7 @@
       <div class="grid min-h-0 flex-1 md:grid-cols-[minmax(0,1fr)_11rem]">
         <div class="min-w-0 overflow-y-auto p-4">
           <div v-if="!streaming && !text" class="flex h-full min-h-32 items-center justify-center text-muted">等待 AI 诊断结果…</div>
-          <div class="ai-diagnosis agent-rich-markdown" v-html="rendered"></div>
+          <AgentMarkdown class="ai-diagnosis agent-rich-markdown" :content="text" />
         </div>
         <aside class="flex flex-col gap-2 border-t border-surface-800 p-3 md:border-l md:border-t-0">
           <p class="text-xs text-muted">快捷操作</p>
@@ -24,10 +24,10 @@ import { computed, ref, watch } from 'vue';
 import { useEscapeKey } from '../../composables/useEscapeKey.js';
 import { streamSse } from '../../api/client.js';
 import { stripAgentProtocol } from '../../lib/agent-text.js';
-import { renderAgentMarkdown } from '../../lib/agent-markdown.js';
 import { useToastStore } from '../../stores/toast.js';
 import { Copy, FileCode2, KeyRound, Sparkles, X } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
+import AgentMarkdown from '../common/AgentMarkdown.vue';
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -51,9 +51,6 @@ const statusMessage = ref('');
 let controller = null;
 
 const title = computed(() => props.projectName || '容器诊断');
-const rendered = computed(() => {
-  return renderAgentMarkdown(text.value);
-});
 const statusText = computed(() => status.value === 'error' && statusMessage.value ? statusMessage.value : ({ idle: '', running: 'AI 正在分析日志…', done: '诊断完成', error: '诊断失败' })[status.value] || '');
 const statusClass = computed(() => status.value === 'error' ? 'text-rose-400' : status.value === 'done' ? 'text-emerald-400' : 'text-muted');
 

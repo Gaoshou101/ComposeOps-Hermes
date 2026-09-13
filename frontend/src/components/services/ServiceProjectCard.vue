@@ -87,11 +87,12 @@
           <router-link class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="实时日志" :to="`/logs?projectId=${project.id}&containerId=${container.id}`"><ScrollText class="w-4 h-4" /></router-link>
           <router-link v-if="dbContainers.length" class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="聚合日志(所有容器)" :to="`/logs?projectId=${project.id}`"><Layers class="w-4 h-4 text-emerald-300" /></router-link>
           <router-link class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="容器终端" :to="`/shell?projectId=${project.id}&containerId=${container.id}`"><TerminalSquare class="w-4 h-4" /></router-link>
-          <router-link class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="AI 诊断" :to="`/ai?projectId=${project.id}&containerId=${container.id}&diagnose=1`"><Bot class="w-4 h-4" /></router-link>
+          <router-link class="icon-btn" :class="{ 'pointer-events-none opacity-40': !project.managed }" title="AI 诊断" :to="`/agent?projectId=${project.id}&containerId=${container.id}&diagnose=1`"><Bot class="w-4 h-4" /></router-link>
         </div>
       </div>
     </div>
   </article>
+  <ConfirmDialog :show="stopConfirm" title="停止项目容器" :message="`确认停止 ${project.projectName} 中现有的容器?不会删除容器和网络。`" tone="warning" confirm-text="停止容器" @confirm="confirmStop" @cancel="stopConfirm = false" />
 </template>
 
 <script setup>
@@ -101,6 +102,7 @@ import StatusBadge from '../common/StatusBadge.vue';
 import WebUiLauncher from './WebUiLauncher.vue';
 import SparklineChart from '../common/SparklineChart.vue';
 import { api, streamProjectStats } from '../../api/client.js';
+import ConfirmDialog from '../common/ConfirmDialog.vue';
 
 const props = defineProps({
   project: { type: Object, required: true },
@@ -112,6 +114,7 @@ const props = defineProps({
   lastResults: { type: Array, default: () => [] },
 });
 const emit = defineEmits(['toggle-expand', 'toggle-select', 'action', 'activity', 'env', 'db-dump', 'upgrade', 'refresh']);
+const stopConfirm = ref(false);
 
 const metrics = ref({});
 const updateInfo = ref(null);
@@ -252,9 +255,10 @@ const imageState = computed(() => {
 
 function trigger(action) {
   if (!props.project.managed || locked.value) return;
-  if (action === 'stop' && !window.confirm(`确认停止 ${props.project.projectName} 中现有的容器？不会删除容器和网络。`)) return;
+  if (action === 'stop') { stopConfirm.value = true; return; }
   emit('action', action);
 }
+function confirmStop() { stopConfirm.value = false; if (!locked.value) emit('action', 'stop'); }
 async function toggleFavorite(project) { project.favorite = !project.favorite; await api.saveProjectPreference(project.id, { favorite: project.favorite }); emit('refresh'); }
 async function editNote(project) {
   const note = window.prompt('项目备注（最多 500 字）', project.note || '');

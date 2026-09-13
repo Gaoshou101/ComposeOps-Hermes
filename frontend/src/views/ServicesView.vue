@@ -25,6 +25,7 @@
     </div>
     <BatchOperationsBar v-if="selectedProjects.length" :selected-count="selectedProjects.length" :busy="busy" @run="runBatch" @clear="selectedIds = []" />
     <ConfirmDialog :show="batchConfirmation.show" :title="'批量' + actionLabel(batchConfirmation.action)" :message="'将对 ' + batchConfirmation.count + ' 个已纳管项目执行“' + actionLabel(batchConfirmation.action) + '”。操作会按顺序执行，失败项目仍会保留在结果中。确认继续?'" tone="warning" :confirm-text="'确认' + actionLabel(batchConfirmation.action)" @confirm="confirmBatch" @cancel="batchConfirmation.show = false" />
+    <ConfirmDialog :show="!!restartTarget" title="重启项目" :message="`确认重启 ${restartTarget?.projectName || ''}?`" tone="warning" confirm-text="重启" @confirm="confirmKeyboardRestart" @cancel="restartTarget = null" />
     <Skeleton v-if="store.loading && !store.projects.length" variant="cards" :rows="4" label="服务列表加载中" class="flex-1" />
     <EmptyState v-else-if="!store.projects.length" icon="Boxes" title="暂未发现 Compose 项目" description="Docker 中没有带 Compose 标签的项目,或尚未扫描" />
     <EmptyState v-else-if="!visibleProjects.length" icon="Search" title="没有匹配当前条件的项目" description="调整搜索关键词或筛选条件后重试" action-label="清除筛选" class="flex-1" @action="resetFilters" />
@@ -72,7 +73,7 @@ const router = useRouter();
 const autoRefresh = ref(true); const busy = ref(false); const expandedIds = ref(new Set());
 const searchQuery = ref(''); const filter = ref('all'); const sort = ref('priority');
 const selectedIds = ref([]); const updateSettings = ref({ lastResults: [] }); const focusedProject = ref('');
-const batchTasks = ref([]); const activityProject = ref(null); const envProject = ref(null); const diagnosis = ref(null); const upgradeProject = ref(null); const dbDumpProject = ref(null); const runningAction = ref({ id: '', action: '' }); const kbFocusId = ref('');
+const batchTasks = ref([]); const activityProject = ref(null); const envProject = ref(null); const diagnosis = ref(null); const upgradeProject = ref(null); const dbDumpProject = ref(null); const runningAction = ref({ id: '', action: '' }); const kbFocusId = ref(''); const restartTarget = ref(null);
 let jobPollTimer; let activeJobId = ''; let jobPollInFlight = false;
 let controlController = null;
 const output = reactive({ open: false, text: '', action: '', name: '', projectId: '', exitCode: null, running: false });
@@ -315,8 +316,7 @@ async function handleKbAction(action) {
   if (action === 'e') { envProject.value = project; return; }
   if (action === 'c') { router.push({ path: '/compose', query: { projectId: project.id } }); return; }
   if (action === 'r') {
-    if (!window.confirm(`确认重启 ${project.projectName}?`)) return;
-    void run(project, 'restart');
+    restartTarget.value = project;
     return;
   }
   if (action === 'w') {
@@ -327,6 +327,11 @@ async function handleKbAction(action) {
       else useToastStore().info('该项目没有可直达的 WebUI 端口');
     } catch { useToastStore().error('WebUI 检测失败'); }
   }
+}
+function confirmKeyboardRestart() {
+  const project = restartTarget.value;
+  restartTarget.value = null;
+  if (project) void run(project, 'restart');
 }
 function handleRestored() {
   activityProject.value = null;

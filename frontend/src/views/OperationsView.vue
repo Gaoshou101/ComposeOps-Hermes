@@ -120,7 +120,7 @@ import EmptyState from '../components/common/EmptyState.vue';
 const route = useRoute();
 const router = useRouter();
 const operations = ref([]); const jobs = ref([]); const loading = ref(false); const error = ref('');
-const selectedOperation = ref(null); const selectedJob = ref(null); const selectedJobItem = ref(null); const diagnosis = ref(null);
+const selectedOperation = ref(null); const selectedJob = ref(null); const selectedJobItem = ref(null);
 
 const STORAGE_KEY_FILTERS = 'composeops:operations:filters';
 function loadFilters() {
@@ -234,18 +234,6 @@ function closeJob() {
   const next = { ...route.query };
   delete next.job;
   router.replace({ query: next });
-}
-function diagnoseOperation() {
-  const item = selectedOperation.value;
-  if (!item) return;
-  diagnosis.value = {
-    projectId: item.projectId || '',
-    projectName: item.projectName || '系统操作',
-    rawLogs: (item.detail || '').slice(-50000),
-    failedCommand: actionLabel(item.action),
-    exitCode: 1,
-    envEditable: false,
-  };
 }
 useEscapeKey({ active: computed(() => !!selectedOperation.value), onClose: () => { selectedOperation.value = null; }, layer: 'modal', lockBody: true });
 useEscapeKey({ active: computed(() => !!selectedJob.value), onClose: closeJob, layer: 'modal', lockBody: true });

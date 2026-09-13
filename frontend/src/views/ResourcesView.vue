@@ -77,15 +77,18 @@
         </table>
       </div>
     </section>
+    <ConfirmDialog :show="bulkDeleteOpen" title="批量删除资源" :message="`确认批量删除 ${selected.length} 项资源?删除后无法恢复。`" tone="danger" confirm-text="批量删除" @confirm="performBatchRemove" @cancel="bulkDeleteOpen = false" />
+    <ConfirmDialog :show="!!removeTarget" title="删除资源" :message="`确认删除 ${removeTarget?.primary || ''}?删除后无法恢复。`" tone="danger" confirm-text="删除" @confirm="performRemove" @cancel="removeTarget = null" />
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RefreshCw, Trash2 } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import Skeleton from '../components/common/Skeleton.vue';
 import VolumeBackupPanel from '../components/resources/VolumeBackupPanel.vue';
+import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 
 const data = ref(null);
 const loading = ref(false);
@@ -97,6 +100,8 @@ const busy = ref(false);
 const selected = ref([]);
 const searchQuery = ref('');
 const filterStatus = ref('');
+const bulkDeleteOpen = ref(false);
+const removeTarget = ref(null);
 
 const tabs = [
   { key: 'images', label: '镜像', countKey: 'images' },
@@ -234,11 +239,11 @@ function toggleRow(key) {
 
 async function batchRemove() {
   if (selected.value.length === 0) return;
-  
-  const totalCount = selected.value.length;
-  const msg = `确认批量删除 ${totalCount} 项资源?`;
-  if (!confirm(msg)) return;
-  
+  bulkDeleteOpen.value = true;
+}
+
+async function performBatchRemove() {
+  bulkDeleteOpen.value = false;
   busy.value = true;
   const kinds = { images: 'image', volumes: 'volume', networks: 'network' };
   const errors = [];
@@ -287,13 +292,13 @@ async function refresh() {
 }
 
 async function confirmRemove(row) {
-  if (pendingKey.value === row.key) {
-    await remove(row);
-    return;
-  }
-  pendingKey.value = row.key;
-  // 3 秒内未确认则复位,避免按钮长期停留在"确认"态
-  setTimeout(() => { if (pendingKey.value === row.key) pendingKey.value = ''; }, 3000);
+  removeTarget.value = row;
+}
+
+async function performRemove() {
+  const row = removeTarget.value;
+  removeTarget.value = null;
+  if (row) await remove(row);
 }
 
 async function remove(row) {
@@ -334,4 +339,11 @@ watch(activeTab, () => {
 });
 
 onMounted(refresh);
+function onHostChanged() {
+  data.value = null;
+  selected.value = [];
+  void refresh();
+}
+onMounted(() => window.addEventListener('composeops:host-changed', onHostChanged));
+onBeforeUnmount(() => window.removeEventListener('composeops:host-changed', onHostChanged));
 </script>

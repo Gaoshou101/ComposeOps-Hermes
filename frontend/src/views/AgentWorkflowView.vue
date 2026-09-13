@@ -1,3 +1,4 @@
+<!-- eslint-disable vue/no-v-html -- 内容统一经过 AgentMarkdown 渲染器的 DOMPurify 清理。 -->
 <template>
   <div class="page-shell page-shell-workspace agent-page">
     <div class="page-header">
@@ -59,6 +60,7 @@ import LogContextPicker from '../components/agent/LogContextPicker.vue';
 
 const toast = useToastStore();
 const route = useRoute();
+function renderMarkdown(content) { return renderAgentMarkdown(content); }
 
 const projects = ref([]); const sessions = ref([]); const memories = ref([]); const activity = ref([]); const loading = ref(false); const loadingHistory = ref(false); const webSearchEnabled = ref(false); const projectId = ref(''); const inputEl = ref(null); const editingSessionId = ref(null); const editingTitle = ref('');
 const attachedLogs = ref('');
@@ -100,7 +102,6 @@ const filteredSessionIds = computed(() => filteredSessions.value.map((session) =
 const allSessionsSelected = computed(() => filteredSessionIds.value.length > 0 && filteredSessionIds.value.every((id) => selectedSessions.value.includes(id)));
 const someSessionsSelected = computed(() => selectedSessions.value.length > 0 && !allSessionsSelected.value);
 const selectedProject = computed(() => projects.value.find((project) => project.id === projectId.value)); const activeTitle = computed(() => sessions.value.find((session) => session.sessionId === sessionId.value)?.title || '新会话');
-function renderMarkdown(content) { return renderAgentMarkdown(content); }
 function formatDate(value) { return value ? new Date(`${value.replace(' ', 'T')}Z`).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''; }
 function focusInput() { void nextTick(() => inputEl.value?.focus()); }
 function appendActivity(label, text) { const item = { label, text: String(text || '') }; activity.value.push(item); }

@@ -85,6 +85,15 @@
         </div>
       </div>
     </div>
+    <ConfirmDialog
+      :show="!!removeTarget"
+      title="删除定时任务"
+      :message="`确认删除定时任务「${removeTarget?.name || ''}」?删除后不会再按计划执行。`"
+      tone="danger"
+      confirm-text="删除任务"
+      @confirm="confirmRemove"
+      @cancel="removeTarget = null"
+    />
   </div>
 </template>
 
@@ -94,6 +103,7 @@ import { Clock3, DatabaseBackup, Bot, Play, Plus, RefreshCw, Save, Sparkles, Tra
 import { api } from '../api/client.js';
 import { useToastStore } from '../stores/toast.js';
 import { useAgentConsole } from '../composables/useAgentConsole.js';
+import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 
 const toast = useToastStore();
 const { openAgent, updateAgentContext, resetAgentContext } = useAgentConsole();
@@ -108,6 +118,7 @@ const editor = ref(null);
 const editorError = ref('');
 const saving = ref(false);
 const manualCron = ref(false);
+const removeTarget = ref(null);
 
 const presets = [
   { name: '每天 03:00 自动备份数据库', description: '对所有数据库容器执行 Dump 并留存本地', icon: DatabaseBackup, type: 'db-backup', cron: '0 3 * * *' },
@@ -198,7 +209,12 @@ async function toggleEnabled(job) {
   }
 }
 async function removeJob(job) {
-  if (!window.confirm(`确认删除定时任务「${job.name}」?`)) return;
+  removeTarget.value = job;
+}
+async function confirmRemove() {
+  const job = removeTarget.value;
+  removeTarget.value = null;
+  if (!job) return;
   try {
     await api.deleteCronJob(job.id);
     toast.success('任务已删除');
@@ -213,8 +229,10 @@ watch(editor, (value) => {
 onMounted(() => {
   load();
   window.addEventListener('composeops:cron-agent-created', handleAgentCreated);
+  window.addEventListener('composeops:host-changed', handleHostChanged);
 });
-onBeforeUnmount(() => window.removeEventListener('composeops:cron-agent-created', handleAgentCreated));
+function handleHostChanged() { void load(); }
+onBeforeUnmount(() => { window.removeEventListener('composeops:cron-agent-created', handleAgentCreated); window.removeEventListener('composeops:host-changed', handleHostChanged); });
 let cronActivatedOnce = false;
 onActivated(() => { if (cronActivatedOnce) void load(); cronActivatedOnce = true; });
 </script>

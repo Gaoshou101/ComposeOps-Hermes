@@ -269,12 +269,15 @@
         </footer>
       </div>
     </div>
+    <ConfirmDialog :show="!!deleteTarget" title="删除 GitOps 仓库" message="确认移除此 GitOps 配置?不会删除本地仓库文件。" tone="danger" confirm-text="删除仓库" @confirm="confirmDelete" @cancel="deleteTarget = null" />
+    <ConfirmDialog :show="!!rollbackTarget" title="回滚 GitOps 仓库" :message="`确认回滚到提交 ${rollbackTarget?.slice(0, 7) || ''}?仓库工作区会重置到该版本。`" tone="warning" confirm-text="确认回滚" @confirm="confirmRollback" @cancel="rollbackTarget = null" />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useToastStore } from '../stores/toast.js';
+import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 
 const toast = useToastStore();
 
@@ -290,6 +293,8 @@ const showEditModal = ref(false);
 const showHistoryModal = ref(false);
 const currentRepo = ref(null);
 const commitHistory = ref([]);
+const deleteTarget = ref(null);
+const rollbackTarget = ref(null);
 
 const formData = ref({
   name: '',
@@ -386,7 +391,12 @@ async function updateRepo() {
 }
 
 async function deleteRepo(id) {
-  if (!confirm('确定要删除此仓库吗？这不会删除本地文件，只会移除 GitOps 配置。')) return;
+  deleteTarget.value = id;
+}
+async function confirmDelete() {
+  const id = deleteTarget.value;
+  deleteTarget.value = null;
+  if (!id) return;
   try {
     const res = await fetch(`/api/v1/gitops/${id}`, { method: 'DELETE' });
     if (!res.ok) {
@@ -429,7 +439,12 @@ async function loadHistory(id) {
 }
 
 async function rollback(commitHash) {
-  if (!confirm(`确定要回滚到提交 ${commitHash.substring(0, 7)} 吗？这会重置仓库到此版本。`)) return;
+  rollbackTarget.value = commitHash;
+}
+async function confirmRollback() {
+  const commitHash = rollbackTarget.value;
+  rollbackTarget.value = null;
+  if (!commitHash || !currentRepo.value) return;
   try {
     const res = await fetch(`/api/v1/gitops/${currentRepo.value.id}/rollback`, {
       method: 'POST',

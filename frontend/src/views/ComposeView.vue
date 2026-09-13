@@ -254,6 +254,8 @@ const showServiceEditor = ref(false);
 const currentService = ref(null);
 const isNewService = ref(false);
 let editor;
+let completionDisposable;
+let contentDisposable;
 const project = computed(() => projects.value.find((p) => p.id === projectId.value));
 const dirty = computed(() => content.value !== original.value);
 const toast = useToastStore();
@@ -304,7 +306,15 @@ function confirmHostChanged() {
   showHostChangedDialog.value = false;
   void reloadProjects().then(() => { if (projectId.value && !projects.value.some((p) => p.id === projectId.value)) { projectId.value = ''; selectProject(); } });
 }
-onBeforeUnmount(() => { editor?.dispose(); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('composeops:host-changed', onHostChanged); });
+onBeforeUnmount(() => {
+  contentDisposable?.dispose();
+  completionDisposable?.dispose();
+  editor?.getModel()?.dispose();
+  editor?.dispose();
+  editor = null;
+  window.removeEventListener('beforeunload', beforeUnload);
+  window.removeEventListener('composeops:host-changed', onHostChanged);
+});
 onBeforeRouteLeave((to, from, next) => {
   if (!dirty.value) { next(); return; }
   leaveCallback.value = next;
@@ -318,14 +328,14 @@ function beforeUnload(event) { if (dirty.value) { event.preventDefault(); event.
 function createEditor() {
   if (!editorEl.value || editor) return;
   editor = monaco.editor.create(editorEl.value, { value: '', language: 'yaml', theme: 'vs-dark', automaticLayout: true, fontSize: 13, minimap: { enabled: false }, tabSize: 2, scrollBeyondLastLine: false });
-  editor.onDidChangeModelContent(() => { 
+  contentDisposable = editor.onDidChangeModelContent(() => {
     content.value = editor.getValue(); 
     message.value = ''; 
     validateInlineErrors();
   });
   
   // Register custom completion provider for intelligent suggestions
-  monaco.languages.registerCompletionItemProvider('yaml', {
+  completionDisposable = monaco.languages.registerCompletionItemProvider('yaml', {
     provideCompletionItems: (model, position) => {
       const textUntilPosition = model.getValueInRange({
         startLineNumber: position.lineNumber,
@@ -383,11 +393,6 @@ function createEditor() {
       
       return { suggestions };
     },
-  });
-  
-  // Watch for content changes to update inline error markers
-  editor.onDidChangeModelContent(() => {
-    validateInlineErrors();
   });
   
   editorReady.value = true;

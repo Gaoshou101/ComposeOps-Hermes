@@ -158,6 +158,8 @@
       </div>
     </div>
     <StoragePruneModal v-if="storageModal" @close="storageModal = false" @reclaimed="loadUsage" />
+    <ConfirmDialog :show="!!removeHostTarget" title="删除 Docker 节点" :message="`确认删除节点 ${removeHostTarget?.name || ''}?删除后不会影响远程主机本身。`" tone="danger" confirm-text="删除节点" @confirm="confirmRemoveHost" @cancel="removeHostTarget = null" />
+    <ConfirmDialog :show="managementConfirm" title="取消项目纳管" :message="`将取消 ${removedProjectCount} 个项目的管理权限,相关控制与编辑入口会立即关闭。确认继续?`" tone="warning" confirm-text="确认应用" @confirm="confirmSaveManagement" @cancel="managementConfirm = false" />
     <section v-if="tab === 'about'" class="settings-section"><h2 class="section-title">ComposeOps</h2><p class="text-sm text-surface-400">单用户 Docker Compose 运维台。默认建议仅监听本机或通过 Tailscale 访问。</p><div class="text-sm space-y-1"><p>Web Shell：{{ capabilities.shellEnabled ? '已启用' : '未启用' }}</p><p>环境指标范围：{{ capabilities.hostMetricsScope === 'host' ? '宿主机' : 'ComposeOps 容器' }}</p></div></section>
   </div>
 </template>
@@ -169,6 +171,7 @@ import { Activity, Bell, Bot, Check, Download, FolderCog, HardDrive, Info, KeyRo
 import { api } from '../api/client.js'; import { useAiStore } from '../stores/ai.js'; import { useHostsStore } from '../stores/hosts.js'; import { useToastStore } from '../stores/toast.js'; import StatCard from '../components/StatCard.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import StoragePruneModal from '../components/settings/StoragePruneModal.vue';
+import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 const tabs = [{ id: 'ai', label: 'AI', icon: markRaw(Bot) }, { id: 'personal', label: '偏好', icon: markRaw(SlidersHorizontal) }, { id: 'notifications', label: '通知', icon: markRaw(Bell) }, { id: 'maintenance', label: '维护', icon: markRaw(Wrench) }, { id: 'mounts', label: '项目纳管', icon: markRaw(FolderCog) }, { id: 'hosts', label: 'Docker 节点', icon: markRaw(Server) }, { id: 'about', label: '关于', icon: markRaw(Info) }];
 const route = useRoute();
 const initialTab = tabs.some((item) => item.id === route.query.tab) ? route.query.tab : 'ai';
@@ -180,6 +183,9 @@ const aiModelQuery = ref('');
 const modelListOpen = ref(false);
 const mountPlan = ref(null); const mountLoading = ref(false); const highlightedProjectId = computed(() => String(route.query.projectId || ''));
 const hostEditor = ref(null);
+const removeHostTarget = ref(null);
+const managementConfirm = ref(false);
+const removedProjectCount = computed(() => savedManagedProjectIds.value.filter((id) => !selectedProjectIds.value.includes(id)).length);
 const updateSummary = computed(() => ({ total: updateResults.value.length, updated: updateResults.value.filter((item) => item.status === 'updated').length, failed: updateResults.value.filter((item) => item.status === 'failed').length }));
 const usageTotal = computed(() => Number(usage.value?.total) || 0);
 const usageReclaimable = computed(() => Number(usage.value?.reclaimable) || 0);
@@ -217,7 +223,6 @@ async function fetchAiModels() {
 }
 function openModelList() { modelListOpen.value = true; }
 function selectAiModel(name) { ai.value.model = name; modelListOpen.value = false; aiModelQuery.value = ''; }
-function closeModelList() { modelListOpen.value = false; aiModelQuery.value = ''; }
 
 function openHostEditor(host) {
   hostEditor.value = host ? {
@@ -294,7 +299,12 @@ async function activate(host) {
   } catch (e) { fail(e); }
 }
 async function removeHost(host) {
-  if (!window.confirm(`确认删除节点 ${host.name}?`)) return;
+  removeHostTarget.value = host;
+}
+async function confirmRemoveHost() {
+  const host = removeHostTarget.value;
+  removeHostTarget.value = null;
+  if (!host) return;
   try {
     await hostsStore.remove(host.id);
     ok('节点已删除');
@@ -320,8 +330,11 @@ function applyMountPlan(plan) {
 }
 async function loadMountPlan() { mountLoading.value = true; try { applyMountPlan(await api.getMountPlan()); ok('项目与权限状态已重新扫描'); } catch (e) { fail(e); } finally { mountLoading.value = false; } }
 async function saveManagement() {
-  const removed = savedManagedProjectIds.value.filter((id) => !selectedProjectIds.value.includes(id));
-  if (removed.length && !confirm(`将取消 ${removed.length} 个项目的管理权限，确认继续？`)) return;
+  if (removedProjectCount.value) { managementConfirm.value = true; return; }
+  await confirmSaveManagement();
+}
+async function confirmSaveManagement() {
+  managementConfirm.value = false;
   mountLoading.value = true;
   try {
     selectedMountProjectIds.value = selectedMountProjectIds.value.filter((id) => selectedProjectIds.value.includes(id));

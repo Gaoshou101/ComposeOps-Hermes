@@ -94,6 +94,7 @@
           </div>
         </div>
       </div>
+      <ConfirmDialog :show="!!pendingConfirm" title="未保存的修改" :message="pendingConfirm?.message || ''" tone="warning" confirm-text="继续" @confirm="confirmPending" @cancel="pendingConfirm = null" />
     </div>
   </div>
 </template>
@@ -105,6 +106,7 @@ import { api } from '../../api/client.js';
 import { parseDotenv, serializeDotenv, isSecretKey } from '../../lib/dotenv.js';
 import { useToastStore } from '../../stores/toast.js';
 import { useEscapeKey } from '../../composables/useEscapeKey.js';
+import ConfirmDialog from '../common/ConfirmDialog.vue';
 
 const props = defineProps({
   project: { type: Object, required: true },
@@ -124,6 +126,7 @@ const envFiles = ref([]);
 const revealed = ref(new Set());
 const confirm = ref(false);
 const pendingApply = ref(false);
+const pendingConfirm = ref(null);
 let uidSeq = 0;
 
 const filteredEntries = computed(() => {
@@ -163,11 +166,11 @@ async function loadEnvFiles() {
 }
 
 function switchEnvFile(name) {
-  if (dirty.value && !window.confirm('当前有未保存修改,切换文件将丢失。继续?')) return;
+  if (dirty.value) { pendingConfirm.value = { type: 'switch', name, message: '当前有未保存修改,切换文件会丢失这些内容。继续?' }; return; }
   activeFile.value = name;
   load();
 }
-function reload() { if (!dirty.value || window.confirm('当前有未保存修改,重置将丢失。继续?')) load(); }
+function reload() { if (dirty.value) { pendingConfirm.value = { type: 'reload', message: '当前有未保存修改,重置会丢失这些内容。继续?' }; return; } load(); }
 function addRow() {
   entries.value.push({ key: '', value: '', comment: '', isSecret: false, _uid: ++uidSeq });
   nextTick(() => { keyword.value = ''; });
@@ -200,8 +203,16 @@ function buildRaw() {
 }
 
 function close() {
-  if (dirty.value && !window.confirm('有未保存的修改,确认关闭?')) return;
+  if (dirty.value) { pendingConfirm.value = { type: 'close', message: '有未保存的修改,关闭会丢失这些内容。继续?' }; return; }
   emit('close');
+}
+function confirmPending() {
+  const action = pendingConfirm.value;
+  pendingConfirm.value = null;
+  if (!action) return;
+  if (action.type === 'switch') { activeFile.value = action.name; load(); }
+  else if (action.type === 'reload') load();
+  else if (action.type === 'close') emit('close');
 }
 async function saveOnly() { await doSave(false); }
 async function saveAndApply() { pendingApply.value = true; confirm.value = true; }

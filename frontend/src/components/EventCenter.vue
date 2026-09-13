@@ -36,6 +36,7 @@
         </div>
       </footer>
     </section>
+    <ConfirmDialog :show="pruneDialog" title="清理历史告警" message="确认清空 7 天前的告警事件?此操作不可恢复。" tone="warning" confirm-text="清空历史" @confirm="confirmPrune" @cancel="pruneDialog = false" />
   </div>
 </template>
 
@@ -44,9 +45,10 @@ import { computed, markRaw, onMounted, onUnmounted, ref } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useWebSocket } from '../composables/useWebSocket.js';
 import { useToastStore } from '../stores/toast.js';
-import { AlertTriangle, Bell, Check, ChevronRight, CircleCheckBig, CircleX, RefreshCw, RefreshCwOff, VolumeX } from 'lucide-vue-next';
+import { AlertTriangle, Bell, Check, ChevronRight, CircleX, RefreshCw, RefreshCwOff, VolumeX } from 'lucide-vue-next';
 import { api, wsUrl } from '../api/client.js';
 import EmptyState from './common/EmptyState.vue';
+import ConfirmDialog from './common/ConfirmDialog.vue';
 
 const open = ref(false);
 const loading = ref(false);
@@ -88,6 +90,7 @@ function notifyDesktop(item) {
 }
 const alertEvents = ref([]);
 const expandedLogEventId = ref(null);
+const pruneDialog = ref(false);
 let timer;
 
 /** 事件推送为后台常驻流,断开后持续重连(退避到 30s),不打扰前台交互。 */
@@ -233,7 +236,10 @@ async function muteEvent(eventItem) {
   }
 }
 async function pruneAll() {
-  if (!confirm('清空 7 天前的告警事件?')) return;
+  pruneDialog.value = true;
+}
+async function confirmPrune() {
+  pruneDialog.value = false;
   await api.pruneAlertEvents(7).catch(() => {});
   await load();
 }

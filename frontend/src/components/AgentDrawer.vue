@@ -11,7 +11,7 @@
         <div v-if="!messages.length" class="agent-drawer-empty"><MessageCircle class="h-6 w-6 text-cyan-400" /><p>可以询问当前页面的数据、状态或操作方式。</p><button class="preset-chip" @click="input = defaultPrompt; focusInput()">{{ defaultPrompt }}</button></div>
         <article v-for="message in messages" :key="message.id" class="agent-drawer-message" :class="message.role">
           <div class="agent-drawer-avatar"><UserRound v-if="message.role === 'user'" class="h-3.5 w-3.5" /><Bot v-else class="h-3.5 w-3.5" /></div>
-          <div class="min-w-0 max-w-[calc(100%-2rem)]"><div v-if="message.tools?.length" class="agent-drawer-tool-track"><span v-for="(tool, index) in message.tools" :key="index" class="agent-drawer-tool-chip" :class="tool.status"><i></i>{{ tool.tool }}<em v-if="tool.durationMs">{{ (tool.durationMs / 1000).toFixed(1) }}s</em></span></div><div v-if="message.streaming && !message.content" class="agent-typing"><i></i><i></i><i></i><span>正在处理</span></div><div v-else-if="message.role === 'assistant' && !message.content" class="agent-empty-reply">(未返回内容)</div><div v-else-if="message.role === 'assistant'" class="agent-drawer-markdown" v-html="renderMarkdown(message.content)"></div><div v-else class="agent-drawer-user">{{ message.content }}</div>
+          <div class="min-w-0 max-w-[calc(100%-2rem)]"><div v-if="message.tools?.length" class="agent-drawer-tool-track"><span v-for="(tool, index) in message.tools" :key="index" class="agent-drawer-tool-chip" :class="tool.status"><i></i>{{ tool.tool }}<em v-if="tool.durationMs">{{ (tool.durationMs / 1000).toFixed(1) }}s</em></span></div><div v-if="message.streaming && !message.content" class="agent-typing"><i></i><i></i><i></i><span>正在处理</span></div><div v-else-if="message.role === 'assistant' && !message.content" class="agent-empty-reply">(未返回内容)</div><AgentMarkdown v-else-if="message.role === 'assistant'" class="agent-drawer-markdown" :content="message.content" /><div v-else class="agent-drawer-user">{{ message.content }}</div>
             <div v-if="message.confirmation" class="agent-drawer-confirm"><strong>需要确认后执行<span v-if="message.confirmation.tool" class="ml-1.5 font-mono text-[11px] text-amber-200/80">{{ message.confirmation.tool }}</span></strong><p>{{ message.confirmation.description }}</p><details class="agent-confirm-params" @toggle="initParamsEdit($event, message)"><summary>查看 / 编辑参数</summary><textarea v-model="message.confirmation.paramsText" class="agent-confirm-params-text" rows="5" spellcheck="false"></textarea></details><div class="mt-2 flex gap-2"><button class="btn-primary !py-1 !text-xs" :disabled="message.confirmation.busy" @click="approveWithParams(message)">确认执行</button><button class="btn-secondary !py-1 !text-xs" :disabled="message.confirmation.busy" @click="reject(message)">拒绝</button></div></div>
           </div>
         </article>
@@ -22,7 +22,7 @@
       <div v-if="zoomOpen" class="rich-zoom-mask" @click.self="closeZoom()" @wheel.prevent="onZoomWheel">
         <div class="rich-zoom-card agent-markdown" :style="{ transform: `scale(${zoomScale})` }">
           <button class="rich-zoom-close" title="关闭(Esc)" @click="closeZoom">×</button>
-          <div class="rich-zoom-content" v-html="zoomContent"></div>
+          <AgentMarkdown class="rich-zoom-content" :html="zoomContent" />
         </div>
       </div>
     </teleport>
@@ -35,9 +35,9 @@ import { Bot, MessageCircle, Send, Square, UserRound, X } from 'lucide-vue-next'
 import { useAgentConsole } from '../composables/useAgentConsole.js';
 import { useAgentChat } from '../composables/useAgentChat.js';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
-import { renderAgentMarkdown } from '../lib/agent-markdown.js';
 import { stripAgentProtocol } from '../lib/agent-text.js';
 import { api } from '../api/client.js';
+import AgentMarkdown from './common/AgentMarkdown.vue';
 
 const { open, context, closeAgent } = useAgentConsole();
 const chat = useAgentChat();
@@ -48,7 +48,6 @@ const pageContext = computed(() => ({ page: context.value.page || '当前页面'
 const contextSummary = computed(() => pageContext.value.summary || pageContext.value.state || '路由与页面状态已同步');
 const defaultPrompt = computed(() => pageContext.value.mode === 'cron-editor' ? '根据当前表单帮我创建这个定时任务' : '请分析当前页面，并告诉我可以做什么');
 useEscapeKey({ active: open, onClose: closeAgent, layer: 'drawer', lockBody: true });
-function renderMarkdown(value) { return renderAgentMarkdown(value); }
 function focusInput() { void nextTick(() => inputEl.value?.focus()); }
 function submit() { void sendMessage(input.value.trim(), { pageContext: pageContext.value }); }
 async function restoreLatestSession() {
