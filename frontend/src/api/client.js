@@ -141,7 +141,7 @@ export const api = {
   getProjectEnv: (projectId, file = '', force = false) => request(`/projects/${projectId}/env?${new URLSearchParams({ ...(file ? { file } : {}), ...(force ? { force: '1' } : {}) })}`),
   getProjectEnvFiles: (projectId) => request(`/projects/${projectId}/env/files`),
   saveProjectEnv: (projectId, payload) => request(`/projects/${projectId}/env`, { method: 'PUT', body: JSON.stringify(payload) }),
-  streamApplyEnv: (projectId, onFrame) => streamComposeControl(projectId, null, onFrame, `/projects/${projectId}/env/apply`, { restart: true }),
+  streamApplyEnv: (projectId, onFrame, signal) => streamComposeControl(projectId, null, onFrame, `/projects/${projectId}/env/apply`, { restart: true }, signal),
   getBackups: (projectId) => request(`/projects/${projectId}/backups`),
   getBackup: (projectId, backupId) => request(`/projects/${projectId}/backups/${backupId}`),
   restoreBackup: (projectId, backupId) => request(`/projects/${projectId}/backups/${backupId}/restore`, { method: 'POST' }),
@@ -169,8 +169,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ containerId, dbName }),
     }),
-  streamUpgrade: (projectId, onFrame) => streamComposeControl(projectId, null, onFrame, `/projects/${projectId}/upgrade`, {}),
-  streamRollback: (projectId, onFrame) => streamComposeControl(projectId, null, onFrame, `/projects/${projectId}/rollback`, {}),
+  streamUpgrade: (projectId, onFrame, signal) => streamComposeControl(projectId, null, onFrame, `/projects/${projectId}/upgrade`, {}, signal),
+  streamRollback: (projectId, onFrame, signal) => streamComposeControl(projectId, null, onFrame, `/projects/${projectId}/rollback`, {}, signal),
   checkAllUpdates: () => request('/ops/updates/check-all', { method: 'POST' }),
   // docker storage
   getStorageDf: async () => normalizeStorageDf(await request('/ops/storage/df')),
@@ -249,12 +249,13 @@ export const api = {
  * @param {(frame:{type,data:string})=>void} onFrame
  * @returns {Promise<void>} resolve on stream end
  */
-export async function streamComposeControl(projectId, action, onFrame, path = null, body = null) {
+export async function streamComposeControl(projectId, action, onFrame, path = null, body = null, signal = undefined) {
   const endpoint = path || `/projects/${projectId}/actions`;
   const res = await fetch(`${BASE}${endpoint}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : JSON.stringify({ action }),
+    signal,
   });
   if (!res.ok || !res.body) {
     const payload = await res.json().catch(() => ({}));

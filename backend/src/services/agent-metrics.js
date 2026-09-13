@@ -6,6 +6,36 @@
 
 import { getActivityDocker } from './docker-hosts.js';
 import { getSetting, setSetting } from '../lib/db.js';
+import { scanProjects } from './scanner.js';
+
+function readAlertRules() {
+  const value = getSetting('alert_rules', '[]');
+  if (Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(value || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 只允许访问当前 Docker 节点上明确纳管的容器。 */
+export async function resolveManagedContainer(containerIdOrName) {
+  const needle = String(containerIdOrName || '');
+  if (!needle) throw Object.assign(new Error('容器标识不能为空'), { statusCode: 400 });
+  const projects = await scanProjects();
+  const matches = [];
+  for (const project of projects) {
+    if (!project.managed) continue;
+    const container = project.containers.find((item) =>
+      item.id === needle || item.id.startsWith(needle) || item.name === needle
+    );
+    if (container) matches.push({ project, container });
+  }
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) throw Object.assign(new Error('容器标识不唯一，请使用完整容器 ID 或名称'), { statusCode: 400 });
+  throw Object.assign(new Error('容器不属于当前节点的纳管项目'), { statusCode: 403 });
+}
 
 /**
  * 查询容器资源使用情况
@@ -15,8 +45,9 @@ import { getSetting, setSetting } from '../lib/db.js';
  * @returns {Promise<object>}
  */
 export async function queryContainerMetrics(containerIdOrName, metric = 'cpu', period = '5m') {
+  const { container: managedContainer } = await resolveManagedContainer(containerIdOrName);
   const docker = await getActivityDocker();
-  const container = docker.getContainer(containerIdOrName);
+  const container = docker.getContainer(managedContainer.id);
   
   // 获取实时统计
   const stats = await container.stats({ stream: false });
@@ -25,7 +56,7 @@ export async function queryContainerMetrics(containerIdOrName, metric = 'cpu', p
   const parsed = parseContainerStats(stats, metric);
   
   // 获取历史数据（如果启用了监控）
-  const historical = await getHistoricalMetrics(containerIdOrName, metric, period);
+  const historical = await getHistoricalMetrics(managedContainer.id, metric, period);
   
   return {
     current: parsed.current,
@@ -170,14 +201,15 @@ export async function configureAlert(config) {
   const { container, metric, threshold, duration = '5m', action = 'notify' } = config;
   
   // 验证容器存在
+  const { container: managedContainer } = await resolveManagedContainer(container);
   const docker = await getActivityDocker();
-  const containerObj = docker.getContainer(container);
+  const containerObj = docker.getContainer(managedContainer.id);
   await containerObj.inspect(); // 抛出异常如果不存在
   
   // 创建告警规则
   const rule = {
     id: `alert_${Date.now()}`,
-    container,
+    container: managedContainer.id,
     metric,
     threshold,
     duration,
@@ -187,9 +219,9 @@ export async function configureAlert(config) {
   };
   
   // 保存到数据库
-  const existingRules = await getSetting('alert_rules') || [];
+  const existingRules = readAlertRules();
   existingRules.push(rule);
-  await setSetting('alert_rules', existingRules);
+  setSetting('alert_rules', JSON.stringify(existingRules));
   
   return { ruleId: rule.id, enabled: true };
 }
@@ -198,22 +230,31 @@ export async function configureAlert(config) {
  * 列出告警规则
  */
 export async function listAlerts(containerFilter = null) {
-  const rules = await getSetting('alert_rules') || [];
+  const rules = readAlertRules();
+  const managedIds = new Set();
+  for (const project of await scanProjects()) {
+    if (project.managed) for (const container of project.containers) managedIds.add(container.id);
+  }
+  const visibleRules = rules.filter((rule) => managedIds.has(rule.container));
   
   if (containerFilter) {
-    return rules.filter(r => r.container === containerFilter);
+    const { container } = await resolveManagedContainer(containerFilter);
+    return visibleRules.filter(r => r.container === container.id);
   }
   
-  return rules;
+  return visibleRules;
 }
 
 /**
  * 删除告警规则
  */
 export async function deleteAlert(ruleId) {
-  const rules = await getSetting('alert_rules') || [];
+  const rules = readAlertRules();
+  const rule = rules.find((item) => item.id === ruleId);
+  if (!rule) return { deleted: 0 };
+  await resolveManagedContainer(rule.container);
   const updated = rules.filter(r => r.id !== ruleId);
-  await setSetting('alert_rules', updated);
+  setSetting('alert_rules', JSON.stringify(updated));
   return { deleted: rules.length - updated.length };
 }
 
@@ -221,11 +262,15 @@ export async function deleteAlert(ruleId) {
  * 检查告警条件（由后台任务定期调用）
  */
 export async function checkAlerts() {
-  const rules = await getSetting('alert_rules') || [];
+  const rules = readAlertRules();
   const docker = await getActivityDocker();
+  const managedIds = new Set();
+  for (const project of await scanProjects()) {
+    if (project.managed) for (const container of project.containers) managedIds.add(container.id);
+  }
   const triggered = [];
   
-  for (const rule of rules.filter(r => r.enabled)) {
+  for (const rule of rules.filter(r => r.enabled && managedIds.has(r.container))) {
     try {
       const container = docker.getContainer(rule.container);
       const stats = await container.stats({ stream: false });

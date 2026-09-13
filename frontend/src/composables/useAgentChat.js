@@ -31,6 +31,7 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
   const scrollEl = ref(null);
   const subscriber = { onEventExtra, onApproval };
   subscribers.add(subscriber);
+  function setSubscriberActive(active) { subscriber.active = active !== false; }
   // 滚动跟随:用户向上回看时暂停自动滚底,回到底部(或手动点"回到底部")后恢复。
   const atBottom = ref(true);
   // token 节流:SSE 分片逐条追加会让 marked+DOMPurify 每个 chunk 全量重渲染,
@@ -146,7 +147,7 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
     else if (event.type === 'interrupted') { flushTokens(); assistant.confirmation = null; assistant.content += `${assistant.content ? '\n\n' : ''}${stripAgentProtocol(event.reason || '执行已中断')}`; }
     else if (event.type === 'error') { flushTokens(); assistant.confirmation = null; assistant.content += `${assistant.content ? '\n\n' : ''}${stripAgentProtocol(event.content || 'Agent 执行失败')}`; }
     else if (event.type === 'done') { flushTokens(); if (event.content) assistant.content = stripAgentProtocol(event.content); }
-    for (const item of subscribers) item.onEventExtra?.(event, assistant);
+    for (const item of subscribers) { if (item.active !== false) item.onEventExtra?.(event, assistant); }
     scrollBottom();
   }
 
@@ -159,7 +160,7 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
       if (inputOverride && typeof inputOverride === 'object' && Object.keys(inputOverride).length) payload.input = inputOverride;
       await api.agentApprove(payload);
       message.confirmation = null;
-      for (const item of subscribers) item.onApproval?.(message, 'approved');
+      for (const item of subscribers) { if (item.active !== false) item.onApproval?.(message, 'approved'); }
     } catch (error) {
       confirmation.busy = false;
       message.content = `确认失败：${error.message}`;
@@ -173,7 +174,7 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
     try {
       await api.agentApprove({ executionId: confirmation.executionId, toolCallId: confirmation.toolCallId, approved: false });
       message.confirmation = null;
-      for (const item of subscribers) item.onApproval?.(message, 'rejected');
+      for (const item of subscribers) { if (item.active !== false) item.onApproval?.(message, 'rejected'); }
     } catch (error) {
       confirmation.busy = false;
       message.content = `拒绝失败：${error.message}`;
@@ -225,7 +226,7 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
 
   onBeforeUnmount(() => subscribers.delete(subscriber));
 
-  return { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, ensureSession, resetSession, sendMessage, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom };
+  return { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, ensureSession, resetSession, sendMessage, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom, setSubscriberActive };
 }
 
 function resetSharedState() {

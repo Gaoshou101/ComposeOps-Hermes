@@ -1,6 +1,6 @@
 <template>
   <aside class="app-sidebar fixed md:static bottom-0 left-0 right-0 z-40 h-16 md:h-auto md:w-[216px] shrink-0 flex flex-col">
-    <nav class="flex md:flex-col flex-1 md:px-3 md:py-4 overflow-x-auto md:overflow-y-auto">
+    <nav class="hidden md:flex md:flex-col flex-1 md:px-3 md:py-4 overflow-y-auto">
       <template v-for="group in groups" :key="group.label">
         <div class="hidden md:block px-2 pb-1 pt-3 first:pt-0 text-[10px] font-semibold uppercase tracking-[0.16em] text-surface-600">{{ group.label }}</div>
         <router-link
@@ -16,15 +16,39 @@
         </router-link>
       </template>
     </nav>
+    <nav class="flex md:hidden h-16 items-stretch justify-around px-1 pb-[env(safe-area-inset-bottom)]" aria-label="主导航">
+      <router-link v-for="item in mobileItems" :key="item.to" :to="item.to" class="nav-link flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 text-[10px] text-surface-400" active-class="nav-link-active">
+        <component :is="item.icon" class="h-[18px] w-[18px] shrink-0" />
+        <span class="max-w-full truncate">{{ item.label }}</span>
+      </router-link>
+      <button class="nav-link flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 text-[10px] text-surface-400" :class="{ 'nav-link-active': moreOpen }" aria-label="更多功能" @click="moreOpen = true">
+        <Menu class="h-[18px] w-[18px]" />
+        <span>更多</span>
+      </button>
+    </nav>
     <div class="hidden md:block mx-4 mb-4 rounded-xl border border-surface-800/80 bg-surface-950/50 p-3">
       <div class="flex items-center gap-2 text-xs text-surface-300"><span class="status-dot bg-emerald-400"></span>本地控制台</div>
       <p class="mt-1.5 text-[11px] leading-4 text-surface-600">集中管理 Compose 服务与运行状态</p>
     </div>
   </aside>
+  <teleport to="body">
+    <div v-if="moreOpen" class="fixed inset-0 z-[51] bg-black/55 md:hidden" @click.self="moreOpen = false">
+      <section class="absolute inset-x-0 bottom-0 max-h-[78dvh] overflow-y-auto rounded-t-2xl border-t border-surface-700 bg-surface-950 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-2xl" role="dialog" aria-modal="true" aria-label="更多功能">
+        <div class="mb-3 flex items-center justify-between"><div><h2 class="text-base font-semibold text-surface-100">更多功能</h2><p class="mt-0.5 text-xs text-muted">配置、排障与系统工具</p></div><button class="icon-btn" title="关闭" @click="moreOpen = false">×</button></div>
+        <div class="grid grid-cols-2 gap-2">
+          <router-link v-for="item in moreItems" :key="item.to" :to="item.to" class="flex min-h-14 items-center gap-3 rounded-xl border border-surface-800 bg-surface-900/60 px-3 py-2.5 text-sm text-surface-300 transition hover:border-surface-600 hover:bg-surface-800" @click="moreOpen = false">
+            <component :is="item.icon" class="h-4 w-4 shrink-0 text-accent" /><span>{{ item.label }}</span>
+          </router-link>
+        </div>
+      </section>
+    </div>
+  </teleport>
 </template>
 
 <script setup>
-import { Boxes, Clock3, FileCode2, ScrollText, TerminalSquare, Bot, ChartNoAxesCombined, HardDrive, History, Settings, Store, Activity, GitBranch, DollarSign, Package } from 'lucide-vue-next';
+import { ref } from 'vue';
+import { useEscapeKey } from '../composables/useEscapeKey.js';
+import { Boxes, Clock3, FileCode2, ScrollText, TerminalSquare, Bot, ChartNoAxesCombined, HardDrive, History, Settings, Store, Activity, GitBranch, DollarSign, Package, Menu } from 'lucide-vue-next';
 const groups = [
   { label: '运行', items: [
     { to: '/services', icon: Boxes, label: '服务' },
@@ -50,4 +74,8 @@ const groups = [
     { to: '/settings', icon: Settings, label: '设置' },
   ] },
 ];
+const moreOpen = ref(false);
+const mobileItems = [groups[0].items[0], groups[1].items[0], groups[1].items[2], groups[1].items[3]];
+const moreItems = groups.flatMap((group) => group.items).filter((item) => !mobileItems.some((mobileItem) => mobileItem.to === item.to));
+useEscapeKey({ active: moreOpen, layer: 'drawer', onClose: () => { moreOpen.value = false; }, lockBody: true });
 </script>

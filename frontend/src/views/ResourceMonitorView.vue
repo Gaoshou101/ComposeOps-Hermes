@@ -1,5 +1,5 @@
 <template>
-  <div class="resource-monitor-view">
+  <div class="page-shell resource-monitor-view">
     <!-- Header -->
     <div class="mb-4 flex items-center justify-between">
       <div>
@@ -171,7 +171,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Activity, AlertTriangle, Bell, Cpu, Database, HardDrive, Minus, Network, RefreshCw, TrendingDown, TrendingUp, X } from 'lucide-vue-next';
 import { api, metricsApi } from '../api/client.js';
 import StatusBadge from '../components/common/StatusBadge.vue';
@@ -361,75 +361,27 @@ async function deleteAlertRule(ruleId) {
 onMounted(async () => {
   await loadProjects();
   await loadAlerts();
+  window.addEventListener('composeops:host-changed', onHostChanged);
 });
+
+function onHostChanged() {
+  projectId.value = '';
+  containerId.value = '';
+  metricsData.value = null;
+  historySeries.value = [];
+  anomalies.value = [];
+  alerts.value = [];
+  void loadProjects();
+  void loadAlerts();
+}
+
+onBeforeUnmount(() => window.removeEventListener('composeops:host-changed', onHostChanged));
 
 watch(selectedMetric, () => { if (containerId.value) void loadMetrics(); });
 </script>
 
 <style scoped>
-.resource-monitor-view {
-  padding: 1.5rem;
-  min-height: 100vh;
-}
-
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border-radius: 0.5rem;
-  transition: all 0.2s;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
-  transform: translateY(-1px);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  padding: 0.5rem 1rem;
-  background: #27272a;
-  color: #a1a1aa;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border-radius: 0.5rem;
-  transition: all 0.2s;
-}
-
-.btn-secondary:hover {
-  background: #3f3f46;
-}
-
-.input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  background: #18181b;
-  border: 1px solid #27272a;
-  color: #fafafa;
-  font-size: 0.875rem;
-  border-radius: 0.375rem;
-  transition: all 0.2s;
-}
-
-.input:focus {
-  outline: none;
-  border-color: #10b981;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
-}
-
-.input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+ .resource-monitor-view { min-height: 0; }
 
 .metric-card {
   padding: 1rem;

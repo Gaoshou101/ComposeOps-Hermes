@@ -1,4 +1,4 @@
-import { queryContainerMetrics, configureAlert, listAlerts, deleteAlert } from '../services/agent-metrics.js';
+import { queryContainerMetrics, configureAlert, listAlerts, deleteAlert, resolveManagedContainer } from '../services/agent-metrics.js';
 import {
   queryHistoricalMetrics,
   getMetricsStats,
@@ -126,9 +126,10 @@ export default async function metricsRoutes(fastify) {
     },
     async (request) => {
       const { containerId, metricType, startTime, endTime, aggregation = 'auto' } = request.query;
+      const { container } = await resolveManagedContainer(containerId);
       
       const metrics = queryHistoricalMetrics({
-        containerId,
+        containerId: container.id,
         metricType,
         startTime: startTime ? parseInt(startTime, 10) : undefined,
         endTime: endTime ? parseInt(endTime, 10) : undefined,
@@ -166,8 +167,9 @@ export default async function metricsRoutes(fastify) {
     async (request) => {
       const { containerId, metricType } = request.params;
       const { hours = 24 } = request.query;
+      const { container } = await resolveManagedContainer(containerId);
 
-      const stats = getMetricsStats(containerId, metricType, parseInt(hours, 10));
+      const stats = getMetricsStats(container.id, metricType, parseInt(hours, 10));
       
       if (!stats) {
         return { 
@@ -204,12 +206,13 @@ export default async function metricsRoutes(fastify) {
     },
     async (request) => {
       const { containerId, metricType, hours = 24, algorithms = ['z_score', 'moving_average', 'trend'] } = request.body;
+      const { container } = await resolveManagedContainer(containerId);
 
       const endTime = Date.now();
       const startTime = endTime - hours * 3600 * 1000;
 
       const metrics = queryHistoricalMetrics({
-        containerId,
+        containerId: container.id,
         metricType,
         startTime,
         endTime,
@@ -241,7 +244,8 @@ export default async function metricsRoutes(fastify) {
     },
     async (request) => {
       const { containerId } = request.params;
-      const alerts = evaluateAlertRules(containerId);
+      const { container } = await resolveManagedContainer(containerId);
+      const alerts = evaluateAlertRules(container.id);
 
       return {
         alerts,

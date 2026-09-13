@@ -49,11 +49,11 @@ import { preloadRouteChunks } from './router.js';
 
 // keep-alive 白名单(SFC 文件名即组件名):
 // 保住输入中状态、滚动位置与重组件(Monaco/终端/会话),切回页面零重建。
-// 刻意排除 Logs/Monitor/ResourceMonitor —— 三页有日志流或定时轮询,保活会后台持续拉数据。
+// 实时数据页与任务页刻意不保活,切页后及时释放 WebSocket、SSE 和轮询。
 const keepAliveViews = [
-  'ServicesView', 'ComposeView', 'ShellView', 'AgentWorkflowView', 'AgentExecutionHistoryView',
-  'OperationsView', 'SettingsView', 'MarketplaceView', 'ConverterView', 'GitOpsView', 'CostAnalysisView',
-  'CronTasksView', 'ResourcesView',
+  'ComposeView', 'ShellView', 'AgentWorkflowView', 'AgentExecutionHistoryView',
+  'SettingsView', 'MarketplaceView', 'ConverterView', 'GitOpsView', 'CostAnalysisView',
+  'ResourcesView',
 ];
 
 const auth = useAuthStore();

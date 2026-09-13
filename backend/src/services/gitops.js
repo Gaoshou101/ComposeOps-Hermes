@@ -8,9 +8,9 @@
  * - 多环境配置（dev/staging/prod 分支映射）
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import path, { join } from 'node:path';
 import { getSetting, setSetting } from '../lib/db.js';
 import { sendNotification } from './notifications.js';
 
@@ -19,6 +19,42 @@ const POLL_INTERVAL_KEY = 'gitops.poll_interval';
 const DEFAULT_POLL_INTERVAL = 300; // 5 分钟
 
 const activeWatchers = new Map(); // repoId -> { interval, syncing }
+
+const SAFE_BRANCH = /^(?![./])(?!.*(?:\.\.|\/\/|@\{))[A-Za-z0-9][A-Za-z0-9._/-]{0,99}(?<![./])$/;
+const SAFE_COMMIT = /^[0-9a-f]{7,40}$/i;
+
+function validateGitRef(value, label = '分支') {
+  const ref = String(value || '');
+  if (!SAFE_BRANCH.test(ref)) throw Object.assign(new Error(label + '格式不合法'), { statusCode: 400 });
+  return ref;
+}
+
+function validateLocalPath(value) {
+  const localPath = String(value || '');
+  if (!localPath || localPath.includes('\0') || !path.isAbsolute(localPath)) {
+    throw Object.assign(new Error('本地路径必须是绝对路径且不能包含非法字符'), { statusCode: 400 });
+  }
+  return path.normalize(localPath);
+}
+
+function validateSshKey(value) {
+  if (!value) return null;
+  const sshKey = String(value);
+  if (sshKey.includes('\0') || !path.isAbsolute(sshKey)) {
+    throw Object.assign(new Error('SSH 私钥路径必须是绝对路径'), { statusCode: 400 });
+  }
+  return path.normalize(sshKey);
+}
+
+function gitEnv(sshKey) {
+  if (!sshKey) return process.env;
+  const quoted = "'" + sshKey.replaceAll("'", "'\\\\''") + "'";
+  return { ...process.env, GIT_SSH_COMMAND: 'ssh -i ' + quoted + ' -o StrictHostKeyChecking=accept-new' };
+}
+
+function runGit(args, options = {}) {
+  return execFileSync('git', args, { stdio: 'pipe', ...options });
+}
 
 /** 防止同一仓库的自动同步在上一轮未结束时被下一轮并发触发(git 操作竞态)。 */
 function withSyncGuard(repoId, fn) {
@@ -63,11 +99,14 @@ export function addGitOpsRepo(config) {
     throw Object.assign(new Error('仓库名称、URL、本地路径、项目 ID 均为必填'), { statusCode: 400 });
   }
 
+  const normalizedPath = validateLocalPath(localPath);
+  const normalizedBranch = validateGitRef(branch);
+  const normalizedSshKey = validateSshKey(sshKey);
   const repos = listGitOpsRepos();
   const id = `gitops_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   
   // 验证本地路径不冲突
-  if (repos.some((repo) => repo.localPath === localPath)) {
+  if (repos.some((repo) => repo.localPath && path.resolve(repo.localPath) === normalizedPath)) {
     throw Object.assign(new Error('本地路径已被其他 GitOps 仓库占用'), { statusCode: 400 });
   }
 
@@ -75,11 +114,11 @@ export function addGitOpsRepo(config) {
     id,
     name,
     url,
-    branch,
-    localPath,
+    branch: normalizedBranch,
+    localPath: normalizedPath,
     projectId,
     autoSync,
-    sshKey: sshKey || null,
+    sshKey: normalizedSshKey,
     lastSync: null,
     lastCommit: null,
     status: 'pending',
@@ -108,7 +147,14 @@ export function updateGitOpsRepo(id, updates) {
   }
 
   const oldRepo = repos[index];
-  const newRepo = { ...oldRepo, ...updates, id: oldRepo.id }; // 禁止修改 id
+  const normalizedUpdates = { ...updates };
+  if (Object.hasOwn(normalizedUpdates, 'branch')) normalizedUpdates.branch = validateGitRef(normalizedUpdates.branch);
+  if (Object.hasOwn(normalizedUpdates, 'localPath')) normalizedUpdates.localPath = validateLocalPath(normalizedUpdates.localPath);
+  if (Object.hasOwn(normalizedUpdates, 'sshKey')) normalizedUpdates.sshKey = validateSshKey(normalizedUpdates.sshKey);
+  if (normalizedUpdates.localPath && repos.some((repo, repoIndex) => repoIndex !== index && repo.localPath && path.resolve(repo.localPath) === normalizedUpdates.localPath)) {
+    throw Object.assign(new Error('本地路径已被其他 GitOps 仓库占用'), { statusCode: 400 });
+  }
+  const newRepo = { ...oldRepo, ...normalizedUpdates, id: oldRepo.id }; // 禁止修改 id
   
   repos[index] = newRepo;
   saveGitOpsRepos(repos);
@@ -154,24 +200,27 @@ export async function syncGitOpsRepo(id) {
     throw Object.assign(new Error('GitOps 仓库不存在'), { statusCode: 404 });
   }
 
-  const { url, branch, localPath, sshKey } = repo;
+  const url = String(repo.url || '');
+  const branch = validateGitRef(repo.branch);
+  const localPath = validateLocalPath(repo.localPath);
+  const sshKey = validateSshKey(repo.sshKey);
   const gitDir = join(localPath, '.git');
-  const env = sshKey ? { ...process.env, GIT_SSH_COMMAND: `ssh -i ${sshKey} -o StrictHostKeyChecking=no` } : process.env;
+  const env = gitEnv(sshKey);
 
   try {
     // 如果本地仓库不存在，执行 clone
     if (!existsSync(gitDir)) {
       mkdirSync(localPath, { recursive: true });
-      execSync(`git clone --branch ${branch} ${url} ${localPath}`, { env, stdio: 'pipe' });
+      runGit(['clone', '--branch', branch, '--', url, localPath], { env });
     } else {
       // 已存在则执行 pull
-      execSync(`git -C ${localPath} fetch origin ${branch}`, { env, stdio: 'pipe' });
-      execSync(`git -C ${localPath} reset --hard origin/${branch}`, { env, stdio: 'pipe' });
+      runGit(['-C', localPath, 'fetch', 'origin', branch], { env });
+      runGit(['-C', localPath, 'reset', '--hard', 'origin/' + branch], { env });
     }
 
     // 读取最新 commit
-    const commit = execSync(`git -C ${localPath} rev-parse HEAD`, { encoding: 'utf-8', env }).trim();
-    const commitMsg = execSync(`git -C ${localPath} log -1 --pretty=%B`, { encoding: 'utf-8', env }).trim();
+    const commit = runGit(['-C', localPath, 'rev-parse', 'HEAD'], { encoding: 'utf-8', env }).trim();
+    const commitMsg = runGit(['-C', localPath, 'log', '-1', '--pretty=%B'], { encoding: 'utf-8', env }).trim();
 
     // 更新配置
     repo.lastSync = new Date().toISOString();
@@ -199,7 +248,7 @@ export async function getGitOpsHistory(id, limit = 20) {
     throw Object.assign(new Error('GitOps 仓库不存在'), { statusCode: 404 });
   }
 
-  const { localPath } = repo;
+  const localPath = validateLocalPath(repo.localPath);
   const gitDir = join(localPath, '.git');
 
   if (!existsSync(gitDir)) {
@@ -207,10 +256,11 @@ export async function getGitOpsHistory(id, limit = 20) {
   }
 
   try {
-    const log = execSync(
-      `git -C ${localPath} log -${limit} --pretty=format:'%H|%an|%ae|%ad|%s' --date=iso`,
-      { encoding: 'utf-8' }
-    );
+    const safeLimit = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 20));
+    const log = runGit([
+      '-C', localPath, 'log', '-' + safeLimit,
+      '--pretty=format:%H|%an|%ae|%ad|%s', '--date=iso'
+    ], { encoding: 'utf-8' });
 
     const commits = log.split('\n').filter(Boolean).map((line) => {
       const [hash, author, email, date, ...messageParts] = line.split('|');
@@ -234,25 +284,30 @@ export async function rollbackGitOpsRepo(id, commitHash) {
     throw Object.assign(new Error('GitOps 仓库不存在'), { statusCode: 404 });
   }
 
-  const { localPath, sshKey } = repo;
-  const env = sshKey ? { ...process.env, GIT_SSH_COMMAND: `ssh -i ${sshKey} -o StrictHostKeyChecking=no` } : process.env;
+  const localPath = validateLocalPath(repo.localPath);
+  const commit = String(commitHash || '');
+  if (!SAFE_COMMIT.test(commit)) {
+    throw Object.assign(new Error('提交 ID 格式不合法'), { statusCode: 400 });
+  }
+  const sshKey = validateSshKey(repo.sshKey);
+  const env = gitEnv(sshKey);
 
   try {
-    execSync(`git -C ${localPath} checkout ${commitHash}`, { env, stdio: 'pipe' });
+    runGit(['-C', localPath, 'checkout', '--detach', commit], { env });
     
-    const commitMsg = execSync(`git -C ${localPath} log -1 --pretty=%B`, { encoding: 'utf-8', env }).trim();
+    const commitMsg = runGit(['-C', localPath, 'log', '-1', '--pretty=%B'], { encoding: 'utf-8', env }).trim();
 
     repo.lastSync = new Date().toISOString();
-    repo.lastCommit = commitHash;
+    repo.lastCommit = commit;
     repo.status = 'synced';
     saveGitOpsRepos(repos);
 
     await sendNotification(
       'GitOps 版本回滚',
-      `仓库 ${repo.name} 已回滚到提交 ${commitHash.slice(0, 7)}: ${commitMsg}`
+      `仓库 ${repo.name} 已回滚到提交 ${commit.slice(0, 7)}: ${commitMsg}`
     );
 
-    return { ok: true, commit: commitHash, message: commitMsg };
+    return { ok: true, commit, message: commitMsg };
   } catch (error) {
     throw Object.assign(new Error(`版本回滚失败: ${error.message}`), { statusCode: 502 });
   }

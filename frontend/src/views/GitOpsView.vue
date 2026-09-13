@@ -5,7 +5,7 @@
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 class="text-xl font-semibold text-slate-100">GitOps 集成</h1>
-          <p class="mt-1 text-sm text-slate-400">自动同步 Git 仓库，基于提交部署服务</p>
+          <p class="mt-1 text-sm text-slate-400">同步 Git 仓库，按提交查看代码版本</p>
         </div>
         <button
           @click="openAddModal"
@@ -31,7 +31,7 @@
             d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
         </svg>
         <p class="text-lg text-slate-300">暂无 GitOps 仓库</p>
-        <p class="mt-2 text-sm text-slate-500">添加第一个仓库开始自动部署</p>
+        <p class="mt-2 text-sm text-slate-500">添加第一个仓库开始同步代码</p>
       </div>
 
       <div v-else class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

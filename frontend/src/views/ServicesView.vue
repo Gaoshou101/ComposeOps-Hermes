@@ -24,6 +24,7 @@
       <span class="ml-auto whitespace-nowrap text-muted">显示 {{ visibleProjects.length }} / {{ store.projects.length }}</span>
     </div>
     <BatchOperationsBar v-if="selectedProjects.length" :selected-count="selectedProjects.length" :busy="busy" @run="runBatch" @clear="selectedIds = []" />
+    <ConfirmDialog :show="batchConfirmation.show" :title="'批量' + actionLabel(batchConfirmation.action)" :message="'将对 ' + batchConfirmation.count + ' 个已纳管项目执行“' + actionLabel(batchConfirmation.action) + '”。操作会按顺序执行，失败项目仍会保留在结果中。确认继续?'" tone="warning" :confirm-text="'确认' + actionLabel(batchConfirmation.action)" @confirm="confirmBatch" @cancel="batchConfirmation.show = false" />
     <Skeleton v-if="store.loading && !store.projects.length" variant="cards" :rows="4" label="服务列表加载中" class="flex-1" />
     <EmptyState v-else-if="!store.projects.length" icon="Boxes" title="暂未发现 Compose 项目" description="Docker 中没有带 Compose 标签的项目,或尚未扫描" />
     <EmptyState v-else-if="!visibleProjects.length" icon="Search" title="没有匹配当前条件的项目" description="调整搜索关键词或筛选条件后重试" action-label="清除筛选" class="flex-1" @action="resetFilters" />
@@ -45,7 +46,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { AlertTriangle, Boxes, CircleCheckBig, Container, Gauge, Keyboard, RefreshCw, Search } from 'lucide-vue-next';
 import { useServicesStore } from '../stores/services.js';
@@ -63,6 +64,7 @@ import BatchOperationsBar from '../components/services/BatchOperationsBar.vue';
 import OperationOutputDrawer from '../components/services/OperationOutputDrawer.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import Skeleton from '../components/common/Skeleton.vue';
+import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 
 const store = useServicesStore();
 const route = useRoute();
@@ -72,7 +74,9 @@ const searchQuery = ref(''); const filter = ref('all'); const sort = ref('priori
 const selectedIds = ref([]); const updateSettings = ref({ lastResults: [] }); const focusedProject = ref('');
 const batchTasks = ref([]); const activityProject = ref(null); const envProject = ref(null); const diagnosis = ref(null); const upgradeProject = ref(null); const dbDumpProject = ref(null); const runningAction = ref({ id: '', action: '' }); const kbFocusId = ref('');
 let jobPollTimer; let activeJobId = ''; let jobPollInFlight = false;
+let controlController = null;
 const output = reactive({ open: false, text: '', action: '', name: '', projectId: '', exitCode: null, running: false });
+const batchConfirmation = reactive({ show: false, action: '', count: 0 });
 const containerCount = computed(() => store.projects.reduce((count, project) => count + project.containers.length, 0));
 const managedCount = computed(() => store.projects.filter((project) => project.managed).length);
 const runningContainerCount = computed(() => store.projects.reduce((count, project) => count + project.containers.filter((container) => container.state === 'running').length, 0));
@@ -115,37 +119,43 @@ async function run(project, action) {
   clearTimeout(jobPollTimer);
   activeJobId = '';
   runningAction.value = { id: project.id, action };
+  controlController?.abort();
+  controlController = new AbortController();
   busy.value = true; batchTasks.value = []; output.open = true; output.text = ''; output.action = action; output.name = project.projectName; output.projectId = project.id; output.exitCode = null; output.running = true;
   try {
     await streamComposeControl(project.id, action, (frame) => {
       if (frame.type === 'stdout' || frame.type === 'stderr') output.text += frame.data;
       else if (frame.type === 'error') output.text += `\n[错误] ${frame.data}`;
       else if (frame.type === 'exit') { output.exitCode = frame.data.code; output.text += `\n[退出码 ${frame.data.code}]`; }
-    });
+    }, null, null, controlController.signal);
     await refresh();
-  } catch (error) { output.text += `\n[请求失败] ${error.message}`; output.exitCode = 1; }
-  finally { busy.value = false; runningAction.value = { id: '', action: '' }; output.running = false; }
+  } catch (error) { if (error.name !== 'AbortError') { output.text += `\n[请求失败] ${error.message}`; output.exitCode = 1; }
+  } finally { controlController = null; busy.value = false; runningAction.value = { id: '', action: '' }; output.running = false; }
 }
 async function handleEnvApply({ project }) {
   envProject.value = null;
   output.open = true; output.text = ''; output.action = 'env.apply'; output.name = project.projectName; output.projectId = project.id; output.exitCode = null; output.running = true;
   busy.value = true;
+  controlController?.abort();
+  controlController = new AbortController();
   try {
     await streamComposeControl(project.id, null, (frame) => {
       if (frame.type === 'stdout' || frame.type === 'stderr') output.text += frame.data;
       else if (frame.type === 'error') output.text += `\n[错误] ${frame.data}`;
       else if (frame.type === 'exit') { output.exitCode = frame.data.code; output.text += `\n[退出码 ${frame.data.code}]`; }
-    }, `/projects/${project.id}/env/apply`, { restart: true });
+    }, `/projects/${project.id}/env/apply`, { restart: true }, controlController.signal);
     useToastStore().success('环境变量已应用,容器平滑重建完成');
     await refresh();
   } catch (error) {
-    output.text += `\n[请求失败] ${error.message}`; output.exitCode = 1;
-  } finally { busy.value = false; output.running = false; }
+    if (error.name !== 'AbortError') { output.text += `\n[请求失败] ${error.message}`; output.exitCode = 1; }
+  } finally { controlController = null; busy.value = false; output.running = false; }
 }
 async function handleUpgrade(project) {
   upgradeProject.value = null;
   output.open = true; output.text = ''; output.action = 'images.upgrade'; output.name = project.projectName; output.projectId = project.id; output.exitCode = null; output.running = true;
   busy.value = true;
+  controlController?.abort();
+  controlController = new AbortController();
   try {
     await api.streamUpgrade(project.id, (frame) => {
       if (frame.type === 'stdout' || frame.type === 'stderr') output.text += frame.data;
@@ -154,12 +164,12 @@ async function handleUpgrade(project) {
       else if (frame.type === 'result') {
         if (frame.data?.degraded) output.text += `\n[升级后容器未通过健康检查,可在活动/备份中回滚]`;
       }
-    });
+    }, controlController.signal);
     useToastStore().success('镜像升级完成');
     store.refresh();
   } catch (error) {
-    output.text += `\n[请求失败] ${error.message}`; output.exitCode = 1;
-  } finally { busy.value = false; output.running = false; }
+    if (error.name !== 'AbortError') { output.text += `\n[请求失败] ${error.message}`; output.exitCode = 1; }
+  } finally { controlController = null; busy.value = false; output.running = false; }
 }
 function openDiagnosisForOutput() {
   const project = store.projects.find((p) => p.id === output.projectId);
@@ -178,7 +188,15 @@ function openDiagnosisForOutput() {
 async function runBatch(action) {
   const projects = selectedProjects.value;
   if (!projects.length) return;
-  if ((action === 'stop' || action === 'restart') && !window.confirm(`确认对 ${projects.length} 个项目执行${actionLabel(action)}？`)) return;
+  batchConfirmation.action = action;
+  batchConfirmation.count = projects.length;
+  batchConfirmation.show = true;
+}
+async function confirmBatch() {
+  const action = batchConfirmation.action;
+  batchConfirmation.show = false;
+  const projects = selectedProjects.value;
+  if (!projects.length || !action) return;
   busy.value = true; output.open = true; output.text = ''; output.action = action; output.name = `${projects.length} 个项目`;
   try {
     const job = await api.createProjectBatchJob(projects.map((project) => project.id), action);
@@ -248,14 +266,21 @@ const containerSocket = useWebSocket(
   }
 );
 
+function startRealtime() {
+  if (autoRefresh.value) store.startWebSocket(containerSocket);
+}
+function stopRealtime() {
+  store.stopAutoRefresh();
+  store.stopWebSocket();
+}
 watch(autoRefresh, (value) => {
   if (!value) {
-    store.stopAutoRefresh();
-    store.stopWebSocket();
+    stopRealtime();
     return;
   }
-  store.startWebSocket(containerSocket);
+  startRealtime();
 });
+onActivated(() => startRealtime());
 watch([() => route.query.focus, () => store.projects], focusProject, { deep: true });
 onMounted(async () => {
   // 首次进入先拉项目列表,不依赖 WS 是否成功建立;
@@ -264,7 +289,7 @@ onMounted(async () => {
   const updates = await api.getUpdateSettings();
   updateSettings.value = updates;
 
-  if (autoRefresh.value) store.startWebSocket(containerSocket);
+  startRealtime();
 
   if (route.query.job) void pollJob(String(route.query.job));
   void openEnvFromQuery();
@@ -308,10 +333,15 @@ function handleRestored() {
   refresh();
   useToastStore().success('配置版本已成功回滚并生效');
 }
-onUnmounted(() => {
+function pausePage() {
   activeJobId = '';
   clearTimeout(jobPollTimer);
-  store.stopAutoRefresh();
-  store.stopWebSocket();
+  controlController?.abort();
+  controlController = null;
+  stopRealtime();
+}
+onDeactivated(pausePage);
+onUnmounted(() => {
+  pausePage();
 });
 </script>

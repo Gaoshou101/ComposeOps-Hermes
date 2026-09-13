@@ -28,7 +28,8 @@
         <select v-model="statusFilter" class="input sm:w-36"><option value="all">全部结果</option><option value="success">成功</option><option value="failed">失败</option></select>
         <span class="ml-auto whitespace-nowrap text-muted">{{ filteredOperations.length }} 条记录</span>
       </div>
-      <div class="table-wrap flex-1 min-h-64">
+      <div v-if="error" class="alert-error mb-3 flex items-center justify-between gap-3"><span>{{ error }}</span><button class="btn-secondary !min-h-8 !py-1" @click="load">重试</button></div>
+      <div v-else class="table-wrap flex-1 min-h-64">
         <table class="data-table">
           <thead><tr><th>时间</th><th>项目</th><th>操作</th><th>结果</th><th class="w-20">详情</th></tr></thead>
           <tbody>
@@ -63,7 +64,8 @@
         <select v-model="jobStatusFilter" class="input sm:w-40"><option value="all">全部状态</option><option value="active">正在执行</option><option value="success">已完成</option><option value="abnormal">异常任务</option></select>
         <span class="ml-auto whitespace-nowrap text-muted">{{ filteredJobs.length }} 个任务</span>
       </div>
-      <div class="table-wrap flex-1 min-h-64">
+      <div v-if="error" class="alert-error mb-3 flex items-center justify-between gap-3"><span>{{ error }}</span><button class="btn-secondary !min-h-8 !py-1" @click="load">重试</button></div>
+      <div v-else class="table-wrap flex-1 min-h-64">
         <table class="data-table">
           <thead><tr><th>创建时间</th><th>任务</th><th>项目数</th><th class="min-w-44">进度</th><th>状态</th><th class="w-20">详情</th></tr></thead>
           <tbody>
@@ -110,15 +112,14 @@
 import { computed, onActivated, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useRoute, useRouter } from 'vue-router';
-import { Activity, CircleCheckBig, CircleX, Eye, History, ListChecks, LoaderCircle, RefreshCw, Search, Sparkles, TriangleAlert, X } from 'lucide-vue-next';
+import { Activity, CircleCheckBig, CircleX, Eye, History, ListChecks, LoaderCircle, RefreshCw, Search, TriangleAlert, X } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import StatusBadge from '../components/common/StatusBadge.vue';
 import EmptyState from '../components/common/EmptyState.vue';
-import AIDiagnosisModal from '../components/services/AIDiagnosisModal.vue';
 
 const route = useRoute();
 const router = useRouter();
-const operations = ref([]); const jobs = ref([]); const loading = ref(false);
+const operations = ref([]); const jobs = ref([]); const loading = ref(false); const error = ref('');
 const selectedOperation = ref(null); const selectedJob = ref(null); const selectedJobItem = ref(null); const diagnosis = ref(null);
 
 const STORAGE_KEY_FILTERS = 'composeops:operations:filters';
@@ -164,10 +165,12 @@ const filteredJobs = computed(() => {
 async function load() {
   if (loading.value) return;
   loading.value = true;
+  error.value = '';
   try {
     const [operationData, jobData] = await Promise.all([api.getOperations(), api.listJobs(100)]);
     operations.value = operationData.operations || [];
     jobs.value = jobData.jobs || [];
+  } catch (loadError) { error.value = loadError.message || '操作记录加载失败';
   } finally { loading.value = false; }
 }
 function setTab(tab) {
