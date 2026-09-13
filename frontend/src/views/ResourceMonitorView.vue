@@ -33,10 +33,16 @@
       </div>
     </div>
 
+    <div v-if="error" class="mb-4 flex items-start gap-2 rounded-md border border-rose-900/50 bg-rose-950/20 p-3 text-sm text-rose-300">
+      <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
+      <span>{{ error }}</span>
+    </div>
+    <div v-if="loading" class="mb-4 text-sm text-zinc-500">正在加载指标...</div>
+
     <!-- Metrics Dashboard -->
     <div v-if="containerId && metricsData" class="space-y-4">
       <!-- Metric Cards -->
-      <div class="grid grid-cols-4 gap-3">
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div v-for="m in metricTypes" :key="m.key" 
              @click="selectedMetric = m.key"
              :class="['metric-card', selectedMetric === m.key && 'metric-card-active']">
@@ -165,7 +171,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { Activity, AlertTriangle, Bell, Cpu, Database, HardDrive, Minus, Network, RefreshCw, TrendingDown, TrendingUp, X } from 'lucide-vue-next';
 import { api, metricsApi } from '../api/client.js';
 import StatusBadge from '../components/common/StatusBadge.vue';
@@ -180,6 +186,10 @@ const metricsData = ref(null);
 const alerts = ref([]);
 const showAlertModal = ref(false);
 const loading = ref(false);
+const error = ref('');
+const historySeries = ref([]);
+const anomalies = ref([]);
+let metricsRequestId = 0;
 
 const alertForm = ref({
   metric: 'cpu',
@@ -191,8 +201,8 @@ const alertForm = ref({
 const metricTypes = [
   { key: 'cpu', label: 'CPU', icon: Cpu, color: 'text-cyan-400', chartColor: '#06B6D4', unit: '%' },
   { key: 'memory', label: '内存', icon: Database, color: 'text-emerald-400', chartColor: '#10B981', unit: '%' },
-  { key: 'network', label: '网络', icon: Network, color: 'text-amber-400', chartColor: '#F59E0B', unit: 'MB/s' },
-  { key: 'disk', label: '磁盘 I/O', icon: HardDrive, color: 'text-rose-400', chartColor: '#EF4444', unit: 'MB/s' }
+  { key: 'network', label: '网络', icon: Network, color: 'text-amber-400', chartColor: '#F59E0B', unit: 'bytes' },
+  { key: 'disk', label: '磁盘 I/O', icon: HardDrive, color: 'text-rose-400', chartColor: '#EF4444', unit: 'bytes' }
 ];
 
 const periods = [
@@ -207,25 +217,18 @@ const currentContainer = computed(() => containers.value.find(c => c.id === cont
 const containerAlerts = computed(() => alerts.value.filter(a => a.container === containerId.value));
 
 const chartData = computed(() => {
-  const metric = metricsData.value?.[selectedMetric.value];
-  if (!metric?.trend) return [];
-  
-  // 模拟历史数据点
-  const now = Date.now();
-  return Array.from({ length: 60 }, (_, i) => {
-    const base = metric.current;
-    const variance = Math.random() * 10 - 5;
-    const value = Math.max(0, Math.min(100, base + variance));
-    return {
-      timestamp: now - (60 - i) * 2000, // 2秒间隔
-      value
-    };
-  });
+  return historySeries.value;
 });
 
 const chartAnomalies = computed(() => {
-  // 暂无异常检测，返回空数组
-  return [];
+  if (!historySeries.value.length) return [];
+  const interval = historySeries.value.length > 1
+    ? Math.max(1000, historySeries.value[1].timestamp - historySeries.value[0].timestamp)
+    : 1000;
+  return anomalies.value.map((item) => ({
+    start: Number(item.timestamp) - interval / 2,
+    end: Number(item.timestamp) + interval / 2,
+  }));
 });
 
 function formatMetricValue(metric) {
@@ -234,9 +237,25 @@ function formatMetricValue(metric) {
     return `${metric.current.toFixed(1)}${metric.unit}`;
   }
   if (metric.current?.rx !== undefined) {
-    return metric.current.rx;
+    return `收 ${metric.current.rx} · 发 ${metric.current.tx}`;
+  }
+  if (metric.current?.read !== undefined) {
+    return `读 ${metric.current.read} · 写 ${metric.current.write}`;
   }
   return '-';
+}
+
+function backendMetric(metric) {
+  if (metric === 'network') return 'network_rx';
+  if (metric === 'disk') return 'disk_read';
+  return metric;
+}
+
+function periodMs(value) {
+  const match = String(value).match(/^(\d+)(m|h|d)$/);
+  if (!match) return 5 * 60 * 1000;
+  const amount = Number(match[1]);
+  return amount * ({ m: 60 * 1000, h: 60 * 60 * 1000, d: 24 * 60 * 60 * 1000 }[match[2]]);
 }
 
 function trendColor(trend) {
@@ -258,6 +277,9 @@ function getAlertColor(metric) {
 function onProjectChange() {
   containerId.value = '';
   metricsData.value = null;
+  historySeries.value = [];
+  anomalies.value = [];
+  error.value = '';
 }
 
 async function loadProjects() {
@@ -266,24 +288,41 @@ async function loadProjects() {
     if (projects.value.length === 1 && !projectId.value) {
       projectId.value = projects.value[0].id;
     }
-  } catch {}
+  } catch (err) {
+    error.value = `加载项目失败: ${err.message}`;
+  }
 }
 
 async function loadMetrics() {
   if (!containerId.value) return;
+  const requestId = ++metricsRequestId;
   loading.value = true;
+  error.value = '';
   try {
+    const endTime = Date.now();
+    const startTime = endTime - periodMs(period.value);
     const results = await Promise.all(
       metricTypes.map(m => metricsApi.getContainerMetrics(containerId.value, m.key, period.value))
     );
+    const [seriesResult, anomalyResult] = await Promise.all([
+      metricsApi.getHistoricalMetrics({ containerId: containerId.value, metricType: backendMetric(selectedMetric.value), startTime, endTime, aggregation: 'auto' }),
+      metricsApi.detectAnomalies({ containerId: containerId.value, metricType: backendMetric(selectedMetric.value), hours: Math.max(1, Math.ceil(periodMs(period.value) / 3600000)) }),
+    ]);
+    if (requestId !== metricsRequestId) return;
     metricsData.value = {};
     metricTypes.forEach((m, i) => {
       metricsData.value[m.key] = results[i].data;
     });
+    historySeries.value = (seriesResult.metrics || []).map((item) => ({ timestamp: Number(item.timestamp), value: Number(item.value) })).filter((item) => Number.isFinite(item.timestamp) && Number.isFinite(item.value));
+    anomalies.value = anomalyResult.anomalies || [];
   } catch (err) {
-    console.error('加载指标失败:', err);
+    if (requestId === metricsRequestId) {
+      historySeries.value = [];
+      anomalies.value = [];
+      error.value = `加载指标失败: ${err.message}`;
+    }
   } finally {
-    loading.value = false;
+    if (requestId === metricsRequestId) loading.value = false;
   }
 }
 
@@ -291,7 +330,9 @@ async function loadAlerts() {
   try {
     const res = await metricsApi.getAlerts();
     alerts.value = res.alerts || [];
-  } catch {}
+  } catch (err) {
+    error.value = `加载告警失败: ${err.message}`;
+  }
 }
 
 async function createAlertRule() {
@@ -304,7 +345,7 @@ async function createAlertRule() {
     showAlertModal.value = false;
     await loadAlerts();
   } catch (err) {
-    console.error('创建告警规则失败:', err);
+    error.value = `创建告警规则失败: ${err.message}`;
   }
 }
 
@@ -312,13 +353,17 @@ async function deleteAlertRule(ruleId) {
   try {
     await metricsApi.deleteAlert(ruleId);
     await loadAlerts();
-  } catch {}
+  } catch (err) {
+    error.value = `删除告警失败: ${err.message}`;
+  }
 }
 
 onMounted(async () => {
   await loadProjects();
   await loadAlerts();
 });
+
+watch(selectedMetric, () => { if (containerId.value) void loadMetrics(); });
 </script>
 
 <style scoped>

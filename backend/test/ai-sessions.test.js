@@ -7,7 +7,7 @@ import test from 'node:test';
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'composeops-ai-sessions-'));
 process.env.DB_PATH = path.join(tempDir, 'test.db');
 
-const { addAiMessage, getAiHistory, listAiSessions, clearAiSession, clearAiHistory } = await import('../src/lib/db.js');
+const { addAiMessage, getAiHistory, listAiSessions, clearAiSession, clearAiSessions, clearAiHistory } = await import('../src/lib/db.js');
 
 test('ai: 会话消息按 sessionId 隔离', () => {
   clearAiHistory();
@@ -42,6 +42,18 @@ test('ai: 删除单个会话不影响其它', () => {
   clearAiSession(100);
   assert.equal(getAiHistory(50, 100).length, 0);
   assert.equal(getAiHistory(50, 200).length, 1);
+});
+
+test('ai: 批量删除会话是事务操作且不影响其它会话', () => {
+  clearAiHistory();
+  addAiMessage('user', 'A1', null, 401);
+  addAiMessage('assistant', 'A2', null, 401);
+  addAiMessage('user', 'B1', null, 402);
+  addAiMessage('user', 'C1', null, 403);
+  assert.equal(clearAiSessions([401, 402, 401, 'invalid']), 2);
+  assert.equal(getAiHistory(50, 401).length, 0);
+  assert.equal(getAiHistory(50, 402).length, 0);
+  assert.equal(getAiHistory(50, 403).length, 1);
 });
 
 test('ai: 未指定会话默认进入全局历史', () => {

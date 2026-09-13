@@ -198,19 +198,23 @@ export const api = {
   fetchAiModels: (payload = {}) => request('/ai/fetch-models', { method: 'POST', body: JSON.stringify(payload) }),
   execContainer: (payload) => request('/ai/exec', { method: 'POST', body: JSON.stringify(payload) }),
   getProjectLogs: (projectId, containerId, tail = 200) => request('/ai/logs', { method: 'POST', body: JSON.stringify({ projectId, containerId, tail }) }),
-  getAiHistory: (sessionId) => request(`/ai/history${sessionId ? `?sessionId=${sessionId}` : ''}`),
+  getAiHistory: (sessionId, limit = 200) => request(`/ai/history?${new URLSearchParams({ ...(sessionId ? { sessionId } : {}), limit })}`),
   getAiSessions: (limit = 30, kind = '') => request(`/ai/sessions?limit=${limit}${kind ? `&kind=${encodeURIComponent(kind)}` : ''}`),
   createAgentSession: () => request('/ai/agent/sessions', { method: 'POST' }),
   renameAgentSession: (sessionId, title) => request(`/ai/agent/sessions/${encodeURIComponent(sessionId)}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
   getAiMemories: (limit = 20, query = '') => request(`/ai/agent/memories?limit=${limit}${query ? `&query=${encodeURIComponent(query)}` : ''}`),
   clearAiHistory: (sessionId) => request(`/ai/history${sessionId ? `?sessionId=${sessionId}` : ''}`, { method: 'DELETE' }),
+  clearAiSessions: (sessionIds) => request('/ai/history/batch-delete', { method: 'POST', body: JSON.stringify({ sessionIds }) }),
   // ai agent:执行已收敛为 Tool Loop 流式通道;会话/记忆/审计见上方与下方的端点
   agentExecuteStream: (payload, onEvent, signal) => streamSse('/ai/agent/execute-stream', payload, onEvent, signal),
   agentApprove: (payload) => request('/ai/agent/approve', { method: 'POST', body: JSON.stringify(payload) }),
   getAgentExecutions: (planId = '') => request(`/ai/agent/executions${planId ? `?planId=${encodeURIComponent(planId)}` : ''}`),
   // compose 语义校验 / 变更预览
   validateCompose: (projectId, fileIndex, content) => request(`/projects/${projectId}/compose/validate`, { method: 'POST', body: JSON.stringify({ fileIndex, content }) }),
-  previewCompose: (projectId, content) => request(`/projects/${projectId}/compose/preview`, { method: 'POST', body: JSON.stringify({ content }) }),
+  previewCompose: async (projectId, content) => {
+    const result = await request(`/projects/${projectId}/compose/preview`, { method: 'POST', body: JSON.stringify({ content }) });
+    return result?.preview || null;
+  },
   // system
   getMetrics: async () => normalizeMetrics(await request('/system/metrics')),
   getCapabilities: () => request('/system/capabilities'),

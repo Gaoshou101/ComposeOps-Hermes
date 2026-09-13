@@ -1,4 +1,4 @@
-import { nextTick, ref } from 'vue';
+import { getCurrentInstance, nextTick, onBeforeUnmount, ref } from 'vue';
 import { useEscapeKey } from './useEscapeKey.js';
 import { api } from '../api/client.js';
 import { stripAgentProtocol } from '../lib/agent-text.js';
@@ -10,36 +10,45 @@ import { stripAgentProtocol } from '../lib/agent-text.js';
  * - token 分片由服务端保证干净,这里原样追加;done 用后端最终全文覆盖自愈。
  * - onEventExtra/onApproval 供各界面挂自己的展示逻辑(执行动态面板等)。
  */
+const sharedMessages = ref([]);
+const sharedInput = ref('');
+const sharedRunning = ref(false);
+const sharedSessionId = ref(null);
+let sharedController = null;
+let sharedNextId = 0;
+let sharedTokenBuffer = '';
+let sharedBufferingAssistant = null;
+let sharedTokenTimer = null;
+const subscribers = new Set();
+
 export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
-  const messages = ref([]);
-  const input = ref('');
-  const running = ref(false);
-  const sessionId = ref(null);
+  // 非组件调用(例如单测或一次性脚本)没有卸载钩子,避免共享状态污染下一次独立调用。
+  if (!getCurrentInstance() && !sharedRunning.value) resetSharedState();
+  const messages = sharedMessages;
+  const input = sharedInput;
+  const running = sharedRunning;
+  const sessionId = sharedSessionId;
   const scrollEl = ref(null);
+  const subscriber = { onEventExtra, onApproval };
+  subscribers.add(subscriber);
   // 滚动跟随:用户向上回看时暂停自动滚底,回到底部(或手动点"回到底部")后恢复。
   const atBottom = ref(true);
-  let nextId = 0;
-  let controller = null;
   // token 节流:SSE 分片逐条追加会让 marked+DOMPurify 每个 chunk 全量重渲染,
   // 长回复时一顿一顿;缓冲 120ms 合并刷新,流式更顺滑。
-  let tokenBuffer = '';
-  let bufferingAssistant = null;
-  let tokenTimer = null;
-
   function flushTokens() {
-    if (tokenTimer) { clearTimeout(tokenTimer); tokenTimer = null; }
-    if (bufferingAssistant && tokenBuffer) {
-      bufferingAssistant.content += tokenBuffer;
-      tokenBuffer = '';
+    if (sharedTokenTimer) { clearTimeout(sharedTokenTimer); sharedTokenTimer = null; }
+    if (sharedBufferingAssistant && sharedTokenBuffer) {
+      sharedBufferingAssistant.content += sharedTokenBuffer;
+      sharedTokenBuffer = '';
     }
-    bufferingAssistant = null;
+    sharedBufferingAssistant = null;
   }
 
   function queueToken(assistant, chunk) {
-    if (tokenTimer && bufferingAssistant && bufferingAssistant !== assistant) flushTokens();
-    bufferingAssistant = assistant;
-    tokenBuffer += chunk;
-    if (!tokenTimer) tokenTimer = setTimeout(flushTokens, 120);
+    if (sharedTokenTimer && sharedBufferingAssistant && sharedBufferingAssistant !== assistant) flushTokens();
+    sharedBufferingAssistant = assistant;
+    sharedTokenBuffer += chunk;
+    if (!sharedTokenTimer) sharedTokenTimer = setTimeout(flushTokens, 120);
   }
 
   function isNearBottom() {
@@ -68,28 +77,28 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
   }
 
   /** 消息 ID 统一由此生成,保证历史回放与新消息之间 :key 不冲突。 */
-  function nextMessageId() { return ++nextId; }
+  function nextMessageId() { return ++sharedNextId; }
 
   function resetSession() {
     messages.value = [];
     sessionId.value = null;
-    nextId = 0;
-    controller?.abort();
-    controller = null;
+    sharedNextId = 0;
+    sharedController?.abort();
+    sharedController = null;
   }
 
   async function sendMessage(text, extraPayload = {}) {
     if (!text || running.value) return;
     await ensureSession();
-    const assistant = { id: ++nextId, role: 'assistant', content: '', streaming: true };
-    messages.value.push({ id: ++nextId, role: 'user', content: text }, assistant);
+    const assistant = { id: ++sharedNextId, role: 'assistant', content: '', streaming: true };
+    messages.value.push({ id: ++sharedNextId, role: 'user', content: text }, assistant);
     input.value = '';
     running.value = true;
-    controller = new AbortController();
+    sharedController = new AbortController();
     atBottom.value = true; // 发送即回到底部
     scrollBottom(true);
     try {
-      await api.agentExecuteStream({ message: text, sessionId: sessionId.value, role: 'planner', ...extraPayload }, (event) => handleEvent(event, assistant), controller.signal);
+      await api.agentExecuteStream({ message: text, sessionId: sessionId.value, role: 'planner', ...extraPayload }, (event) => handleEvent(event, assistant), sharedController.signal);
     } catch (error) {
       if (error.name !== 'AbortError') assistant.content = `执行失败：${error.message}`;
     } finally {
@@ -97,7 +106,7 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
       assistant.streaming = false;
       assistant.confirmation = null;
       running.value = false;
-      controller = null;
+      sharedController = null;
       scrollBottom();
     }
   }
@@ -137,7 +146,7 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
     else if (event.type === 'interrupted') { flushTokens(); assistant.confirmation = null; assistant.content += `${assistant.content ? '\n\n' : ''}${stripAgentProtocol(event.reason || '执行已中断')}`; }
     else if (event.type === 'error') { flushTokens(); assistant.confirmation = null; assistant.content += `${assistant.content ? '\n\n' : ''}${stripAgentProtocol(event.content || 'Agent 执行失败')}`; }
     else if (event.type === 'done') { flushTokens(); if (event.content) assistant.content = stripAgentProtocol(event.content); }
-    onEventExtra?.(event, assistant);
+    for (const item of subscribers) item.onEventExtra?.(event, assistant);
     scrollBottom();
   }
 
@@ -150,7 +159,7 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
       if (inputOverride && typeof inputOverride === 'object' && Object.keys(inputOverride).length) payload.input = inputOverride;
       await api.agentApprove(payload);
       message.confirmation = null;
-      onApproval?.(message, 'approved');
+      for (const item of subscribers) item.onApproval?.(message, 'approved');
     } catch (error) {
       confirmation.busy = false;
       message.content = `确认失败：${error.message}`;
@@ -164,14 +173,14 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
     try {
       await api.agentApprove({ executionId: confirmation.executionId, toolCallId: confirmation.toolCallId, approved: false });
       message.confirmation = null;
-      onApproval?.(message, 'rejected');
+      for (const item of subscribers) item.onApproval?.(message, 'rejected');
     } catch (error) {
       confirmation.busy = false;
       message.content = `拒绝失败：${error.message}`;
     }
   }
 
-  function interrupt() { controller?.abort(); }
+  function interrupt() { sharedController?.abort(); }
 
   /** 富内容块"放大查看"(页面内浮层,类似豆包)的状态与点击委托。 */
   const zoomOpen = ref(false);
@@ -214,5 +223,18 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
   // Esc 关闭放大浮层,并锁定背景滚动(复用全局弹层 Esc 分层体系)
   useEscapeKey({ active: zoomOpen, layer: 'modal', onClose: closeZoom, lockBody: true });
 
+  onBeforeUnmount(() => subscribers.delete(subscriber));
+
   return { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, ensureSession, resetSession, sendMessage, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom };
+}
+
+function resetSharedState() {
+  sharedMessages.value = [];
+  sharedInput.value = '';
+  sharedSessionId.value = null;
+  sharedNextId = 0;
+  sharedTokenBuffer = '';
+  sharedBufferingAssistant = null;
+  if (sharedTokenTimer) clearTimeout(sharedTokenTimer);
+  sharedTokenTimer = null;
 }

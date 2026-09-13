@@ -104,6 +104,7 @@ function formatBytes(bytes) {
  */
 async function getHistoricalMetrics(containerIdOrName, metric, period) {
   const db = (await import('../lib/db.js')).default;
+  const storedMetric = metric === 'network' ? 'network_rx' : metric === 'disk' ? 'disk_read' : metric;
   
   // 解析时间窗口
   const periodMs = parsePeriod(period);
@@ -115,7 +116,7 @@ async function getHistoricalMetrics(containerIdOrName, metric, period) {
     FROM container_metrics
     WHERE container_id = ? AND metric_type = ? AND timestamp >= ?
     ORDER BY timestamp ASC
-  `).all(containerIdOrName, metric, startTime);
+  `).all(containerIdOrName, storedMetric, startTime);
   
   if (rows.length === 0) {
     return { avg: null, max: null, data: [] };

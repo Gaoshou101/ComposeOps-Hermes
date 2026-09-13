@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h1 class="page-title">Agent 执行历史</h1>
-        <p class="page-subtitle">查看所有 Agent 工作流执行记录和思维过程</p>
+        <p class="page-subtitle">查看 Agent 的计划、工具调用与执行结果</p>
       </div>
       <div class="flex items-center gap-3">
         <button class="btn-secondary" :disabled="loading" @click="load">
@@ -83,9 +83,9 @@
             </div>
           </div>
 
-          <!-- 思维过程 -->
+          <!-- 执行轨迹 -->
           <div v-if="exec.thoughts && exec.thoughts.length">
-            <h4 class="mb-2 text-sm font-medium text-zinc-300">思维过程</h4>
+            <h4 class="mb-2 text-sm font-medium text-zinc-300">执行轨迹</h4>
             <div class="space-y-1.5">
               <div v-for="(thought, idx) in exec.thoughts" :key="idx" class="flex gap-3 text-xs">
                 <span :class="phaseColor(thought.phase)" class="w-16 shrink-0 font-medium">{{ phaseLabel(thought.phase) }}</span>
@@ -115,7 +115,13 @@ async function load() {
   error.value = '';
   try {
     const response = await api.getAgentExecutions();
-    executions.value = response.executions || [];
+    const rowsByPlan = new Map();
+    for (const row of response.executions || []) {
+      const rows = rowsByPlan.get(row.plan_id) || [];
+      rows.push(row);
+      rowsByPlan.set(row.plan_id, rows);
+    }
+    executions.value = (response.plans || []).map((plan) => mapPlan(plan, rowsByPlan.get(plan.id) || []));
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -153,6 +159,46 @@ function stringifyResult(result) {
   } catch {
     return String(result);
   }
+}
+
+function parseJson(value, fallback) {
+  if (!value) return fallback;
+  if (typeof value === 'object') return value;
+  try { return JSON.parse(value); } catch { return fallback; }
+}
+
+function mapPlan(plan, rows) {
+  const planData = parseJson(plan.plan_json, {});
+  const resultData = parseJson(plan.result_json, {});
+  const steps = Array.isArray(planData.steps) ? planData.steps.map((step) => ({
+    tool: step.tool || step.toolName || '未知工具',
+    params: step.params || step.parameters || {},
+    reason: step.reason,
+    risk: step.risk,
+    confirmationRequired: Boolean(step.confirmationRequired),
+  })) : [];
+  const results = rows.map((row) => ({
+    tool: row.tool_name,
+    status: row.status,
+    result: parseJson(row.result, row.result),
+    error: row.error,
+    durationMs: row.duration_ms,
+  }));
+  const trace = Array.isArray(resultData.messages)
+    ? resultData.messages.filter((item) => item.role === 'tool').map((item) => ({ phase: 'executing', content: `${item.tool_call_id || '工具'} 已返回结果` }))
+    : [];
+  return {
+    planId: plan.id,
+    message: plan.user_message,
+    role: planData.role || 'planner',
+    status: plan.status,
+    stepCount: steps.length || results.length,
+    createdAt: plan.created_at,
+    executedAt: plan.executed_at,
+    steps,
+    results,
+    thoughts: trace,
+  };
 }
 
 function statusLabel(status) {

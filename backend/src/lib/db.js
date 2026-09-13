@@ -374,6 +374,23 @@ export function clearAiSession(sessionId) {
   db.prepare('DELETE FROM ai_sessions WHERE session_id = ?').run(sessionId);
 }
 
+export function clearAiSessions(sessionIds = []) {
+  const ids = [...new Set(sessionIds.map((value) => Number(value)).filter((value) => Number.isSafeInteger(value) && value > 0))];
+  if (!ids.length) return 0;
+  const remove = db.transaction((values) => {
+    const deleteHistory = db.prepare('DELETE FROM ai_history WHERE session_id = ?');
+    const deleteSession = db.prepare('DELETE FROM ai_sessions WHERE session_id = ?');
+    let deleted = 0;
+    for (const id of values) {
+      const history = deleteHistory.run(id).changes;
+      const session = deleteSession.run(id).changes;
+      if (history || session) deleted += 1;
+    }
+    return deleted;
+  });
+  return remove(ids);
+}
+
 export function clearAiHistory() {
   db.prepare('DELETE FROM ai_history').run();
   db.prepare('DELETE FROM ai_sessions').run();

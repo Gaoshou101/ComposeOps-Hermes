@@ -243,18 +243,13 @@ async function testHostConnection() {
   editor.pingResult = null;
   try {
     const payload = editorToPayload(editor);
-    const result = await api.pingHost(await saveTemporaryHost(payload));
+    const result = await api.pingHost('_probe', payload);
     editor.pingResult = { ok: result.ok, latencyMs: result.latencyMs, version: result.version, message: result.message };
   } catch (e) {
     editor.pingResult = { ok: false, message: e.message };
   } finally {
     editor.pinging = false;
   }
-}
-async function saveTemporaryHost(payload) {
-  // 复用 upsert:新建返回 host.id
-  const host = await api.saveHost(payload);
-  return host.id;
 }
 function editorToPayload(editor) {
   const payload = {

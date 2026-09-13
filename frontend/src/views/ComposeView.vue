@@ -149,16 +149,6 @@
     />
 
     <ConfirmDialog
-      :show="showSaveErrorDialog"
-      title="存在语义校验错误"
-      :message="`语义校验发现 ${semanticIssues.filter((i) => i.level === 'error').length} 个错误,仍要保存?`"
-      tone="warning"
-      confirm-text="仍要保存"
-      @confirm="confirmSaveWithErrors"
-      @cancel="showSaveErrorDialog = false"
-    />
-
-    <ConfirmDialog
       :show="showRestoreDialog"
       title="恢复配置备份"
       message="恢复该备份?当前配置也会先自动备份。"
@@ -255,7 +245,6 @@ const templateId = ref('');
 const templates = ref([]); // 动态加载的模板列表(收藏+内置)
 const showHostChangedDialog = ref(false);
 const showLeaveDialog = ref(false);
-const showSaveErrorDialog = ref(false);
 const showRestoreDialog = ref(false);
 const pendingBackup = ref(null);
 const leaveCallback = ref(null);
@@ -552,43 +541,39 @@ async function load() {
 }
 async function validateSemantics() {
   error.value = '';
-  if (!content.value.trim()) { semanticIssues.value = []; return; }
+  if (!content.value.trim()) { semanticIssues.value = []; error.value = 'Compose 内容不能为空'; return false; }
   try {
     const result = await api.validateCompose(projectId.value, fileIndex.value, content.value);
     semanticIssues.value = result.issues || [];
+    if (semanticIssues.value.some((issue) => issue.level === 'error')) {
+      error.value = '语义校验未通过,请修复错误后再保存';
+      return false;
+    }
+    return true;
   } catch (e) { error.value = e.message; }
+  return false;
 }
 async function save() {
   error.value = '';
-  await validateSemantics();
-  const hasError = semanticIssues.value.some((issue) => issue.level === 'error');
-  if (hasError) {
-    showSaveErrorDialog.value = true;
-    return;
-  }
+  if (!await validateSemantics()) return;
   // 保存前展示变更预览(影响哪些容器会被重建/重启)
   previewLoading.value = true;
   try {
     changePreview.value = await api.previewCompose(projectId.value, content.value);
+    if (!changePreview.value) {
+      error.value = '变更预览未返回结果,未保存,请重试';
+      return;
+    }
     const preview = changePreview.value || {};
     const impactful = (preview.added || []).length + (preview.changed || []).length + (preview.restarted || []).length + (preview.removed || []).length;
     if (impactful) { showPreview.value = true; return; } // 有影响,等用户确认
-  } catch { changePreview.value = null; }
+  } catch (e) {
+    changePreview.value = null;
+    error.value = `变更预览失败,未保存: ${e.message}`;
+    return;
+  }
   finally { previewLoading.value = false; }
-  await confirmSave(); // 无影响或预览失败时直接保存
-}
-function confirmSaveWithErrors() {
-  showSaveErrorDialog.value = false;
-  previewLoading.value = true;
-  api.previewCompose(projectId.value, content.value)
-    .then((result) => {
-      changePreview.value = result;
-      const preview = changePreview.value || {};
-      const impactful = (preview.added || []).length + (preview.changed || []).length + (preview.restarted || []).length + (preview.removed || []).length;
-      if (impactful) { showPreview.value = true; } else { void confirmSave(); }
-    })
-    .catch(() => { changePreview.value = null; void confirmSave(); })
-    .finally(() => { previewLoading.value = false; });
+  await confirmSave(); // 无影响时直接保存
 }
 async function confirmSave() {
   saving.value = true; error.value = '';

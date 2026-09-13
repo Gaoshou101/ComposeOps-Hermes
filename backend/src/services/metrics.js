@@ -24,7 +24,8 @@ function aggregateMetrics(metrics, intervalSeconds) {
   const buckets = new Map();
   
   for (const metric of metrics) {
-    const bucketTimestamp = Math.floor(metric.timestamp / intervalSeconds) * intervalSeconds;
+    const intervalMs = intervalSeconds * 1000;
+    const bucketTimestamp = Math.floor(metric.timestamp / intervalMs) * intervalMs;
     const key = `${metric.container_id}-${metric.metric_type}-${bucketTimestamp}`;
     
     if (!buckets.has(key)) {
@@ -248,7 +249,7 @@ export function queryHistoricalMetrics({
   // 自动聚合
   if (aggregation === 'auto' && startTime && endTime) {
     const timeRange = endTime - startTime;
-    const { interval } = getAggregationInterval(timeRange * 1000);
+    const { interval } = getAggregationInterval(timeRange);
     return aggregateMetrics(metrics, interval);
   }
 
@@ -264,8 +265,8 @@ export function queryHistoricalMetrics({
  * 获取容器指标统计信息
  */
 export function getMetricsStats(containerId, metricType, hours = 24) {
-  const endTime = Math.floor(Date.now() / 1000);
-  const startTime = endTime - hours * 3600;
+  const endTime = Date.now();
+  const startTime = endTime - hours * 3600 * 1000;
 
   const metrics = queryHistoricalMetrics({
     containerId,
@@ -311,9 +312,9 @@ export function getMetricsStats(containerId, metricType, hours = 24) {
  * - 超过7天的数据聚合为5分钟粒度后删除原始数据
  */
 export function applyRetentionPolicy() {
-  const now = Math.floor(Date.now() / 1000);
-  const sevenDaysAgo = now - 7 * 24 * 3600;
-  const thirtyDaysAgo = now - 30 * 24 * 3600;
+  const now = Date.now();
+  const sevenDaysAgo = now - 7 * 24 * 3600 * 1000;
+  const thirtyDaysAgo = now - 30 * 24 * 3600 * 1000;
 
   // 删除超过30天的聚合数据
   const deleted30d = db.prepare(

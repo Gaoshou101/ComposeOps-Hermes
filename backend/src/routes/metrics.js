@@ -117,8 +117,8 @@ export default async function metricsRoutes(fastify) {
           properties: {
             containerId: { type: 'string', description: '容器 ID' },
             metricType: { type: 'string', description: '指标类型' },
-            startTime: { type: 'integer', description: '开始时间戳（秒）' },
-            endTime: { type: 'integer', description: '结束时间戳（秒）' },
+            startTime: { type: 'integer', description: '开始时间戳（毫秒）' },
+            endTime: { type: 'integer', description: '结束时间戳（毫秒）' },
             aggregation: { type: 'string', description: '聚合方式（auto 或秒数）', default: 'auto' },
           }
         }
@@ -205,8 +205,8 @@ export default async function metricsRoutes(fastify) {
     async (request) => {
       const { containerId, metricType, hours = 24, algorithms = ['z_score', 'moving_average', 'trend'] } = request.body;
 
-      const endTime = Math.floor(Date.now() / 1000);
-      const startTime = endTime - hours * 3600;
+      const endTime = Date.now();
+      const startTime = endTime - hours * 3600 * 1000;
 
       const metrics = queryHistoricalMetrics({
         containerId,

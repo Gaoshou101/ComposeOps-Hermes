@@ -14,6 +14,7 @@ import {
 } from '../services/ai.js';
 import {
   clearAiSession,
+  clearAiSessions,
   listAiSessions,
 } from '../lib/db.js';
 import { getActivityDocker } from '../services/docker-hosts.js';
@@ -141,8 +142,9 @@ export default async function aiRoutes(fastify) {
   }, async (request) => {
     const sessionId = request.query?.sessionId;
     const limit = Math.max(1, Math.min(Number(request.query?.limit) || 100, 200));
-    const messages = sessionId ? getAiHistory(limit, Number(sessionId)) : getAiHistory(limit);
-    return { messages };
+    const messages = sessionId ? getAiHistory(limit + 1, Number(sessionId)) : getAiHistory(limit + 1);
+    const hasMore = messages.length > limit;
+    return { messages: hasMore ? messages.slice(1) : messages, hasMore };
   });
 
   // GET /api/v1/ai/sessions —— 会话列表(标题/时间/消息数)
@@ -173,6 +175,25 @@ export default async function aiRoutes(fastify) {
     }
     clearAiHistory();
     return { ok: true };
+  });
+
+  fastify.post('/history/batch-delete', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['sessionIds'],
+        properties: {
+          sessionIds: { type: 'array', minItems: 1, maxItems: 100, items: numericId },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const sessionIds = request.body?.sessionIds || [];
+    if (sessionIds.some((value) => !Number.isSafeInteger(Number(value)) || Number(value) <= 0)) {
+      return reply.code(400).send({ error: 'invalid_session_ids', message: '会话 ID 无效' });
+    }
+    return { ok: true, deleted: clearAiSessions(sessionIds) };
   });
 
   // POST /api/v1/ai/diagnose

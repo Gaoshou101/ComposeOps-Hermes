@@ -30,17 +30,20 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Bot, MessageCircle, Send, Square, UserRound, X } from 'lucide-vue-next';
 import { useAgentConsole } from '../composables/useAgentConsole.js';
 import { useAgentChat } from '../composables/useAgentChat.js';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { renderAgentMarkdown } from '../lib/agent-markdown.js';
+import { stripAgentProtocol } from '../lib/agent-text.js';
+import { api } from '../api/client.js';
 
 const { open, context, closeAgent } = useAgentConsole();
 const chat = useAgentChat();
-const { messages, input, running, scrollEl, sendMessage, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom } = chat;
+const { messages, input, running, sessionId, scrollEl, nextMessageId, sendMessage, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom } = chat;
 const inputEl = ref(null);
+const historyLoading = ref(false);
 const pageContext = computed(() => ({ page: context.value.page || '当前页面', route: window.location.hash.replace(/^#/, '') || '/', mode: context.value.mode || '运维问答与操作', summary: context.value.summary || '', state: context.value.state || '' }));
 const contextSummary = computed(() => pageContext.value.summary || pageContext.value.state || '路由与页面状态已同步');
 const defaultPrompt = computed(() => pageContext.value.mode === 'cron-editor' ? '根据当前表单帮我创建这个定时任务' : '请分析当前页面，并告诉我可以做什么');
@@ -48,7 +51,25 @@ useEscapeKey({ active: open, onClose: closeAgent, layer: 'drawer', lockBody: tru
 function renderMarkdown(value) { return renderAgentMarkdown(value); }
 function focusInput() { void nextTick(() => inputEl.value?.focus()); }
 function submit() { void sendMessage(input.value.trim(), { pageContext: pageContext.value }); }
-watch(open, (value) => { if (value) focusInput(); });
+async function restoreLatestSession() {
+  if (sessionId.value || messages.value.length || historyLoading.value) return;
+  historyLoading.value = true;
+  try {
+    const data = await api.getAiSessions(50, 'agent');
+    const latest = data.sessions?.[0];
+    if (latest && !sessionId.value && !messages.value.length) {
+      sessionId.value = Number(latest.sessionId);
+      const history = await api.getAiHistory(sessionId.value, 200);
+      messages.value = (history.messages || []).filter((item) => ['user', 'assistant'].includes(item.role)).map((item) => ({ id: nextMessageId(), role: item.role, content: stripAgentProtocol(item.content) }));
+    }
+  } catch {
+    // 工作台打开后会负责显示完整的加载错误
+  } finally {
+    historyLoading.value = false;
+  }
+}
+watch(open, (value) => { if (value) { focusInput(); void restoreLatestSession(); } });
+onMounted(() => { if (open.value) void restoreLatestSession(); });
 function initParamsEdit(event, message) {
   if (event.target.open && message.confirmation && message.confirmation.paramsText === undefined) {
     message.confirmation.paramsText = JSON.stringify(message.confirmation.params || {}, null, 2);

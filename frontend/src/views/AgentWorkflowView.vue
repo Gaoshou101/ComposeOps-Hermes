@@ -9,7 +9,12 @@
       </div>
     </div>
     <div class="agent-layout">
-      <aside class="agent-sessions card"><div class="agent-side-head"><div><h2>会话</h2><span>{{ filteredSessions.length }}/{{ sessions.length }} 个会话</span></div><button class="icon-btn" title="新建会话" @click="newSession"><Plus class="h-4 w-4" /></button></div><div class="px-3 pb-2"><label class="search-field !min-h-8"><Search class="h-3.5 w-3.5" /><input v-model="sessionQuery" class="!py-1 text-xs" placeholder="搜索会话..." /></label></div><div class="agent-session-list"><div v-if="!sessions.length" class="agent-empty-side">发送第一条消息后，会话会自动保存。</div><div v-else-if="!filteredSessions.length" class="agent-empty-side">没有匹配的会话。</div><div v-for="session in filteredSessions" :key="session.sessionId" class="agent-session-row" :class="{ active: session.sessionId === sessionId }"><template v-if="editingSessionId === session.sessionId"><input ref="renameInput" v-model="editingTitle" class="agent-session-rename" maxlength="80" @keydown.enter.prevent="saveRename(session)" @keydown.esc="cancelRename" @blur="saveRename(session)" /></template><button v-else class="agent-session-open" @click="openSession(session.sessionId)"><MessageSquare class="h-4 w-4 shrink-0" /><span class="min-w-0"><strong>{{ session.title || '未命名会话' }}</strong><small>{{ formatDate(session.createdAt) }} · {{ session.messageCount }} 条消息</small></span></button><button class="agent-session-edit" title="重命名会话" @click.stop="beginRename(session)"><Pencil class="h-3.5 w-3.5" /></button><button class="agent-session-delete" title="删除会话" @click.stop="deleteSession(session.sessionId)"><Trash2 class="h-3.5 w-3.5" /></button></div></div></aside>
+      <aside class="agent-sessions card">
+        <div class="agent-side-head"><div><h2>会话</h2><span>{{ filteredSessions.length }}/{{ sessions.length }} 个会话</span></div><button class="icon-btn" title="新建会话" @click="newSession"><Plus class="h-4 w-4" /></button></div>
+        <div class="px-3 pb-2"><label class="search-field !min-h-8"><Search class="h-3.5 w-3.5" /><input v-model="sessionQuery" class="!py-1 text-xs" placeholder="搜索会话..." /></label></div>
+        <div v-if="sessions.length" class="agent-session-bulk"><label><input type="checkbox" :checked="allSessionsSelected" :indeterminate="someSessionsSelected" @change="toggleAllSessions" />全选当前列表</label><button v-if="selectedSessions.length" class="text-rose-300 hover:text-rose-200" @click="deleteSelectedSessions">删除 {{ selectedSessions.length }} 个</button></div>
+        <div class="agent-session-list"><div v-if="!sessions.length" class="agent-empty-side">发送第一条消息后，会话会自动保存。</div><div v-else-if="!filteredSessions.length" class="agent-empty-side">没有匹配的会话。</div><div v-for="session in filteredSessions" :key="session.sessionId" class="agent-session-row" :class="{ active: session.sessionId === sessionId, selected: selectedSessions.includes(session.sessionId) }"><input class="agent-session-check" type="checkbox" :checked="selectedSessions.includes(session.sessionId)" :aria-label="`选择会话 ${session.title || session.sessionId}`" @click.stop @change="toggleSession(session.sessionId)" /><template v-if="editingSessionId === session.sessionId"><input ref="renameInput" v-model="editingTitle" class="agent-session-rename" maxlength="80" @keydown.enter.prevent="saveRename(session)" @keydown.esc="cancelRename" @blur="saveRename(session)" /></template><button v-else class="agent-session-open" @click="openSession(session.sessionId)"><MessageSquare class="h-4 w-4 shrink-0" /><span class="min-w-0"><strong>{{ session.title || '未命名会话' }}</strong><small>{{ formatDate(session.createdAt) }} · {{ session.messageCount }} 条消息</small></span></button><button class="agent-session-edit" title="重命名会话" @click.stop="beginRename(session)"><Pencil class="h-3.5 w-3.5" /></button><button class="agent-session-delete" title="删除会话" @click.stop="deleteSession(session.sessionId)"><Trash2 class="h-3.5 w-3.5" /></button></div></div>
+      </aside>
       <main class="agent-chat card"><div class="agent-chat-head"><div class="flex min-w-0 items-center gap-2"><Bot class="h-4 w-4 text-cyan-400" /><div class="min-w-0"><strong class="block truncate">{{ activeTitle }}</strong><span class="agent-status">{{ webSearchEnabled ? '联网资料已开启' : '仅使用本地工具' }}</span></div></div><div class="agent-head-menu">
             <button class="icon-btn" title="更多操作" :disabled="!messages.length" @click="headMenuOpen = !headMenuOpen"><MoreHorizontal class="h-4 w-4" /></button>
             <div v-if="headMenuOpen" class="agent-head-dropdown">
@@ -25,6 +30,7 @@
       <aside class="agent-inspector"><section class="card agent-inspector-card"><div class="agent-inspector-title"><span>当前上下文</span><button v-if="projectId" class="text-xs text-zinc-500 hover:text-cyan-300" @click="projectId = ''">清除</button></div><p v-if="selectedProject" class="text-sm text-cyan-300">{{ selectedProject.projectName }}</p><p v-else>未固定项目，Agent 会先从纳管项目中识别。</p></section><section class="card agent-inspector-card agent-activity-panel"><div class="agent-inspector-title"><span>执行动态</span><em v-if="running">运行中</em></div><div v-if="!activity.length" class="flex items-start gap-2 text-zinc-600"><Activity class="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>需要确认的变更会显示在这里。</span></div><div v-for="(item, index) in activity" :key="index" class="agent-activity-row"><b>{{ item.label }}</b><span>{{ item.text }}</span></div></section><section class="card agent-inspector-card"><div class="agent-inspector-title"><span>长期记忆</span><button class="text-xs text-cyan-400 hover:text-cyan-300" @click="loadMemories">刷新</button></div><p v-if="!memories.length" class="flex items-start gap-2"><Brain class="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>还没有保存的长期记忆。只有你明确要求“记住”时才会保存。</span></p><div v-for="memory in memories.slice(0, 5)" :key="memory.memoryKey" class="agent-memory"><strong>{{ memory.memoryKey }}</strong><span>{{ memory.value }}</span></div></section></aside>
     </div>
     <ConfirmDialog :show="deleteDialog.show" title="删除会话" message="删除该会话及其全部消息?" tone="warning" confirm-text="删除" @confirm="confirmDeleteSession" @cancel="deleteDialog.show = false" />
+    <ConfirmDialog :show="bulkDeleteDialog" title="批量删除会话" :message="`确认删除选中的 ${selectedSessions.length} 个会话及其全部消息?`" tone="danger" confirm-text="批量删除" @confirm="confirmDeleteSelected" @cancel="bulkDeleteDialog = false" />
     <ConfirmDialog :show="clearDialog" title="清空当前会话" message="确认清空当前会话的全部消息?" tone="danger" confirm-text="清空" @confirm="confirmClearSession" @cancel="clearDialog = false" />
     <teleport to="body">
       <div v-if="zoomOpen" class="rich-zoom-mask" @click.self="closeZoom()" @wheel.prevent="onZoomWheel">
@@ -39,6 +45,7 @@
 
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { Activity, ArrowDownToLine, Bot, Brain, Check, Copy, Download, Eraser, Globe2, MessageCircle, MessageSquare, MoreHorizontal, Pencil, Plus, RefreshCw, ScrollText, Search, Send, ShieldAlert, Sparkles, Square, SquarePen, Trash2, UserRound, Wand2 } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import { stripAgentProtocol } from '../lib/agent-text.js';
@@ -49,6 +56,7 @@ import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 import LogContextPicker from '../components/agent/LogContextPicker.vue';
 
 const toast = useToastStore();
+const route = useRoute();
 
 const projects = ref([]); const sessions = ref([]); const memories = ref([]); const activity = ref([]); const loading = ref(false); const loadingHistory = ref(false); const webSearchEnabled = ref(false); const projectId = ref(''); const inputEl = ref(null); const editingSessionId = ref(null); const editingTitle = ref('');
 const attachedLogs = ref('');
@@ -60,6 +68,8 @@ const sessionQuery = ref('');
 const quickPrompts = ['列出我可以操作的项目和状态', '帮我生成一个带健康检查的 compose 文件', '检查各容器资源占用并给出优化建议', '查看异常退出容器的日志并分析原因', '检查有哪些镜像可以更新', '磁盘空间不足时该怎么安全清理'];
 const deleteDialog = reactive({ show: false, id: '' });
 const clearDialog = ref(false);
+const bulkDeleteDialog = ref(false);
+const selectedSessions = ref([]);
 const chat = useAgentChat({
   onEventExtra: (event) => {
     if (event.type === 'confirmation_required') appendActivity('需要确认 ', '请确认这项变更');
@@ -82,6 +92,9 @@ const filteredSessions = computed(() => {
   if (!keyword) return sessions.value;
   return sessions.value.filter((session) => String(session.title || '').toLowerCase().includes(keyword) || String(session.sessionId).includes(keyword));
 });
+const filteredSessionIds = computed(() => filteredSessions.value.map((session) => session.sessionId));
+const allSessionsSelected = computed(() => filteredSessionIds.value.length > 0 && filteredSessionIds.value.every((id) => selectedSessions.value.includes(id)));
+const someSessionsSelected = computed(() => selectedSessions.value.length > 0 && !allSessionsSelected.value);
 const selectedProject = computed(() => projects.value.find((project) => project.id === projectId.value)); const activeTitle = computed(() => sessions.value.find((session) => session.sessionId === sessionId.value)?.title || '新会话');
 function renderMarkdown(content) { return renderAgentMarkdown(content); }
 function formatDate(value) { return value ? new Date(`${value.replace(' ', 'T')}Z`).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''; }
@@ -130,31 +143,40 @@ function copyMessage(message) {
   navigator.clipboard?.writeText(message.content).then(() => toast.success('已复制到剪贴板')).catch(() => toast.error('复制失败'));
 }
 async function loadProjects() { loading.value = true; try { projects.value = ((await api.getProjects(true)).projects || []).filter((project) => project.managed); } catch { projects.value = []; } finally { loading.value = false; } }
-async function loadSessions() { sessions.value = (await api.getAiSessions(50)).sessions || []; } async function loadMemories() { try { memories.value = (await api.getAiMemories(20)).memories || []; } catch { memories.value = []; } }
+async function loadSessions() { sessions.value = (await api.getAiSessions(50)).sessions || []; selectedSessions.value = selectedSessions.value.filter((id) => sessions.value.some((session) => session.sessionId === id)); } async function loadMemories() { try { memories.value = (await api.getAiMemories(20)).memories || []; } catch { memories.value = []; } }
 function newSession() { resetSession(); activity.value = []; attachedLogs.value = ''; attachedCount.value = 0; showLogPicker.value = false; showQuickPrompts.value = false; focusInput(); }
-async function openSession(id) { if (running.value) return; sessionId.value = Number(id); loadingHistory.value = true; activity.value = []; attachedLogs.value = ''; attachedCount.value = 0; showLogPicker.value = false; showQuickPrompts.value = false; try { const data = await api.getAiHistory(sessionId.value); messages.value = (data.messages || []).filter((item) => ['user', 'assistant'].includes(item.role)).map((item) => ({ id: nextMessageId(), role: item.role, content: stripAgentProtocol(item.content) })); } finally { loadingHistory.value = false; scrollBottom(); } }
+async function openSession(id) { if (running.value) return; sessionId.value = Number(id); loadingHistory.value = true; activity.value = []; attachedLogs.value = ''; attachedCount.value = 0; showLogPicker.value = false; showQuickPrompts.value = false; try { const data = await api.getAiHistory(sessionId.value, 200); if (data.hasMore) toast.info('该会话超过 200 条消息，仅显示最近记录'); messages.value = (data.messages || []).filter((item) => ['user', 'assistant'].includes(item.role)).map((item) => ({ id: nextMessageId(), role: item.role, content: stripAgentProtocol(item.content) })); } catch (error) { toast.error(`恢复会话失败:${error.message}`); } finally { loadingHistory.value = false; scrollBottom(); } }
 function deleteSession(id) { deleteDialog.id = id; deleteDialog.show = true; }
 async function confirmDeleteSession() {
   const id = deleteDialog.id;
   deleteDialog.show = false;
   if (!id || running.value) return;
-  await api.clearAiHistory(id);
-  sessions.value = sessions.value.filter((session) => session.sessionId !== id);
-  if (sessionId.value === id) newSession();
+  try { await api.clearAiHistory(id); sessions.value = sessions.value.filter((session) => session.sessionId !== id); selectedSessions.value = selectedSessions.value.filter((value) => value !== id); if (sessionId.value === id) newSession(); } catch (error) { toast.error(`删除会话失败:${error.message}`); }
 }
+function toggleSession(id) { selectedSessions.value = selectedSessions.value.includes(id) ? selectedSessions.value.filter((value) => value !== id) : [...selectedSessions.value, id]; }
+function toggleAllSessions() { const ids = filteredSessionIds.value; selectedSessions.value = allSessionsSelected.value ? selectedSessions.value.filter((id) => !ids.includes(id)) : [...new Set([...selectedSessions.value, ...ids])]; }
+function deleteSelectedSessions() { if (selectedSessions.value.length && !running.value) bulkDeleteDialog.value = true; }
+async function confirmDeleteSelected() { const ids = [...selectedSessions.value]; bulkDeleteDialog.value = false; if (!ids.length || running.value) return; try { await api.clearAiSessions(ids); if (ids.includes(sessionId.value)) newSession(); sessions.value = sessions.value.filter((session) => !ids.includes(session.sessionId)); selectedSessions.value = []; toast.success(`已删除 ${ids.length} 个会话`); } catch (error) { toast.error(`批量删除失败:${error.message}`); } }
 function clearCurrentSession() { if (!sessionId.value || !messages.value.length || running.value) return; clearDialog.value = true; }
 async function confirmClearSession() {
   clearDialog.value = false;
-  await api.clearAiHistory(sessionId.value);
-  messages.value = [];
-  await loadSessions();
+  try {
+    await api.clearAiHistory(sessionId.value);
+    messages.value = [];
+    await loadSessions();
+    toast.success('当前会话已清空');
+  } catch (error) {
+    toast.error(`清空会话失败:${error.message}`);
+  }
 }
 function beginRename(session) { editingSessionId.value = session.sessionId; editingTitle.value = session.title || ''; }
 function cancelRename() { editingSessionId.value = null; editingTitle.value = ''; }
 async function saveRename(session) { if (editingSessionId.value !== session.sessionId) return; const title = editingTitle.value.trim(); if (!title || title === session.title) { cancelRename(); return; } try { await api.renameAgentSession(session.sessionId, title); session.title = title; } catch (error) { window.alert(error.message); } finally { cancelRename(); } }
 function selectProject(project) { projectId.value = project.id; input.value = `后续操作项目 ${project.name}`; focusInput(); }
-async function submit() { const text = input.value.trim(); if (!text) return; showLogPicker.value = false; showQuickPrompts.value = false; await sendMessage(text, { projectId: projectId.value || undefined, webSearchEnabled: webSearchEnabled.value, attachedLogs: attachedLogs.value || undefined }); await Promise.all([loadSessions(), loadMemories()]); }
-onMounted(async () => { await Promise.all([loadProjects(), loadSessions(), loadMemories()]); if (sessions.value.length) await openSession(sessions.value[0].sessionId); else focusInput(); });
+const containerId = ref('');
+async function submit() { const text = input.value.trim(); if (!text) return; showLogPicker.value = false; showQuickPrompts.value = false; await sendMessage(text, { projectId: projectId.value || undefined, containerId: containerId.value || undefined, webSearchEnabled: webSearchEnabled.value, attachedLogs: attachedLogs.value || undefined }); await Promise.all([loadSessions(), loadMemories()]); }
+async function applyRouteContext() { const requestedProjectId = String(route.query.projectId || ''); const requestedContainerId = String(route.query.containerId || ''); if (requestedProjectId) projectId.value = requestedProjectId; if (requestedContainerId) containerId.value = requestedContainerId; if (route.query.diagnose && requestedProjectId && requestedContainerId) { try { const result = await api.getProjectLogs(requestedProjectId, requestedContainerId, 200); onAttach({ text: result.logs || '', count: result.count || 0 }); input.value = '请分析已挂载的容器日志，判断异常原因并给出修复建议'; } catch (error) { toast.error(`加载诊断日志失败:${error.message}`); } } }
+onMounted(async () => { await Promise.all([loadProjects(), loadSessions(), loadMemories()]); await applyRouteContext(); if (!sessionId.value && sessions.value.length) await openSession(sessions.value[0].sessionId); else if (!messages.value.length) focusInput(); });
 </script>
 
 <style scoped>
@@ -162,6 +184,10 @@ onMounted(async () => { await Promise.all([loadProjects(), loadSessions(), loadM
 .agent-project-card button:hover { background: rgba(8, 145, 178, 0.18); border-color: #0891b2; }.agent-confirm { color: #fde68a; border-color: rgba(146,64,14,.7); background: rgba(69,26,3,.25); }.agent-confirm strong { font-size: 12px; }.agent-confirm p { margin-top: 4px; color: rgba(254,243,199,.7); font-size: 11px; }.agent-confirm pre { max-height: 130px; overflow: auto; margin-top: 8px; padding: 8px; color: #a1a1aa; background: rgba(0,0,0,.3); font-size: 10px; }.agent-sources > div { display: flex; align-items: center; gap: 5px; margin-bottom: 7px; color: #67e8f9; font-size: 11px; font-weight: 700; }.agent-sources a { display: block; overflow: hidden; color: #a1a1aa; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }.agent-sources a:hover { color: #67e8f9; }.agent-sources small { display: block; overflow: hidden; margin-top: 2px; color: #52525b; text-overflow: ellipsis; white-space: nowrap; }.agent-activity { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 9px; color: #71717a; font-size: 10px; }.agent-activity b { margin-right: 3px; color: #22d3ee; font-weight: 500; }.agent-composer { flex: 0 0 auto; padding: 12px 16px 14px; border-top: 1px solid rgba(69,76,91,.55); }.agent-input { display: block; width: 100%; resize: vertical; padding: 10px 12px; color: #e4e4e7; border: 1px solid #3f4653; border-radius: 8px; outline: none; background: #181c23; font-size: 13px; line-height: 1.6; }.agent-input:focus { border-color: #0891b2; box-shadow: 0 0 0 2px rgba(8,145,178,.15); }.agent-composer-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; color: #52525b; font-size: 10px; }.agent-inspector { display: flex; min-height: 0; flex-direction: column; gap: 12px; }.agent-inspector-card { padding: 14px; color: #71717a; font-size: 11px; line-height: 1.6; }.agent-inspector-title { margin-bottom: 9px; color: #d4d4d8; font-size: 12px; font-weight: 700; }.agent-inspector-title em { color: #22d3ee; font-size: 10px; font-style: normal; }.agent-activity-panel { min-height: 160px; flex: 1; overflow-y: auto; }.agent-activity-row { margin: 8px 0; }.agent-activity-row b { display: block; color: #22d3ee; font-size: 10px; font-weight: 600; }.agent-activity-row span { color: #71717a; font-size: 10px; }.agent-memory { padding: 7px 0; border-top: 1px solid #272c35; }.agent-memory strong, .agent-memory span { display: block; }.agent-memory strong { color: #a5f3fc; font-size: 11px; }.agent-memory span { color: #a1a1aa; font-size: 10px; }
 @media (max-width: 1180px) { .agent-layout { grid-template-columns: 210px minmax(0,1fr); }.agent-inspector { display: none; } } @media (max-width: 760px) { .agent-layout { display: flex; flex-direction: column; }.agent-sessions { max-height: 142px; }.agent-session-list { display: flex; overflow-x: auto; gap: 4px; }.agent-session-row { min-width: 190px; }.agent-message-body { max-width: calc(100% - 38px); }.agent-composer-foot span { max-width: 65%; } }
 .agent-session-edit { padding: 8px 3px; color: #71717a; }
+.agent-session-bulk { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 12px; color: #71717a; border-top: 1px solid #272c35; border-bottom: 1px solid #272c35; font-size: 10px; }
+.agent-session-bulk label { display: inline-flex; align-items: center; gap: 6px; }
+.agent-session-check { width: 14px; height: 14px; margin: 0 2px 0 6px; accent-color: #06b6d4; }
+.agent-session-row.selected { background: rgba(8,145,178,.08); }
 
 /* chat-head 更多操作菜单 */
 .agent-head-menu { position: relative; }
