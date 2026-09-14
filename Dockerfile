@@ -21,9 +21,13 @@ RUN npm run build
 FROM node:22-bookworm-slim AS backend-build
 
 # apt 默认走 deb.debian.org。若构建机有 HTTP_PROXY/HTTPS_PROXY（由 BuildKit 从
-# 宿主 shell 透传），apt 自动走代理；否则直连。不在这里硬编码镜像源，保持镜像
-# 在任何网络环境（直连/代理）下都可用。
-RUN apt-get update \
+# 宿主 shell 透传），apt 自动走代理；否则直连。若直连超时，可通过 build-arg
+# APT_MIRROR=mirrors.tuna.tsinghua.edu.cn 切换国内镜像源。
+ARG APT_MIRROR=""
+RUN if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/debian.sources; \
+    fi \
+ && apt-get update \
  && apt-get install -y --no-install-recommends python3 make g++ \
  && rm -rf /var/lib/apt/lists/*
 
@@ -42,7 +46,12 @@ FROM node:22-bookworm-slim AS runtime
 
 # docker CLI + compose v2 plugin (for the /compose control route)
 # 若宿主 shell 设了 HTTP_PROXY/HTTPS_PROXY，BuildKit 透传给 apt/curl，走代理。
-RUN apt-get update \
+# 若直连超时，可通过 build-arg APT_MIRROR=mirrors.tuna.tsinghua.edu.cn 切换国内镜像源。
+ARG APT_MIRROR=""
+RUN if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/debian.sources; \
+    fi \
+ && apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
  && install -m 0755 -d /etc/apt/keyrings \
  && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \

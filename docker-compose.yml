@@ -37,8 +37,13 @@ services:
   opsdash:
     build:
       context: .
-      # BuildKit 自动把宿主 shell 的 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 透传进构建阶段。
-      # 你只需在 `docker compose build` 前设好这俩 env(例如 export HTTPS_PROXY=http://127.0.0.1:7897)。
+            # BuildKit 自动把宿主 shell 的 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 透传进构建阶段。
+      # 你只需在 `docker compose build` 前设好这俩 env(例如 export HTTPS_PROXY=http://127.0.0.1:7897(。
+      # 若直连 deb.debian.org 超时(国内网络常见问题),可启用清华镜像源:
+      #   docker compose build --build-arg APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+      # 或在下方 args 里取消注释。
+      # args:
+      #   APT_MIRROR: mirrors.tuna.tsinghua.edu.cn
     image: composeops/opsdash:latest
     container_name: opsdash
     restart: unless-stopped
