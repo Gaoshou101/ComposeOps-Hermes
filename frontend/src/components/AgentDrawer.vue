@@ -1,3 +1,4 @@
+<!-- eslint-disable vue/no-v-html -- 放大浮层内容来自 renderAgentMarkdown 的 DOMPurify 净化结果。 -->
 <template>
   <div v-if="open" class="agent-drawer-layer">
     <button class="agent-drawer-backdrop" aria-label="关闭 Agent" @click="closeAgent"></button>
@@ -16,13 +17,13 @@
           </div>
         </article>
       </div>
-      <form class="agent-drawer-composer" @submit.prevent="submit"><textarea ref="inputEl" v-model="input" class="agent-input" rows="3" placeholder="询问当前页面或让 Agent 执行任务…" @keydown.enter.exact.prevent="submit"></textarea><div class="flex items-center justify-between gap-2"><small class="text-surface-500">{{ running ? '执行中，可随时中断' : '需要修改时会先请求确认' }}</small><button class="btn-primary" type="submit" :disabled="running || !input.trim()"><Send class="h-4 w-4" />发送</button></div></form>
+      <form class="agent-drawer-composer" @submit.prevent="submit"><textarea ref="inputEl" v-model="input" class="agent-input" rows="3" placeholder="询问当前页面或让 Agent 执行任务…" @keydown.enter.exact.prevent="submit"></textarea><div class="flex items-center justify-between gap-2"><small class="text-surface-500">{{ running ? (pendingQueue.length ? '执行中,已排队 ' + pendingQueue.length + ' 条' : '执行中,可继续输入并自动排队') : '需要修改时会先请求确认' }}</small><button class="btn-primary" type="submit" :disabled="!input.trim()"><Send class="h-4 w-4" />{{ running ? '排队' : '发送' }}</button></div></form>
     </aside>
     <teleport to="body">
       <div v-if="zoomOpen" class="rich-zoom-mask" @click.self="closeZoom()" @wheel.prevent="onZoomWheel">
         <div class="rich-zoom-card agent-markdown" :style="{ transform: `scale(${zoomScale})` }">
           <button class="rich-zoom-close" title="关闭(Esc)" @click="closeZoom">×</button>
-          <AgentMarkdown class="rich-zoom-content" :html="zoomContent" />
+          <div class="rich-zoom-content" v-html="zoomContent"></div>
         </div>
       </div>
     </teleport>
@@ -41,7 +42,7 @@ import AgentMarkdown from './common/AgentMarkdown.vue';
 
 const { open, context, closeAgent } = useAgentConsole();
 const chat = useAgentChat();
-const { messages, input, running, sessionId, scrollEl, nextMessageId, sendMessage, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom } = chat;
+const { messages, input, running, sessionId, scrollEl, nextMessageId, sendMessage, pendingQueue, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom } = chat;
 const inputEl = ref(null);
 const historyLoading = ref(false);
 const pageContext = computed(() => ({ page: context.value.page || '当前页面', route: window.location.hash.replace(/^#/, '') || '/', mode: context.value.mode || '运维问答与操作', summary: context.value.summary || '', state: context.value.state || '' }));
@@ -49,7 +50,12 @@ const contextSummary = computed(() => pageContext.value.summary || pageContext.v
 const defaultPrompt = computed(() => pageContext.value.mode === 'cron-editor' ? '根据当前表单帮我创建这个定时任务' : '请分析当前页面，并告诉我可以做什么');
 useEscapeKey({ active: open, onClose: closeAgent, layer: 'drawer', lockBody: true });
 function focusInput() { void nextTick(() => inputEl.value?.focus()); }
-function submit() { void sendMessage(input.value.trim(), { pageContext: pageContext.value }); }
+function submit() {
+  const text = input.value.trim();
+  if (!text) return;
+  // 抽屉与工作台共用同一 chat 实例:执行中提交会进入队列,由 useAgentChat 自动续发。
+  void sendMessage(text, { pageContext: pageContext.value });
+}
 async function restoreLatestSession() {
   if (sessionId.value || messages.value.length || historyLoading.value) return;
   historyLoading.value = true;

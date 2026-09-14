@@ -270,7 +270,10 @@ export class OperationsAgent {
         { role: 'user', content: guardedUserMessage },
       ];
       if (context.sessionId) {
-        addAiMessage('user', userMessage, { agent: true, projectId: context.projectId || null }, Number(context.sessionId));
+        const userMessageId = addAiMessage('user', userMessage, { agent: true, projectId: context.projectId || null }, Number(context.sessionId));
+        // 把本条用户消息的落库 id 告知前端:编辑并重发时据此截断持久化历史,
+        // 否则前端删掉了气泡、后端历史仍留着旧轮次,会话重开会看到分叉内容。
+        onEvent({ type: 'session_meta', userMessageId });
       }
       if (remembered) messages[0].content += `\n\n以下是用户授权保存的长期记忆,仅在相关时参考:\n${remembered}`;
       const cfg = getAiConfig();
@@ -312,7 +315,7 @@ export class OperationsAgent {
         }
 
         loopCount++;
-        publishTrace('loop_iteration', `第 ${loopCount} 轮循环`, {});
+        publishTrace('loop_iteration', `第 ${loopCount} 轮循环`, { loopCount });
 
         // 调用 LLM(带工具定义)
         let responseText = '';
@@ -321,6 +324,8 @@ export class OperationsAgent {
         let lastUsage = null;
 
         try {
+          // 发送 thinking 事件(折叠面板)
+          onEvent({ type: 'thinking', content: `正在思考第 ${loopCount} 轮...` });
           // 使用流式输出实时推送 LLM 思考过程
           const response = await callOpenAI({
             ...cfg,
@@ -355,7 +360,7 @@ export class OperationsAgent {
         if (stopReason === 'stop' || stopReason === 'end_turn') {
           messages.push({ role: 'assistant', content: responseText || null });
           // LLM 决定结束对话
-          onEvent({ type: 'done', content: responseText, usage: lastUsage });
+          onEvent({ type: 'done', content: responseText, usage: lastUsage, planId });
           publishTrace('loop_completed', 'LLM 决定结束执行', { loopCount });
           updateAgentPlan(planId, { status: 'completed', resultJson: { messages, finalContent: responseText }, executedAt: new Date().toISOString(), progressStage: '执行完成', progressPercent: 100, updatedAt: new Date().toISOString() });
           if (context.sessionId) addAiMessage('assistant', responseText, { agent: true, projectId: context.projectId || null, trace }, Number(context.sessionId));
@@ -481,7 +486,7 @@ export class OperationsAgent {
 
         // 未知 stop_reason,结束循环
         messages.push({ role: 'assistant', content: responseText || null });
-        onEvent({ type: 'done', content: responseText, usage: lastUsage });
+        onEvent({ type: 'done', content: responseText, usage: lastUsage, planId });
         if (context.sessionId) addAiMessage('assistant', responseText, { agent: true, projectId: context.projectId || null, trace }, Number(context.sessionId));
         publishTrace('loop_completed', 'Agent 完成回答', { loopCount });
         updateAgentPlan(planId, { status: 'completed', resultJson: { messages, finalContent: responseText }, executedAt: new Date().toISOString(), progressStage: '执行完成', progressPercent: 100, updatedAt: new Date().toISOString() });
@@ -489,7 +494,7 @@ export class OperationsAgent {
       }
 
       // 达到最大循环次数
-      onEvent({ type: 'max_loops_reached', maxLoops });
+      onEvent({ type: 'max_loops_reached', maxLoops, planId });
       this.addThought('max_loops_reached', `达到最大循环次数 ${maxLoops}`, {}, trace);
       updateAgentPlan(planId, { status: 'failed', resultJson: { messages, maxLoopsReached: true }, executedAt: new Date().toISOString(), progressStage: '超过最大循环次数', updatedAt: new Date().toISOString() });
       return { success: false, messages, finalContent: `达到最大循环次数 ${maxLoops}`, maxLoopsReached: true };

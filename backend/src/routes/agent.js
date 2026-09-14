@@ -15,6 +15,7 @@ import {
   createAiSession,
   renameAiSession,
   listAiMemories,
+  recordAgentFeedback,
 } from '../lib/db.js';
 import { getAgent } from '../services/agent.js';
 import { idField, limitField, numericId } from '../lib/schemas.js';
@@ -157,6 +158,28 @@ export default async function agentRoutes(fastify) {
       completed = true;
       reply.raw.end();
     }
+  });
+
+  // POST /api/v1/ai/agent/feedback —— 对某次执行点赞/点踩(写回 agent_plans.rating)
+  // rating 1 = 点踩(需改进),5 = 点赞;反馈文本可选,用于沉淀失败样本。
+  fastify.post('/agent/feedback', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['planId', 'rating'],
+        properties: {
+          planId: numericId,
+          rating: { type: 'integer', minimum: 1, maximum: 5 },
+          feedbackText: { type: 'string', maxLength: 2000 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { planId, rating, feedbackText = '' } = request.body || {};
+    const updated = recordAgentFeedback(Number(planId), rating, feedbackText);
+    if (!updated) return reply.code(404).send({ error: 'plan_not_found', message: '执行记录不存在或已清理' });
+    return { ok: true, planId: Number(planId), rating: Number(rating) };
   });
 
   // POST /api/v1/ai/agent/approve —— 批准工具调用(支持确认弹窗编辑参数)

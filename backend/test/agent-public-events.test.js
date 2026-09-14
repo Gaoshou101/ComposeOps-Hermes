@@ -8,13 +8,24 @@ test('公开 Agent 事件隐藏工具协议和内部工具字段', () => {
   assert.equal(traceEvent.type, 'trace');
   assert.equal(traceEvent.phase, 'tool_executing');
   assert.ok(!/tool_call/.test(traceEvent.content), 'trace 内容中的协议词必须被清洗');
+  // round 从 metadata.loopCount 透出,供"执行动态"渲染"第 N 轮"
+  assert.equal(toPublicAgentEvent({ type: 'trace', trace: { phase: 'loop_iteration', content: '第 2 轮循环', metadata: { loopCount: 2 } } }).round, 2);
+  assert.equal(toPublicAgentEvent({ type: 'trace', trace: { phase: 'loop_started', content: '开始' } }).round, 0);
+  // done 透出 planId,前端据此把点赞/点踩写回对应执行记录
+  assert.equal(toPublicAgentEvent({ type: 'done', content: 'ok', planId: 42 }).planId, '42');
+  // session_meta 透出本次用户消息的落库 id,前端据此截断历史(编辑并重发)
+  assert.deepEqual(toPublicAgentEvent({ type: 'session_meta', userMessageId: 42 }), { type: 'session_meta', userMessageId: 42 });
+  assert.deepEqual(toPublicAgentEvent({ type: 'session_meta' }), { type: 'session_meta', userMessageId: 0 });
+  // thinking 占位事件必须透传,否则聊天气泡的"思考过程"折叠面板拿不到数据
+  assert.deepEqual(toPublicAgentEvent({ type: 'thinking', content: '正在思考第 1 轮...' }), { type: 'thinking', content: '正在思考第 1 轮...' });
+  assert.deepEqual(toPublicAgentEvent({ type: 'thinking' }), { type: 'thinking', content: '' });
   // token 分片必须在 ai.js 发射层(全量、有状态)完成协议剥离后原样透传:
   // 逐 token 清洗会吃掉分片边界的空白与换行,造成表格/代码块与正文粘连、英文空格丢失。
   assert.deepEqual(toPublicAgentEvent({ type: 'token', content: '回答 \n\n| 项目 | 状态 |' }), { type: 'token', content: '回答 \n\n| 项目 | 状态 |' });
   assert.deepEqual(toPublicAgentEvent({ type: 'token', content: '' }), { type: 'token', content: '' });
   assert.deepEqual(toPublicAgentEvent({ type: 'token' }), { type: 'token', content: '' });
   // done 是完整文本,仍做协议与内部伪代码清洗。
-  assert.deepEqual(toPublicAgentEvent({ type: 'done', content: '结论 如下:\n\n\ntext tool_ca' }), { type: 'done', content: '结论 如下:\n\ntext' });
+  assert.deepEqual(toPublicAgentEvent({ type: 'done', content: '结论 如下:\n\n\ntext tool_ca' }), { type: 'done', content: '结论 如下:\n\ntext', planId: '' });
   assert.deepEqual(toPublicAgentEvent({ type: 'token', content: 'iNdEx++ result= composeOps.project.list_managed()project_list<tID | 项目名称 |\n您当前可以操作的项目如下:' }), { type: 'token', content: 'iNdEx++ result= composeOps.project.list_managed()project_list<tID | 项目名称 |\n您当前可以操作的项目如下:' });
   assert.deepEqual(toPublicAgentEvent({
     type: 'confirmation_required',
@@ -35,9 +46,16 @@ test('公开 Agent 事件保留用户需要的上下文和完成通知', () => {
   });
   // 通用工具结果只透出工具名/成败/耗时,结果体不外带
   assert.deepEqual(toPublicAgentEvent({ type: 'tool_result', tool: 'compose.ps', result: { success: true, result: {}, durationMs: 120 } }), {
-    type: 'tool_result', tool: 'compose.ps', success: true, durationMs: 120, summary: '{}',
+    type: 'tool_result', tool: 'compose.ps', success: true, durationMs: 120, summary: '{}', error: '',
   });
-  assert.deepEqual(toPublicAgentEvent({ type: 'tool_requested', tool: 'config.inspect' }), { type: 'tool_requested', tool: 'config.inspect' });
+  assert.deepEqual(toPublicAgentEvent({ type: 'tool_result', tool: 'compose.ps', result: { success: false, error: '容器不存在', durationMs: 12 } }), {
+    type: 'tool_result', tool: 'compose.ps', success: false, durationMs: 12, summary: '{"error":"容器不存在","durationMs":12}', error: '容器不存在',
+  });
+  // 请求工具时携带脱敏参数摘要,供工具卡片展开查看
+  assert.deepEqual(toPublicAgentEvent({ type: 'tool_requested', tool: 'config.inspect', params: { password: 'x', name: 'api' } }), {
+    type: 'tool_requested', tool: 'config.inspect', paramsText: '{"password":"[REDACTED]","name":"api"}',
+  });
+  assert.deepEqual(toPublicAgentEvent({ type: 'tool_requested', tool: 'config.inspect' }), { type: 'tool_requested', tool: 'config.inspect', paramsText: '{}' });
   assert.deepEqual(toPublicAgentEvent({ type: 'tool_executing', tool: 'config.inspect' }), { type: 'tool_executing', tool: 'config.inspect' });
   assert.deepEqual(toPublicAgentEvent({ type: 'tool_rejected', tool: 'compose.restart' }), { type: 'tool_rejected', tool: 'compose.restart' });
   assert.deepEqual(toPublicAgentEvent({ type: 'tool_error', tool: 'compose.logs', error: '容器不存在' }), { type: 'tool_error', tool: 'compose.logs', error: '容器不存在' });

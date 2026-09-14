@@ -301,13 +301,17 @@ export function addAiMessage(role, content, context = null, sessionId = null) {
   db.prepare(
     'INSERT INTO ai_history(role, content, context, session_id) VALUES(?, ?, ?, ?)'
   ).run(role, content, context ? JSON.stringify(context) : null, sessionId == null ? 0 : sessionId);
+  // 必须在下面那次 ai_sessions 写入之前取 rowid:会话行是新建时,后续的
+  // last_insert_rowid() 会变成 ai_sessions 的 rowid,返回值就不再是消息 id
+  // (调用方拿它做历史截断定位,错位会删到别的区间)。
+  const messageId = db.prepare('SELECT last_insert_rowid() AS id').get().id;
   if (sessionId != null && Number(sessionId) !== 0) {
     db.prepare(`
       INSERT INTO ai_sessions(session_id, updated_at) VALUES(?, datetime('now'))
       ON CONFLICT(session_id) DO UPDATE SET updated_at = datetime('now')
     `).run(Number(sessionId));
   }
-  return db.prepare('SELECT last_insert_rowid() AS id').get().id;
+  return messageId;
 }
 
 export function getAiHistory(limit = 50, sessionId = null) {
@@ -389,6 +393,14 @@ export function clearAiSessions(sessionIds = []) {
     return deleted;
   });
   return remove(ids);
+}
+
+/** 删除某会话中 id >= fromMessageId 的全部消息 —— 用于"编辑并重发"时让持久化历史与前端保持一致。 */
+export function truncateAiHistoryFrom(sessionId, fromMessageId) {
+  const id = Number(sessionId);
+  const fromId = Number(fromMessageId);
+  if (!Number.isSafeInteger(id) || id <= 0 || !Number.isSafeInteger(fromId) || fromId <= 0) return 0;
+  return db.prepare('DELETE FROM ai_history WHERE session_id = ? AND id >= ?').run(id, fromId).changes;
 }
 
 export function clearAiHistory() {

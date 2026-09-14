@@ -1,0 +1,12 @@
+{
+  "id": "agent-comprehensive-audit",
+  "title": "Agent 全方位审查与深度改进",
+  "status": "in_progress",
+  "complexity": "L+",
+  "risk": "medium",
+  "domain": "fullstack",
+  "currentPhase": "review",
+  "nextAction": "提交并推送",
+  "createdAt": "2026-09-14T12:40:00+08:00",
+  "branch": "main"
+}

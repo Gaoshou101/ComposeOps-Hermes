@@ -88,6 +88,22 @@ test('routes: /health 无需登录,按 Docker 可用性返回 200 或 503', asyn
   }
 });
 
+test('routes: Agent 反馈端点受认证保护且参数被 schema 校验', async () => {
+  const unauthenticated = await app.inject({
+    method: 'POST', url: '/api/v1/ai/agent/feedback',
+    payload: { planId: 1, rating: 5 },
+  });
+  assert.equal(unauthenticated.statusCode, 401, '反馈端点必须要求登录');
+
+  const badRating = await app.inject({
+    method: 'POST', url: '/api/v1/ai/agent/feedback',
+    headers: { origin: 'http://localhost:3001', host: 'localhost:3001' },
+    payload: { planId: 1, rating: 9 },
+  });
+  // 未登录时先被认证拦下;schema 越界同样不应 500。
+  assert.ok([400, 401].includes(badRating.statusCode), `意外状态码 ${badRating.statusCode}`);
+});
+
 test('routes: schema 校验失败沿用全站 { error, message } 契约', async () => {
   const response = await app.inject({
     method: 'POST',

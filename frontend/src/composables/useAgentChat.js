@@ -99,7 +99,8 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
     }
     await ensureSession();
     const assistant = { id: ++sharedNextId, role: 'assistant', content: '', streaming: true };
-    messages.value.push({ id: ++sharedNextId, role: 'user', content: text }, assistant);
+    const userMessage = { id: ++sharedNextId, role: 'user', content: text, persistedId: 0 };
+    messages.value.push(userMessage, assistant);
     input.value = '';
     running.value = true;
     sharedController = new AbortController();
@@ -124,11 +125,37 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
     }
   }
 
+  /** 对某条回复点赞(5)/点踩(1),写回后端 agent_plans.rating,用于沉淀失败样本。 */
+  async function rateMessage(message, rating, feedbackText = '') {
+    if (!message?.planId) return false;
+    try {
+      await api.agentFeedback({ planId: Number(message.planId), rating, feedbackText });
+      message.rating = rating;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function continueAfterInterrupt() {
+    if (running.value) return;
+    const last = [...messages.value].reverse().find((m) => m.role === 'assistant' && m.interrupted);
+    if (last) last.interrupted = false;
+    await sendMessage('请继续刚才被中断的任务,从中断处接着完成;已经执行过的步骤不要重复执行。');
+  }
+
   async function regenerate() {
     const lastUser = [...messages.value].reverse().find((m) => m.role === 'user');
     if (!lastUser || running.value) return;
-    // 删除最后一条 user 和 assistant
     const lastUserIndex = messages.value.lastIndexOf(lastUser);
+    // 重跑等同于"从这条提问重新开始":后端历史必须一并截断,否则重开会话会看到两遍同一轮。
+    if (sessionId.value && lastUser.persistedId) {
+      try {
+        await api.truncateAiHistory(Number(sessionId.value), Number(lastUser.persistedId));
+      } catch (error) {
+        throw new Error(`同步历史失败:${error.message}`, { cause: error });
+      }
+    }
     messages.value.splice(lastUserIndex);
     await sendMessage(lastUser.content);
   }
@@ -137,7 +164,16 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
     if (running.value) return;
     const index = messages.value.findIndex((m) => m.id === messageId);
     if (index === -1) return;
-    // 删除该消息及后续所有消息
+    const target = messages.value[index];
+    // 先截断持久化历史,再删本地气泡:顺序反了会让"截断失败"变成静默的前后端分叉。
+    if (sessionId.value && target?.persistedId) {
+      try {
+        await api.truncateAiHistory(Number(sessionId.value), Number(target.persistedId));
+      } catch (error) {
+        // 截断失败时不继续,避免本地删了、服务端还留着旧轮次。
+        throw new Error(`同步历史失败:${error.message}`, { cause: error });
+      }
+    }
     messages.value.splice(index);
     await sendMessage(newContent);
   }
@@ -146,17 +182,20 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
   function trackTool(assistant, event) {
     if (!assistant.tools) assistant.tools = [];
     const pending = [...assistant.tools].reverse().find((item) => item.tool === event.tool && ['requested', 'executing'].includes(item.status));
-    if (event.type === 'tool_requested') assistant.tools.push({ tool: event.tool, status: 'requested' });
+    if (event.type === 'tool_requested') assistant.tools.push({ tool: event.tool, status: 'requested', paramsText: event.paramsText || '' });
     else if (event.type === 'tool_executing') {
       if (pending) pending.status = 'executing';
       else assistant.tools.push({ tool: event.tool, status: 'executing' });
     } else if (event.type === 'tool_result') {
       const status = event.success ? 'done' : 'failed';
-      if (pending) { pending.status = status; pending.durationMs = event.durationMs; }
-      else assistant.tools.push({ tool: event.tool, status, durationMs: event.durationMs });
+      // 结果摘要/错误只在后端透出的脱敏字段里,不再假设前端持有完整结果体。
+      const detail = { durationMs: event.durationMs, summary: event.summary || '', error: event.error || '' };
+      if (pending) Object.assign(pending, detail, { status });
+      else assistant.tools.push({ tool: event.tool, status, ...detail });
     } else if (event.type === 'tool_error') {
-      if (pending) pending.status = 'failed';
-      else assistant.tools.push({ tool: event.tool, status: 'failed' });
+      const detail = { error: event.error || '执行失败' };
+      if (pending) Object.assign(pending, detail, { status: 'failed' });
+      else assistant.tools.push({ tool: event.tool, status: 'failed', ...detail });
     } else if (event.type === 'tool_rejected') {
       if (pending) pending.status = 'rejected';
       else assistant.tools.push({ tool: event.tool, status: 'rejected' });
@@ -164,6 +203,12 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
   }
 
   function handleEvent(event, assistant) {
+    if (event.type === 'session_meta') {
+      // 后端刚把这条用户消息落库,回填 id;编辑重发时据此删除对应历史段。
+      const lastUser = [...messages.value].reverse().find((item) => item.role === 'user' && !item.persistedId);
+      if (lastUser) lastUser.persistedId = event.userMessageId;
+      return;
+    }
     if (event.type === 'token') {
       queueToken(assistant, event.content);
       scrollBottom();
@@ -174,12 +219,23 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
     else if (event.type === 'context_data' && event.kind === 'search_sources') assistant.searchSources = event.sources;
     else if (event.type === 'action_completed' && event.kind === 'cron_created') window.dispatchEvent(new CustomEvent('composeops:cron-agent-created', { detail: event.result || {} }));
     else if (event.type.startsWith('tool_')) { trackTool(assistant, event); }
-    else if (event.type === 'interrupted') { flushTokens(); assistant.confirmation = null; assistant.content += `${assistant.content ? '\n\n' : ''}${stripAgentProtocol(event.reason || '执行已中断')}`; }
+    else if (event.type === 'interrupted') {
+      flushTokens();
+      assistant.confirmation = null;
+      // 标记中断,消息区据此显示"继续执行"入口(重新以会话上下文接续,而非从头开始)
+      assistant.interrupted = true;
+      assistant.content += `${assistant.content ? '\n\n' : ''}${stripAgentProtocol(event.reason || '执行已中断')}`;
+    }
     else if (event.type === 'error') { flushTokens(); assistant.confirmation = null; assistant.content += `${assistant.content ? '\n\n' : ''}${stripAgentProtocol(event.content || 'Agent 执行失败')}`; }
     else if (event.type === 'done') {
       flushTokens();
       if (event.content) assistant.content = stripAgentProtocol(event.content);
       if (event.usage) assistant.usage = event.usage;
+      if (event.planId) assistant.planId = event.planId;
+      assistant.thinking = null;
+    }
+    else if (event.type === 'thinking') {
+      assistant.thinking = event.content;
     }
     for (const item of subscribers) { if (item.active !== false) item.onEventExtra?.(event, assistant); }
     scrollBottom();
@@ -260,7 +316,7 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
 
   onBeforeUnmount(() => subscribers.delete(subscriber));
 
-  return { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, ensureSession, resetSession, sendMessage, regenerate, editAndResend, pendingQueue, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom, setSubscriberActive };
+  return { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, ensureSession, resetSession, sendMessage, regenerate, editAndResend, continueAfterInterrupt, rateMessage, pendingQueue, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom, setSubscriberActive };
 }
 
 function resetSharedState() {

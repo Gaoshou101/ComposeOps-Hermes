@@ -1307,3 +1307,126 @@ pre:hover .code-copy-btn { opacity: 1; }
     box-shadow: 0 0 0 8px rgba(220, 38, 38, 0);
   }
 }
+
+/* ===== 消息搜索框 ===== */
+.agent-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(69, 76, 91, 0.55);
+  background: rgba(23, 27, 34, 0.5);
+}
+.agent-search-bar svg {
+  color: #71717a;
+  flex-shrink: 0;
+}
+.agent-search-input {
+  flex: 1;
+  padding: 6px 10px;
+  color: #e4e4e7;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  outline: none;
+  background: rgba(24, 28, 35, 0.6);
+  font-size: 12px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.agent-search-input:focus {
+  border-color: #0891b2;
+  background: rgba(24, 28, 35, 0.9);
+}
+.agent-search-input::placeholder {
+  color: #52525b;
+}
+.agent-search-clear {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  color: #71717a;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.agent-search-clear:hover {
+  color: #f87171;
+  background: rgba(220, 38, 38, 0.1);
+}
+
+/* ===== 中断后继续执行 ===== */
+.agent-continue-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.agent-continue-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  color: #a5f3fc;
+  border: 1px solid rgba(8, 145, 178, 0.5);
+  border-radius: 999px;
+  background: rgba(8, 145, 178, 0.14);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.agent-continue-btn:hover { background: rgba(8, 145, 178, 0.26); border-color: #0891b2; }
+.agent-continue-btn:active { transform: scale(0.97); }
+.agent-continue-row > span { color: #71717a; font-size: 10px; }
+
+/* 工具卡片:错误结果用玫红色调区分 */
+.agent-tool-card-section.is-error { color: #fda4af; background: rgba(190, 18, 60, 0.1); }
+.agent-tool-card-section.is-error strong { color: #fb7185; }
+
+/* ===== 触摸设备:hover 常驻不可用,操作栏改为默认可见 ===== */
+@media (hover: none) {
+  .agent-message-actions { opacity: 1; transform: none; pointer-events: auto; position: static; margin-top: 6px; justify-content: flex-end; background: transparent; border: 0; box-shadow: none; padding: 0; }
+  .agent-message-action-btn { width: 34px; height: 34px; }
+  .agent-session-row .agent-session-edit,
+  .agent-session-row .agent-session-delete { opacity: 1; }
+}
+/* 触摸目标下限:44px 是 iOS HIG / Material 的建议值 */
+@media (pointer: coarse) {
+  .agent-message-action-btn,
+  .icon-btn,
+  .agent-session-edit,
+  .agent-session-delete { min-width: 34px; min-height: 34px; }
+}
+
+/* ===== 编辑已发送消息 ===== */
+.agent-edit-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+  padding: 7px 11px;
+  color: #a5f3fc;
+  border: 1px solid rgba(8, 145, 178, 0.45);
+  border-radius: 8px;
+  background: rgba(8, 145, 178, 0.12);
+  font-size: 11px;
+}
+.agent-edit-banner svg { flex-shrink: 0; }
+.agent-edit-banner span { min-width: 0; flex: 1; }
+.agent-edit-banner button {
+  flex-shrink: 0;
+  padding: 2px 9px;
+  color: #a1a1aa;
+  border: 1px solid #3f4653;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 10px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.agent-edit-banner button:hover { color: #f87171; border-color: #7f1d1d; }
+
+/* ===== 回复反馈(点赞 / 点踩) ===== */
+.agent-message-action-btn.is-up.active { color: #6ee7b7; background: rgba(5, 150, 105, 0.16); }
+.agent-message-action-btn.is-down.active { color: #fda4af; background: rgba(190, 18, 60, 0.16); }

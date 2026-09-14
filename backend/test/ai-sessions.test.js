@@ -7,7 +7,7 @@ import test from 'node:test';
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'composeops-ai-sessions-'));
 process.env.DB_PATH = path.join(tempDir, 'test.db');
 
-const { addAiMessage, getAiHistory, listAiSessions, clearAiSession, clearAiSessions, clearAiHistory } = await import('../src/lib/db.js');
+const { addAiMessage, getAiHistory, listAiSessions, clearAiSession, clearAiSessions, clearAiHistory, truncateAiHistoryFrom } = await import('../src/lib/db.js');
 
 test('ai: 会话消息按 sessionId 隔离', () => {
   clearAiHistory();
@@ -70,4 +70,31 @@ test('ai: Agent 会话与普通 AI 会话按 kind 隔离', () => {
   addAiMessage('user', 'Agent 对话', { agent: true }, 302);
   assert.equal(listAiSessions(20, 'agent').some((item) => item.sessionId === 302), true);
   assert.equal(listAiSessions(20, 'agent').some((item) => item.sessionId === 301), false);
+});
+
+test('ai: 截断某条消息起的历史(编辑并重发)', () => {
+  clearAiHistory();
+  const first = addAiMessage('user', '第一轮提问', null, 77);
+  const firstAnswer = addAiMessage('assistant', '第一轮回答', null, 77);
+  const secondAsk = addAiMessage('user', '第二轮提问', null, 77);
+  const secondAnswer = addAiMessage('assistant', '第二轮回答', null, 77);
+  assert.equal(getAiHistory(50, 77).length, 4);
+  // 消息 id 必须严格递增,否则"按 id 截断"定位不到正确区间
+  assert.ok(first < firstAnswer && firstAnswer < secondAsk && secondAsk < secondAnswer);
+
+  const deleted = truncateAiHistoryFrom(77, secondAsk);
+  assert.equal(deleted, 2, '应删除第二条提问及其后的回答');
+  const rest = getAiHistory(50, 77);
+  assert.equal(rest.length, 2);
+  assert.equal(rest[0].content, '第一轮提问');
+  assert.equal(rest[1].content, '第一轮回答');
+
+  // 截断只作用于目标会话:阈值高于其它会话的消息 id 时不应误删
+  const otherId = addAiMessage('user', '别的会话', null, 78);
+  assert.equal(truncateAiHistoryFrom(78, otherId + 1), 0, '阈值高于该会话全部消息 id 时不应删任何东西');
+  assert.equal(getAiHistory(50, 78).length, 1);
+  // 非法入参安全返回 0,不抛错、不误删
+  assert.equal(truncateAiHistoryFrom(0, 5), 0);
+  assert.equal(truncateAiHistoryFrom(77, -1), 0);
+  assert.equal(getAiHistory(50, 77).length, 2, '非法调用后原会话数据保持不变');
 });

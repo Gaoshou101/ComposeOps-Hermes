@@ -16,6 +16,7 @@ import {
   clearAiSession,
   clearAiSessions,
   listAiSessions,
+  truncateAiHistoryFrom,
 } from '../lib/db.js';
 import { getActivityDocker } from '../services/docker-hosts.js';
 import { findProjectContainer } from '../services/scanner.js';
@@ -194,6 +195,23 @@ export default async function aiRoutes(fastify) {
       return reply.code(400).send({ error: 'invalid_session_ids', message: '会话 ID 无效' });
     }
     return { ok: true, deleted: clearAiSessions(sessionIds) };
+  });
+
+  // POST /api/v1/ai/history/truncate —— 截断某会话自某条消息起的历史(编辑并重发)
+  // 前端删掉气泡后必须同步删除后端历史,否则重新打开会话会看到"已被编辑掉"的旧轮次。
+  fastify.post('/history/truncate', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['sessionId', 'fromMessageId'],
+        properties: { sessionId: numericId, fromMessageId: numericId },
+      },
+    },
+  }, async (request, reply) => {
+    const { sessionId, fromMessageId } = request.body || {};
+    const deleted = truncateAiHistoryFrom(Number(sessionId), Number(fromMessageId));
+    return reply.send({ ok: true, deleted });
   });
 
   // POST /api/v1/ai/diagnose
