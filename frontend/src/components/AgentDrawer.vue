@@ -12,7 +12,7 @@
         <div v-if="!messages.length" class="agent-drawer-empty"><MessageCircle class="h-6 w-6 text-cyan-400" /><p>可以询问当前页面的数据、状态或操作方式。</p><button class="preset-chip" @click="input = defaultPrompt; focusInput()">{{ defaultPrompt }}</button></div>
         <article v-for="message in messages" :key="message.id" class="agent-drawer-message" :class="message.role">
           <div class="agent-drawer-avatar"><UserRound v-if="message.role === 'user'" class="h-3.5 w-3.5" /><Bot v-else class="h-3.5 w-3.5" /></div>
-          <div class="min-w-0 max-w-[calc(100%-2rem)]"><div v-if="message.tools?.length" class="agent-drawer-tool-track"><span v-for="(tool, index) in message.tools" :key="index" class="agent-drawer-tool-chip" :class="tool.status"><i></i>{{ tool.tool }}<em v-if="tool.durationMs">{{ (tool.durationMs / 1000).toFixed(1) }}s</em></span></div><div v-if="message.streaming && !message.content" class="agent-typing"><i></i><i></i><i></i><span>正在处理</span></div><div v-else-if="message.role === 'assistant' && !message.content" class="agent-empty-reply">(未返回内容)</div><AgentMarkdown v-else-if="message.role === 'assistant'" class="agent-drawer-markdown" :content="message.content" /><div v-else class="agent-drawer-user">{{ message.content }}</div>
+          <div class="min-w-0 max-w-[calc(100%-2rem)]"><div v-if="message.tools?.length" class="agent-drawer-tools"><div class="agent-drawer-tool-track"><span v-for="(tool, index) in message.tools" :key="index" class="agent-drawer-tool-chip" :class="tool.status"><i></i>{{ tool.tool }}<em v-if="tool.durationMs">{{ (tool.durationMs / 1000).toFixed(1) }}s</em></span></div><details v-if="toolDetailCount(message)" class="agent-drawer-tool-detail"><summary>参数与结果({{ toolDetailCount(message) }})</summary><div v-for="(tool, index) in message.tools" :key="index" class="agent-drawer-tool-block" :class="tool.status"><strong>{{ tool.tool }} · {{ toolStatusLabel(tool.status) }}</strong><pre v-if="tool.paramsText && tool.paramsText !== '{}'">{{ tool.paramsText }}</pre><pre v-if="tool.error" class="is-error">{{ tool.error }}</pre><pre v-else-if="tool.summary">{{ tool.summary }}</pre></div></details></div><details v-if="message.role === 'assistant' && message.thinking" class="agent-drawer-thinking"><summary>思考过程</summary><div>{{ message.thinking }}</div></details><div v-if="message.streaming && !message.content" class="agent-typing"><i></i><i></i><i></i><span>正在处理</span></div><div v-else-if="message.role === 'assistant' && !message.content" class="agent-empty-reply">(未返回内容)</div><AgentMarkdown v-else-if="message.role === 'assistant'" class="agent-drawer-markdown" :content="message.content" /><div v-else class="agent-drawer-user">{{ message.content }}</div>
             <div v-if="message.confirmation" class="agent-drawer-confirm"><strong>需要确认后执行<span v-if="message.confirmation.tool" class="ml-1.5 font-mono text-[11px] text-amber-200/80">{{ message.confirmation.tool }}</span></strong><p>{{ message.confirmation.description }}</p><details class="agent-confirm-params" @toggle="initParamsEdit($event, message)"><summary>查看 / 编辑参数</summary><textarea v-model="message.confirmation.paramsText" class="agent-confirm-params-text" rows="5" spellcheck="false"></textarea></details><div class="mt-2 flex gap-2"><button class="btn-primary !py-1 !text-xs" :disabled="message.confirmation.busy" @click="approveWithParams(message)">确认执行</button><button class="btn-secondary !py-1 !text-xs" :disabled="message.confirmation.busy" @click="reject(message)">拒绝</button></div></div>
           </div>
         </article>
@@ -75,6 +75,12 @@ async function restoreLatestSession() {
 }
 watch(open, (value) => { if (value) { focusInput(); void restoreLatestSession(); } });
 onMounted(() => { if (open.value) void restoreLatestSession(); });
+const TOOL_STATUS_LABELS = { requested: '已请求', executing: '执行中', done: '完成', failed: '失败', rejected: '已拒绝' };
+function toolStatusLabel(status) { return TOOL_STATUS_LABELS[status] || status; }
+/** 抽屉是精简视图,工具详情收进一个折叠块;没有可展示内容时不渲染。 */
+function toolDetailCount(message) {
+  return (message.tools || []).filter((tool) => (tool.paramsText && tool.paramsText !== '{}') || tool.summary || tool.error).length;
+}
 function initParamsEdit(event, message) {
   if (event.target.open && message.confirmation && message.confirmation.paramsText === undefined) {
     message.confirmation.paramsText = JSON.stringify(message.confirmation.params || {}, null, 2);
@@ -111,7 +117,21 @@ onBeforeUnmount(() => interrupt());
 .agent-drawer-tool-chip.executing i { background: #22d3ee; }
 .agent-drawer-tool-chip.done i { background: #34d399; }
 .agent-drawer-tool-chip.failed i { background: #fb7185; }
-.agent-drawer-tool-chip.rejected i { background: #a78bfa; }.agent-drawer-confirm { margin-top: 8px; padding: 10px; border: 1px solid rgba(146,64,14,.7); border-radius: 7px; background: rgba(69,26,3,.35); font-size: 11px; }.agent-drawer-confirm p { margin-top: 4px; color: #fde68a; line-height: 1.55; }
+.agent-drawer-tool-chip.rejected i { background: #a78bfa; }
+/* 抽屉里的工具详情:与工作台的工具卡片同源,但收进单个折叠块以保持精简 */
+.agent-drawer-tool-detail { margin-bottom: 7px; }
+.agent-drawer-tool-detail > summary { color: #67e8f9; font-size: 10px; cursor: pointer; }
+.agent-drawer-tool-block { margin-top: 6px; padding: 7px 8px; border: 1px solid #303641; border-radius: 7px; background: #11151b; }
+.agent-drawer-tool-block strong { display: block; margin-bottom: 4px; color: #a1a1aa; font-size: 9.5px; font-weight: 600; }
+.agent-drawer-tool-block pre { margin: 0 0 5px; padding: 6px 7px; overflow: auto; max-height: 200px; color: #cbd5e1; border-radius: 5px; background: #0b0e13; font-size: 10px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.agent-drawer-tool-block pre:last-child { margin-bottom: 0; }
+.agent-drawer-tool-block pre.is-error { color: #fda4af; }
+.agent-drawer-tool-block.failed strong { color: #fda4af; }
+.agent-drawer-tool-block.done strong { color: #6ee7b7; }
+/* 思考过程:默认收起,与工作台一致 */
+.agent-drawer-thinking { margin-bottom: 7px; padding: 7px 9px; border: 1px solid #303641; border-radius: 7px; background: rgba(17, 21, 27, 0.6); }
+.agent-drawer-thinking > summary { color: #67e8f9; font-size: 10px; font-weight: 600; cursor: pointer; }
+.agent-drawer-thinking > div { margin-top: 6px; max-height: 220px; overflow-y: auto; color: #8b919c; font-size: 10.5px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }.agent-drawer-confirm { margin-top: 8px; padding: 10px; border: 1px solid rgba(146,64,14,.7); border-radius: 7px; background: rgba(69,26,3,.35); font-size: 11px; }.agent-drawer-confirm p { margin-top: 4px; color: #fde68a; line-height: 1.55; }
 .agent-confirm-params { margin-top: 6px; }
 .agent-confirm-params summary { color: rgba(254, 243, 199, 0.85); font-size: 10px; cursor: pointer; }
 .agent-confirm-params-text { display: block; width: 100%; margin-top: 5px; padding: 6px 8px; color: #e4e4e7; border: 1px solid rgba(146, 64, 14, 0.5); border-radius: 6px; background: rgba(0, 0, 0, 0.3); font-family: ui-monospace, Menlo, monospace; font-size: 10px; outline: none; resize: vertical; }.agent-drawer-composer { padding: 12px 16px 16px; border-top: 1px solid #303641; background: #151920; }.agent-drawer-composer .agent-input { display: block; width: 100%; min-height: 76px; max-height: 160px; margin-bottom: 9px; resize: vertical; padding: 10px 12px; color: #f4f4f5; border: 1px solid #46505e; border-radius: 9px; outline: none; background: #0f1319; font-size: 12px; line-height: 1.6; }.agent-drawer-composer .agent-input:focus { border-color: #0891b2; box-shadow: 0 0 0 2px rgba(8,145,178,.16); }.agent-drawer-composer small { font-size: 10px; }.agent-drawer-composer button[type='submit'] { flex: 0 0 auto; }

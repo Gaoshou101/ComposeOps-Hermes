@@ -37,13 +37,15 @@ services:
   opsdash:
     build:
       context: .
-            # BuildKit 自动把宿主 shell 的 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 透传进构建阶段。
-      # 你只需在 `docker compose build` 前设好这俩 env(例如 export HTTPS_PROXY=http://127.0.0.1:7897(。
-      # 若直连 deb.debian.org 超时(国内网络常见问题),可启用清华镜像源:
-      #   docker compose build --build-arg APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
-      # 或在下方 args 里取消注释。
-      # args:
-      #   APT_MIRROR: mirrors.tuna.tsinghua.edu.cn
+      # apt 源默认已切到清华镜像(Dockerfile 里 APT_MIRROR 的默认值就是它),
+      # 所以 `docker compose up -d --build` 直接可用,不必再手动传 build-arg。
+      # BuildKit 也会自动把宿主 shell 的 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 透传进构建阶段,
+      # 设了代理时 apt/npm 会自动走代理。
+      #   想换镜像源:docker compose build --build-arg APT_MIRROR=mirrors.ustc.edu.cn
+      #   想强制走官方源:docker compose build --build-arg APT_MIRROR=
+      # (镜像内部已内置 docker / docker compose / git / ssh,无需再装 docker-ce-cli。)
+      args:
+        APT_MIRROR: mirrors.tuna.tsinghua.edu.cn
     image: composeops/opsdash:latest
     container_name: opsdash
     restart: unless-stopped

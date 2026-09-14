@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Merged the standalone AI diagnosis page into the Agent page (`/ai` redirects to `/agent`); removed `/ai/chat` and `/ai/exec`
 - Chat UX: follow-scroll with jump-to-bottom pill, 120 ms token coalescing for smooth streaming, message copy button
+- **富内容渲染重写**: 净化后的 DOM 后处理剥掉模型自带的颜色声明(白底黑字不再在暗色主题里刺眼),
+  SVG 亮度感知重映射 + 自动补 `viewBox` + 流体宽度(`max-height: 70vh` 不再裁图),
+  表格统一包进 `.agent-table-wrap` 支持横向滚动,代码块右下角语言徽标
+- **执行动态面板改为卡片式时间轴**: 每步带状态图标胶囊(按 running/done/failed/rejected 着色)、
+  工具与耗时 chip、超过 90 字符自动折叠"展开/收起";空态改为虚线引导卡
+- **Agent 抽屉补齐工作台能力**: 工具轨迹新增"参数与结果(N)"折叠块(逐工具展示脱敏参数/错误/摘要)与"思考过程"折叠块
 - Navigation de-conflicted: 实时监控 / 历史指标 / 存储清理; cost analysis moved to the System group
 - Route-level keep-alive with idle chunk prefetch and page transitions for snappier sidebar switching
 - Container-event refresh debounce (800 ms) to avoid request storms; EventCenter polling reduced to 60 s
@@ -34,6 +40,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Agent streaming corruption from per-chunk text sanitization (protocol stripping now stateful at the emission layer with prefix hold-back)
 - Missing `stripAgentProtocol` import crashing the page-agent drawer on first token
 - Flaky backend tests caused by concurrent SQLite access (tests now serialized)
+- **国内网络下 `docker compose up -d --build` 必然失败**: 原 Dockerfile 依赖 `deb.debian.org`
+  (12MB 的 `Packages.gz` 在国内常超时)与 `download.docker.com` 的 GPG key。现改为
+  apt 默认走清华镜像(`ARG APT_MIRROR`,传空可回官方源)、`better-sqlite3` 优先走
+  npmmirror 预编译产物(无需 python3/make/g++,整条 apt 分支可跳过)、
+  docker CLI 与 compose 插件直接从官方 `docker:cli` 镜像 COPY 进来
+  (不再访问 `download.docker.com`),并在构建期断言 `docker / docker compose / git / ssh` 全部可用
+- **镜像里缺失 `git` / `ssh`**: `backend/src/services/gitops.js` 通过 `execFileSync('git', ...)`
+  执行 clone/pull,容器内 GitOps 此前直接 ENOENT。runtime 阶段改装
+  `ca-certificates curl gnupg git openssh-client`(体积远小于原来的 docker-ce-cli)
 
 ## [1.0.0] - 2026-09-04
 

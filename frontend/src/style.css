@@ -1430,3 +1430,132 @@ pre:hover .code-copy-btn { opacity: 1; }
 /* ===== 回复反馈(点赞 / 点踩) ===== */
 .agent-message-action-btn.is-up.active { color: #6ee7b7; background: rgba(5, 150, 105, 0.16); }
 .agent-message-action-btn.is-down.active { color: #fda4af; background: rgba(190, 18, 60, 0.16); }
+
+/* ===== 执行动态:空态 / 图标 / 展开 ===== */
+.agent-activity-tools { display: inline-flex; align-items: center; gap: 6px; }
+.agent-activity-tools em {
+  padding: 1px 7px;
+  color: #67e8f9;
+  border: 1px solid rgba(8, 145, 178, 0.35);
+  border-radius: 999px;
+  background: rgba(8, 145, 178, 0.12);
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 600;
+}
+.agent-activity-empty {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  padding: 20px 12px;
+  color: #4b5563;
+  border: 1px dashed rgba(63, 70, 83, 0.7);
+  border-radius: 10px;
+  text-align: center;
+}
+.agent-activity-empty strong { color: #71717a; font-size: 11px; font-weight: 600; }
+.agent-activity-empty span { font-size: 10px; line-height: 1.55; }
+.agent-activity-icon {
+  display: inline-grid;
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #a1a1aa;
+  border: 1px solid #3f4653;
+  border-radius: 5px;
+  background: #191e26;
+  transform: translateY(1px);
+}
+.agent-activity-step[data-status='running'] .agent-activity-icon { color: #67e8f9; border-color: #155e75; background: #082f49; }
+.agent-activity-step[data-status='done'] .agent-activity-icon { color: #6ee7b7; border-color: rgba(5, 150, 105, 0.4); background: rgba(5, 150, 105, 0.12); }
+.agent-activity-step[data-status='failed'] .agent-activity-icon { color: #fda4af; border-color: rgba(190, 18, 60, 0.4); background: rgba(190, 18, 60, 0.12); }
+.agent-activity-step[data-status='rejected'] .agent-activity-icon { color: #fcd34d; border-color: rgba(180, 83, 9, 0.45); background: rgba(180, 83, 9, 0.12); }
+.agent-activity-step .agent-activity-meta { margin-left: 24px; }
+/* 长文本默认截断,用户可点"展开"逐条放开(避免时间轴被一次性撑爆) */
+.agent-activity-detail.expanded { max-height: none; }
+.agent-activity-more {
+  margin: 3px 0 0 24px;
+  color: #52525b;
+  font-size: 10px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.agent-activity-more:hover { color: #67e8f9; }
+.agent-activity-chip[data-tone='warn'] { color: #fcd34d; background: rgba(180, 83, 9, 0.14); border-color: rgba(180, 83, 9, 0.4); }
+
+/* ===== 富内容渲染打磨(HTML 表格 / SVG 尺寸 / 代码语言徽标) ===== */
+/* 模型输出的裸 HTML 表统一成主题表格:紧凑行高 + 区分表头 + 横向滚动 */
+.agent-markdown .agent-table-wrap,
+.agent-drawer-markdown .agent-table-wrap,
+.agent-rich-markdown .agent-table-wrap {
+  max-width: 100%;
+  margin: 10px 0;
+  overflow-x: auto;
+}
+.agent-markdown .agent-table-wrap > table,
+.agent-drawer-markdown .agent-table-wrap > table,
+.agent-rich-markdown .agent-table-wrap > table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.agent-markdown .agent-table-wrap th,
+.agent-drawer-markdown .agent-table-wrap th,
+.agent-rich-markdown .agent-table-wrap th {
+  color: #e4e4e7;
+  font-weight: 600;
+  white-space: nowrap;
+  background: rgba(24, 29, 37, 0.92);
+}
+.agent-markdown .agent-table-wrap th,
+.agent-markdown .agent-table-wrap td,
+.agent-drawer-markdown .agent-table-wrap th,
+.agent-drawer-markdown .agent-table-wrap td,
+.agent-rich-markdown .agent-table-wrap th,
+.agent-rich-markdown .agent-table-wrap td {
+  padding: 7px 12px;
+  border: 1px solid #303641;
+  text-align: left;
+  vertical-align: top;
+}
+.agent-markdown .agent-table-wrap tbody tr:nth-child(even),
+.agent-drawer-markdown .agent-table-wrap tbody tr:nth-child(even),
+.agent-rich-markdown .agent-table-wrap tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.014); }
+.agent-markdown .agent-table-wrap tbody tr:hover,
+.agent-drawer-markdown .agent-table-wrap tbody tr:hover,
+.agent-rich-markdown .agent-table-wrap tbody tr:hover { background: rgba(34, 211, 238, 0.04); }
+.agent-markdown .agent-table-wrap caption,
+.agent-drawer-markdown .agent-table-wrap caption,
+.agent-rich-markdown .agent-table-wrap caption { margin-bottom: 6px; color: #a1a1aa; font-size: 11px; text-align: left; }
+
+/* 代码块语言徽标:右下角极小角标,不抢视线但能一眼分辨 yaml/bash/json */
+.agent-markdown pre[data-lang]:not([data-lang='text']),
+.agent-drawer-markdown pre[data-lang]:not([data-lang='text']),
+.agent-rich-markdown pre[data-lang]:not([data-lang='text']) { position: relative; }
+.agent-markdown pre[data-lang]:not([data-lang='text'])::after,
+.agent-drawer-markdown pre[data-lang]:not([data-lang='text'])::after,
+.agent-rich-markdown pre[data-lang]:not([data-lang='text'])::after {
+  content: attr(data-lang);
+  position: absolute;
+  top: 7px;
+  right: 34px;
+  color: #52525b;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* SVG:去掉硬编码尺寸后交给流式布局,高度上限放宽以免整张图被裁掉 */
+.agent-markdown svg[data-fluid='1'],
+.agent-drawer-markdown svg[data-fluid='1'],
+.agent-rich-markdown svg[data-fluid='1'],
+.rich-zoom-content svg[data-fluid='1'] {
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+}
+.rich-zoom-card svg[data-fluid='1'] { width: 100%; height: auto; max-height: 78vh; }

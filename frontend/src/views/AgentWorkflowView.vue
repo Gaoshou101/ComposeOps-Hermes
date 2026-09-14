@@ -31,7 +31,36 @@
         <div class="agent-composer"><div v-if="editingMessageId" class="agent-edit-banner"><Pencil class="h-3.5 w-3.5" /><span>正在编辑已发送的消息,发送后将重跑该消息之后的所有步骤</span><button type="button" @click="cancelEdit">取消</button></div><div v-if="showLogPicker" class="agent-log-panel"><div class="agent-log-panel-head"><span>挂载容器日志</span><button class="text-xs text-zinc-500 hover:text-cyan-300" @click="showLogPicker = false">收起</button></div><LogContextPicker :projects="projects" @attach="onAttach" /></div><div v-if="showQuickPrompts" class="agent-log-panel"><div class="agent-log-panel-head"><span>常用指令</span><button class="text-xs text-zinc-500 hover:text-cyan-300" @click="showQuickPrompts = false">收起</button></div><div class="grid gap-1.5 sm:grid-cols-2"><button v-for="prompt in quickPrompts" :key="prompt" class="agent-quick-prompt" @click="applyQuickPrompt(prompt)"><Sparkles class="h-3.5 w-3.5 text-cyan-400" />{{ prompt }}</button></div></div><textarea ref="inputEl" v-model="input" class="agent-input" rows="3" placeholder="告诉 Agent 你想查看或操作什么…（Enter 发送，Shift+Enter 换行）" @keydown.enter.exact.prevent="submit"></textarea><button class="agent-voice-btn" :class="{ recording: voiceRecording }" :title="voiceRecording ? '停止录音' : '语音输入'" :aria-label="voiceRecording ? '停止录音' : '语音输入'" :aria-pressed="voiceRecording" @click="toggleVoiceInput"><Mic class="h-4 w-4" /></button>
 <div class="agent-composer-foot"><span class="flex min-w-0 items-center gap-2"><button class="agent-log-btn" :class="{ active: attachedCount }" title="选择容器日志,作为排障证据随消息发送" @click="showLogPicker = !showLogPicker"><ScrollText class="h-3.5 w-3.5" />挂载日志<em v-if="attachedCount">{{ attachedCount }}</em></button><button class="agent-log-btn" title="常用指令" @click="showQuickPrompts = !showQuickPrompts"><Wand2 class="h-3.5 w-3.5" />常用指令</button><button class="agent-log-btn" :class="{ active: webSearchEnabled }" title="开启后 Agent 可以检索 Docker、Compose 和软件官方资料" @click="webSearchEnabled = !webSearchEnabled"><Globe2 class="h-3.5 w-3.5" />联网搜索</button><span class="truncate">{{ running ? (pendingQueue.length ? '执行中,已排队 ' + pendingQueue.length + ' 条' : '执行中,可继续输入并自动排队') : '会话与上下文会自动保存' }}</span></span><button class="btn-primary" :disabled="!input.trim()" :title="running ? '加入队列,当前执行结束后自动发送' : '发送消息'" @click="submit"><Send class="h-4 w-4" />{{ running ? '排队发送' : '发送' }}</button></div></div>
       </main>
-      <aside class="agent-inspector"><section class="card agent-inspector-card"><div class="agent-inspector-title"><span>当前上下文</span><button v-if="projectId" class="text-xs text-zinc-500 hover:text-cyan-300" @click="projectId = ''">清除</button></div><p v-if="selectedProject" class="text-sm text-cyan-300">{{ selectedProject.projectName }}</p><p v-else>未固定项目，Agent 会先从纳管项目中识别。</p></section><section class="card agent-inspector-card agent-activity-panel"><div class="agent-inspector-title"><span><span v-if="running" class="agent-activity-live"></span>执行动态</span><span class="flex items-center gap-2"><em v-if="running">运行中</em><button v-if="activity.length" class="agent-activity-clear text-xs" title="清空执行动态" @click="clearActivity">清空</button></span></div><div v-if="!activity.length" class="flex items-start gap-2 text-zinc-600"><Activity class="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>Agent 的每个执行步骤会以时间轴形式显示在这里。</span></div><ol v-else class="agent-activity-timeline"><li v-for="item in activity" :key="item.id" class="agent-activity-step" :data-status="item.status || ''"><div class="agent-activity-top"><span class="agent-activity-label">{{ item.label }}</span><span v-if="item.tool" class="agent-activity-chip">{{ item.tool }}</span><span v-if="item.durationMs != null" class="agent-activity-chip" :data-tone="item.status === 'failed' ? 'danger' : 'success'">{{ formatDuration(item.durationMs) }}</span><span class="agent-activity-time">{{ item.time }}</span></div><div v-if="item.text" class="agent-activity-detail">{{ item.text }}</div></li></ol></section><section class="card agent-inspector-card"><div class="agent-inspector-title"><span>长期记忆</span><button class="text-xs text-cyan-400 hover:text-cyan-300" @click="loadMemories">刷新</button></div><p v-if="!memories.length" class="flex items-start gap-2"><Brain class="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>还没有保存的长期记忆。只有你明确要求“记住”时才会保存。</span></p><div v-for="memory in memories.slice(0, 5)" :key="memory.memoryKey" class="agent-memory"><strong>{{ memory.memoryKey }}</strong><span>{{ memory.value }}</span></div></section></aside>
+      <aside class="agent-inspector"><section class="card agent-inspector-card"><div class="agent-inspector-title"><span>当前上下文</span><button v-if="projectId" class="text-xs text-zinc-500 hover:text-cyan-300" @click="projectId = ''">清除</button></div><p v-if="selectedProject" class="text-sm text-cyan-300">{{ selectedProject.projectName }}</p><p v-else>未固定项目，Agent 会先从纳管项目中识别。</p></section><section class="card agent-inspector-card agent-activity-panel">
+            <div class="agent-inspector-title">
+              <span><span v-if="running" class="agent-activity-live"></span>执行动态</span>
+              <span class="agent-activity-tools">
+                <em v-if="running">运行中</em>
+                <button v-if="activity.length" class="agent-activity-clear" title="清空执行动态" aria-label="清空执行动态" @click="clearActivity"><Trash2 class="h-3 w-3" /></button>
+              </span>
+            </div>
+            <div v-if="!activity.length" class="agent-activity-empty">
+              <Activity class="h-5 w-5" />
+              <strong>等待执行</strong>
+              <span>Agent 的每一步都会在这里留下可回看的记录。</span>
+            </div>
+            <ol v-else class="agent-activity-timeline">
+              <li v-for="item in activity" :key="item.id" class="agent-activity-step" :data-status="item.status || ''" :data-tone="item.status || 'neutral'">
+                <div class="agent-activity-top">
+                  <span class="agent-activity-icon"><component :is="activityIcon(item)" class="h-3 w-3" /></span>
+                  <span class="agent-activity-label">{{ item.label }}</span>
+                  <span class="agent-activity-time">{{ item.time }}</span>
+                </div>
+                <div class="agent-activity-meta">
+                  <span v-if="item.tool" class="agent-activity-chip" :data-tone="item.status === 'failed' ? 'danger' : 'muted'">{{ item.tool }}</span>
+                  <span v-if="item.durationMs != null" class="agent-activity-chip" :data-tone="item.status === 'failed' ? 'danger' : 'success'">{{ formatDuration(item.durationMs) }}</span>
+                  <span v-if="item.status === 'rejected'" class="agent-activity-chip" data-tone="warn">已拒绝</span>
+                </div>
+                <div v-if="item.text" class="agent-activity-detail" :class="{ expanded: expandedActivity.includes(item.id) }">{{ item.text }}</div>
+                <button v-if="item.text && item.text.length > 90" class="agent-activity-more" @click="toggleActivityDetail(item.id)">{{ expandedActivity.includes(item.id) ? '收起' : '展开' }}</button>
+              </li>
+            </ol>
+          </section><section class="card agent-inspector-card"><div class="agent-inspector-title"><span>长期记忆</span><button class="text-xs text-cyan-400 hover:text-cyan-300" @click="loadMemories">刷新</button></div><p v-if="!memories.length" class="flex items-start gap-2"><Brain class="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>还没有保存的长期记忆。只有你明确要求“记住”时才会保存。</span></p><div v-for="memory in memories.slice(0, 5)" :key="memory.memoryKey" class="agent-memory"><strong>{{ memory.memoryKey }}</strong><span>{{ memory.value }}</span></div></section></aside>
     </div>
     <ConfirmDialog :show="deleteDialog.show" title="删除会话" message="删除该会话及其全部消息?" tone="warning" confirm-text="删除" @confirm="confirmDeleteSession" @cancel="deleteDialog.show = false" />
     <ConfirmDialog :show="bulkDeleteDialog" title="批量删除会话" :message="`确认删除选中的 ${selectedSessions.length} 个会话及其全部消息?`" tone="danger" confirm-text="批量删除" @confirm="confirmDeleteSelected" @cancel="bulkDeleteDialog = false" />
@@ -134,6 +163,27 @@ function appendActivity(label, text, meta = {}) {
   if (activity.value.length > 200) activity.value.splice(0, activity.value.length - 200);
 }
 function clearActivity() { activity.value = []; }
+const expandedActivity = ref([]);
+function toggleActivityDetail(id) {
+  expandedActivity.value = expandedActivity.value.includes(id)
+    ? expandedActivity.value.filter((value) => value !== id)
+    : [...expandedActivity.value, id];
+}
+/** 执行动态条目图标:按事件类别给出可扫读的视觉锚点,而不是纯文字列表。 */
+const ACTIVITY_ICONS = {
+  request: Wrench, exec: Terminal, done: Check, failed: ShieldAlert, rejected: X, thought: Brain, plan: Sparkles, confirm: ShieldAlert,
+};
+function activityIcon(item) {
+  const label = String(item.label || '');
+  if (item.status === 'failed') return ShieldAlert;
+  if (item.status === 'rejected') return X;
+  if (item.tool) return item.status === 'done' ? Check : item.status === 'running' ? Terminal : Wrench;
+  if (label.includes('确认')) return ShieldAlert;
+  if (label.includes('思考') || label.includes('轮')) return Brain;
+  if (label.includes('完成') || label.includes('结束')) return Check;
+  if (label.includes('中断')) return X;
+  return Sparkles;
+}
 function onAttach({ text, count }) { attachedLogs.value = text || ''; attachedCount.value = count || 0; }
 function applyQuickPrompt(prompt) { input.value = prompt; showQuickPrompts.value = false; focusInput(); }
 function initParamsEdit(event, message) {
@@ -252,6 +302,7 @@ function newSession() { resetSession(); resetViewState(); focusInput(); }
 async function openSession(id) { if (running.value) return; sessionId.value = Number(id); loadingHistory.value = true; resetViewState(); try { const data = await api.getAiHistory(sessionId.value, 200); if (data.hasMore) toast.info('该会话超过 200 条消息，仅显示最近记录'); messages.value = (data.messages || []).filter((item) => ['user', 'assistant'].includes(item.role)).map((item) => ({ id: nextMessageId(), role: item.role, content: stripAgentProtocol(item.content), persistedId: Number(item.id) || 0 })); } catch (error) { toast.error(`恢复会话失败:${error.message}`); } finally { loadingHistory.value = false; scrollBottom(); } }
 function resetViewState() {
   activity.value = [];
+  expandedActivity.value = [];
   attachedLogs.value = '';
   attachedCount.value = 0;
   showLogPicker.value = false;

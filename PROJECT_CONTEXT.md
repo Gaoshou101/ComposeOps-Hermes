@@ -1,6 +1,6 @@
 # 📌 ComposeOps - PROJECT_CONTEXT.md
-> **上次更新时间**:2026-09-12 (Asia/Shanghai)
-> **当前版本/阶段**:v1.1 - AI Agent 单页化与数据保护(Tool Loop 单通道 / 数据卷备份 / GitOps webhook / 市场AI找应用 / 流式与视觉打磨)已交付
+> **上次更新时间**:2026-09-15 (Asia/Shanghai)
+> **当前版本/阶段**:v1.2 - 国内网络构建修复 + 富内容渲染重写 + Agent 执行动态卡片化(暗色主题富渲染 / docker:cli 内置镜像 / 抽屉补齐工作台能力)已交付
 
 ## 1. 核心概述 (Executive Summary)
 - **项目目标**:单用户 Docker Compose 运维控制台(工作区名 `ComposeOps`,镜像/容器沿用旧名 `OpsDash`)。通过 Docker Socket 自动发现带 `com.docker.compose.project` 标签的 Compose 项目,以"先发现、后显式纳管"的权限模型提供服务启停、Compose 配置编辑、环境变量文件族管理、实时日志、容器终端、数据卷备份、GitOps 同步、应用市场、定时任务、多 Docker 节点纳管、资源监控与 AI 运维 Agent 能力。
@@ -16,7 +16,10 @@
   - 数据保护:Compose 备份(20 份/diff/回滚)、**数据卷备份**(`services/volume-backup.js` helper 容器 tar,cron 类型 `volume-backup`,目录 `backup.volume_dir`,每卷 20 份)、数据库 Dump、保留策略(`pruneAiData`,setting `retention.ai_days` 默认 90 天,metrics-collector 每日触发)。
   - GitOps(轮询 + webhook `POST /gitops/webhook/:id`,token=`gitops.webhook_token`,app.js auth 豁免)、应用市场(蓝图 + 自定义模板 + AI 找应用 `POST /marketplace/templates/ai-discover`,只出草稿)、定时任务(5 段 cron 解析,JSON 持久化)、告警通知(Bark/Telegram/企微/邮件/Webhook)、操作审计、多渠道事件中心。
   - 基础设施:登录锁定(5 次/15 分钟)、Cookie SameSite=Strict、CSP(含 img-src https)、SWR 缓存、骨架屏、日志虚拟滚动、键盘导航(j/k + `?` 帮助)、Cmd+K 命令面板。
-- **测试基线**:后端 119/119(`cd backend && DB_PATH=/tmp/x.db npm test`)、前端 94/94(`cd frontend && npx vitest run`)、`npm --prefix frontend run build` 零 Warning;CI(.github/workflows/ci.yml)= 双端 lint + test + build。
+- **测试基线**:后端 127/127(`cd backend && DB_PATH=/tmp/x.db npm test`)、前端 120/120(`cd frontend && npx vitest run`)、`npm --prefix frontend run build` 零 Warning;CI(.github/workflows/ci.yml)= 双端 lint + test + build。
+- **容器镜像**:`runtime` 阶段内置 docker CLI / compose / buildx(从官方 `docker:cli` COPY)+ git / openssh-client;
+  apt 默认走 `ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn`,npm 走 npmmirror,`better-sqlite3` 走预编译产物。
+  国内网络下 `docker compose up -d --build` 可直接跑通,构建期会断言四个二进制全部可用。
 
 ## 3. 已知取舍与候选改进 (Next Ideas)
 - [x] 卷备份:远程宿主已支持 helper cat 流式下载;bind mount 仍不纳入。
