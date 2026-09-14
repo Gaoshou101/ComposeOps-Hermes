@@ -1,12 +1,12 @@
 {
   "id": "agent-full-feature-pass",
   "title": "Agent 全量功能 + 高颜值 UI 升级",
-  "status": "in_progress",
+  "status": "completed",
   "complexity": "L+",
   "risk": "medium",
   "domain": "frontend",
-  "currentPhase": "planning",
-  "nextAction": "写 plan.md 并拆分阶段",
+  "currentPhase": "completed",
+  "nextAction": "归档",
   "createdAt": "2026-09-14T04:30:00+08:00",
   "branch": "main"
 }
