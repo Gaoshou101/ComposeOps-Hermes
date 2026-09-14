@@ -1270,3 +1270,40 @@ pre:hover .code-copy-btn { opacity: 1; }
     transform: translateY(0);
   }
 }
+
+/* ===== 语音输入按钮 ===== */
+.agent-voice-btn {
+  position: absolute;
+  right: 16px;
+  bottom: 42px;
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  color: #a1a1aa;
+  border: 1px solid #3f4653;
+  border-radius: 999px;
+  background: rgba(23, 27, 34, 0.9);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+.agent-voice-btn:hover {
+  color: #67e8f9;
+  border-color: #155e75;
+  box-shadow: 0 0 12px rgba(8, 145, 178, 0.3);
+}
+.agent-voice-btn.recording {
+  color: #f87171;
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.1);
+  animation: voice-pulse 1.5s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(220, 38, 38, 0);
+  }
+}
