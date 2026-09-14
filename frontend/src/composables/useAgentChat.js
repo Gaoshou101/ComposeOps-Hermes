@@ -88,8 +88,15 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
     sharedController = null;
   }
 
+  const pendingQueue = ref([]);
+
   async function sendMessage(text, extraPayload = {}) {
-    if (!text || running.value) return;
+    if (!text) return;
+    if (running.value) {
+      pendingQueue.value.push({ text, extraPayload });
+      input.value = '';
+      return;
+    }
     await ensureSession();
     const assistant = { id: ++sharedNextId, role: 'assistant', content: '', streaming: true };
     messages.value.push({ id: ++sharedNextId, role: 'user', content: text }, assistant);
@@ -109,7 +116,30 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
       running.value = false;
       sharedController = null;
       scrollBottom();
+      // 自动发送队列中的下一条
+      if (pendingQueue.value.length > 0) {
+        const next = pendingQueue.value.shift();
+        await sendMessage(next.text, next.extraPayload);
+      }
     }
+  }
+
+  async function regenerate() {
+    const lastUser = [...messages.value].reverse().find((m) => m.role === 'user');
+    if (!lastUser || running.value) return;
+    // 删除最后一条 user 和 assistant
+    const lastUserIndex = messages.value.lastIndexOf(lastUser);
+    messages.value.splice(lastUserIndex);
+    await sendMessage(lastUser.content);
+  }
+
+  async function editAndResend(messageId, newContent) {
+    if (running.value) return;
+    const index = messages.value.findIndex((m) => m.id === messageId);
+    if (index === -1) return;
+    // 删除该消息及后续所有消息
+    messages.value.splice(index);
+    await sendMessage(newContent);
   }
 
   /** 工具执行轨迹:requested → executing → done/failed/rejected,供消息区展示。 */
@@ -146,7 +176,11 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
     else if (event.type.startsWith('tool_')) { trackTool(assistant, event); }
     else if (event.type === 'interrupted') { flushTokens(); assistant.confirmation = null; assistant.content += `${assistant.content ? '\n\n' : ''}${stripAgentProtocol(event.reason || '执行已中断')}`; }
     else if (event.type === 'error') { flushTokens(); assistant.confirmation = null; assistant.content += `${assistant.content ? '\n\n' : ''}${stripAgentProtocol(event.content || 'Agent 执行失败')}`; }
-    else if (event.type === 'done') { flushTokens(); if (event.content) assistant.content = stripAgentProtocol(event.content); }
+    else if (event.type === 'done') {
+      flushTokens();
+      if (event.content) assistant.content = stripAgentProtocol(event.content);
+      if (event.usage) assistant.usage = event.usage;
+    }
     for (const item of subscribers) { if (item.active !== false) item.onEventExtra?.(event, assistant); }
     scrollBottom();
   }
@@ -226,7 +260,7 @@ export function useAgentChat({ onEventExtra = null, onApproval = null } = {}) {
 
   onBeforeUnmount(() => subscribers.delete(subscriber));
 
-  return { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, ensureSession, resetSession, sendMessage, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom, setSubscriberActive };
+  return { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, ensureSession, resetSession, sendMessage, regenerate, editAndResend, pendingQueue, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom, setSubscriberActive };
 }
 
 function resetSharedState() {

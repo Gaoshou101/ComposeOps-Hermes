@@ -270,6 +270,7 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
 
   const url = baseUrl.replace(/\/+$/, '') + '/chat/completions';
   const body = { model, messages, stream };
+  if (stream) body.stream_options = { include_usage: true };
   if (tools && tools.length > 0) {
     body.tools = tools;
   }
@@ -277,6 +278,7 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
   let finishReason = '';
   let toolCalls = [];
   let emittedContentLength = 0;
+  let usage = null;
 
   // Node 22 的全局 fetch 已内置对 HTTP_PROXY/HTTPS_PROXY/NO_PROXY 环境变量的支持
   // （大小写不敏感），无需额外代理库。容器化下把宿主机代理透传进 env，AI 出站
@@ -304,7 +306,9 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
     fullText = message.content || '';
     finishReason = data?.choices?.[0]?.finish_reason || '';
     toolCalls = message.tool_calls || [];
-    return normalizeToolResponse(fullText, toolCalls, finishReason);
+    const result = normalizeToolResponse(fullText, toolCalls, finishReason);
+    result.usage = data?.usage || null;
+    return result;
   }
 
   // 流式：解析 SSE
@@ -366,11 +370,17 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
         if (choice.finish_reason) {
           finishReason = choice.finish_reason;
         }
+        
+        // usage 在最后一个 chunk (需要 stream_options.include_usage)
+        if (json?.usage) {
+          usage = json.usage;
+        }
       } catch {}
     }
   }
   if (onToken) flushBufferedVisibleText(fullText, emittedContentLength, onToken);
   const normalized = normalizeToolResponse(fullText, toolCalls, finishReason);
+  normalized.usage = usage;
   return normalized;
 }
 

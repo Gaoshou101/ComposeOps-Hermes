@@ -318,6 +318,7 @@ export class OperationsAgent {
         let responseText = '';
         let toolCalls = [];
         let stopReason = null;
+        let lastUsage = null;
 
         try {
           // 使用流式输出实时推送 LLM 思考过程
@@ -336,6 +337,7 @@ export class OperationsAgent {
           responseText = response.content;
           stopReason = response.finishReason;
           toolCalls = response.toolCalls;
+          lastUsage = response.usage || null;
           
         } catch (error) {
           if (error.name === 'AbortError') {
@@ -353,7 +355,7 @@ export class OperationsAgent {
         if (stopReason === 'stop' || stopReason === 'end_turn') {
           messages.push({ role: 'assistant', content: responseText || null });
           // LLM 决定结束对话
-          onEvent({ type: 'done', content: responseText });
+          onEvent({ type: 'done', content: responseText, usage: lastUsage });
           publishTrace('loop_completed', 'LLM 决定结束执行', { loopCount });
           updateAgentPlan(planId, { status: 'completed', resultJson: { messages, finalContent: responseText }, executedAt: new Date().toISOString(), progressStage: '执行完成', progressPercent: 100, updatedAt: new Date().toISOString() });
           if (context.sessionId) addAiMessage('assistant', responseText, { agent: true, projectId: context.projectId || null, trace }, Number(context.sessionId));
@@ -479,7 +481,7 @@ export class OperationsAgent {
 
         // 未知 stop_reason,结束循环
         messages.push({ role: 'assistant', content: responseText || null });
-        onEvent({ type: 'done', content: responseText });
+        onEvent({ type: 'done', content: responseText, usage: lastUsage });
         if (context.sessionId) addAiMessage('assistant', responseText, { agent: true, projectId: context.projectId || null, trace }, Number(context.sessionId));
         publishTrace('loop_completed', 'Agent 完成回答', { loopCount });
         updateAgentPlan(planId, { status: 'completed', resultJson: { messages, finalContent: responseText }, executedAt: new Date().toISOString(), progressStage: '执行完成', progressPercent: 100, updatedAt: new Date().toISOString() });

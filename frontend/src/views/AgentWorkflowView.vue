@@ -24,7 +24,7 @@
             </div>
             <div v-if="headMenuOpen" class="agent-head-menu-backdrop" @click="headMenuOpen = false"></div>
           </div></div>
-        <div ref="scrollEl" class="agent-messages" @scroll.passive="onScroll" @click="handleRichBlockClick"><div v-if="loadingHistory" class="agent-loading">正在恢复会话…</div><div v-else-if="!messages.length" class="agent-welcome"><div class="agent-welcome-mark"><MessageCircle class="h-6 w-6" /></div><h2>这是一段新的运维会话</h2><p>可以先问我有哪些项目，也可以直接描述你要检查或修改的内容。</p><div class="agent-prompts"><button v-for="prompt in prompts" :key="prompt" class="preset-chip" @click="input = prompt; focusInput()"><Sparkles class="h-3.5 w-3.5 text-cyan-400" />{{ prompt }}</button></div></div><article v-for="message in messages" :key="message.id" class="agent-message" :class="message.role === 'user' ? 'user' : 'assistant'"><div class="agent-avatar"><UserRound v-if="message.role === 'user'" class="h-4 w-4" /><Bot v-else class="h-4 w-4" /></div><div class="agent-message-body"><div v-if="message.tools?.length" class="agent-tool-track"><span v-for="(tool, index) in message.tools" :key="index" class="agent-tool-chip" :class="tool.status"><i class="agent-tool-dot"></i>{{ tool.tool }}<em v-if="tool.durationMs">{{ (tool.durationMs / 1000).toFixed(1) }}s</em></span></div><template v-if="message.role === 'assistant'"><div v-if="message.streaming && !message.content" class="agent-typing"><i></i><i></i><i></i><span>正在处理</span></div><div v-else-if="!message.content && !message.streaming" class="agent-empty-reply">(未返回内容)</div><div v-else class="agent-markdown" v-html="renderMarkdown(message.content)"></div><button v-if="message.content" class="agent-copy-btn" title="复制本条回复" @click="copyMessage(message)"><Copy class="h-3 w-3" /></button></template><div v-else class="agent-user-text">{{ message.content }}</div><div v-if="message.projects?.length" class="agent-project-grid"><div v-for="project in message.projects" :key="project.id" class="agent-project-card"><div class="flex items-center justify-between gap-2"><strong>{{ project.name }}</strong><span :class="project.editable ? 'text-emerald-400' : 'text-amber-400'">{{ project.editable ? '可编辑' : '仅控制' }}</span></div><p>{{ project.composeMode || 'containers' }} · {{ project.services?.length || 0 }} 个服务</p><button @click="selectProject(project)">固定为当前项目</button></div></div><div v-if="message.confirmation" class="agent-confirm"><div class="flex items-start gap-2"><ShieldAlert class="mt-0.5 h-4 w-4 shrink-0 text-amber-400" /><div class="min-w-0"><strong>需要确认后执行<span v-if="message.confirmation.tool" class="ml-1.5 font-mono text-[11px] text-amber-200/80">{{ message.confirmation.tool }}</span></strong><p>{{ message.confirmation.description }}</p><details class="agent-confirm-params" @toggle="initParamsEdit($event, message)"><summary>查看 / 编辑参数</summary><textarea v-model="message.confirmation.paramsText" class="agent-confirm-params-text" rows="6" spellcheck="false"></textarea><p class="mt-1 text-[10px] text-amber-200/60">JSON 格式;确认时将以此覆盖原参数(敏感值已脱敏显示,未改动的字段会以原值执行)。</p></details></div></div><div class="mt-3 flex gap-2"><button class="btn-primary !py-1.5 !text-xs" :disabled="message.confirmation.busy" @click="approveWithParams(message)"><Check class="h-3.5 w-3.5" />确认执行</button><button class="btn-secondary !py-1.5 !text-xs" :disabled="message.confirmation.busy" @click="reject(message)">拒绝</button></div></div><div v-if="message.searchSources?.length" class="agent-sources"><div><Globe2 class="h-3.5 w-3.5" />参考来源</div><a v-for="source in message.searchSources" :key="source.url || source.title" :href="source.url" target="_blank" rel="noreferrer">{{ source.title || source.url || '搜索结果' }}<small>{{ source.snippet }}</small></a></div></div></article></div>
+        <div ref="scrollEl" class="agent-messages" @scroll.passive="onScroll" @click="handleRichBlockClick"><div v-if="loadingHistory" class="agent-loading">正在恢复会话…</div><div v-else-if="!messages.length" class="agent-welcome"><div class="agent-welcome-mark"><MessageCircle class="h-6 w-6" /></div><h2>这是一段新的运维会话</h2><p>可以先问我有哪些项目，也可以直接描述你要检查或修改的内容。</p><div class="agent-prompts"><button v-for="prompt in prompts" :key="prompt" class="preset-chip" @click="input = prompt; focusInput()"><Sparkles class="h-3.5 w-3.5 text-cyan-400" />{{ prompt }}</button></div></div><article v-for="message in messages" :key="message.id" class="agent-message" :class="message.role === 'user' ? 'user' : 'assistant'"><div class="agent-avatar"><UserRound v-if="message.role === 'user'" class="h-4 w-4" /><Bot v-else class="h-4 w-4" /></div><div class="agent-message-body"><div v-if="message.tools?.length" class="agent-tool-cards"><div v-for="(tool, index) in message.tools" :key="index" class="agent-tool-card" :data-status="tool.status"><div class="agent-tool-card-header"><component :is="getToolIcon(tool.tool)" class="h-3.5 w-3.5" /><span class="agent-tool-card-name">{{ tool.tool }}</span><span v-if="tool.durationMs" class="agent-tool-card-duration">{{ formatDuration(tool.durationMs) }}</span><span class="agent-tool-card-status">{{ getToolStatusLabel(tool.status) }}</span></div><details v-if="tool.params || tool.result" class="agent-tool-card-details"><summary>参数与结果</summary><pre v-if="tool.params" class="agent-tool-card-section"><strong>参数:</strong>{{ JSON.stringify(tool.params, null, 2) }}</pre><pre v-if="tool.result" class="agent-tool-card-section"><strong>结果:</strong>{{ typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2) }}</pre></details></div></div><template v-if="message.role === 'assistant'"><div v-if="message.streaming && !message.content" class="agent-typing"><i></i><i></i><i></i><span>正在处理</span></div><div v-else-if="!message.content && !message.streaming" class="agent-empty-reply">(未返回内容)</div><div v-else class="agent-markdown" v-html="renderMarkdown(message.content)"></div><div v-if="message.content" class="agent-message-actions"><button class="agent-message-action-btn" title="复制" @click="copyMessage(message)"><Copy class="h-3 w-3" /></button><button class="agent-message-action-btn" title="重新生成" @click="regenerate"><RefreshCw class="h-3 w-3" /></button></div></template><div v-else class="agent-user-text">{{ message.content }}<div class="agent-message-actions"><button class="agent-message-action-btn" title="编辑并重发" @click="startEdit(message)"><Edit3 class="h-3 w-3" /></button></div></div><div v-if="message.projects?.length" class="agent-project-grid"><div v-for="project in message.projects" :key="project.id" class="agent-project-card"><div class="flex items-center justify-between gap-2"><strong>{{ project.name }}</strong><span :class="project.editable ? 'text-emerald-400' : 'text-amber-400'">{{ project.editable ? '可编辑' : '仅控制' }}</span></div><p>{{ project.composeMode || 'containers' }} · {{ project.services?.length || 0 }} 个服务</p><button @click="selectProject(project)">固定为当前项目</button></div></div><div v-if="message.confirmation" class="agent-confirm"><div class="flex items-start gap-2"><ShieldAlert class="mt-0.5 h-4 w-4 shrink-0 text-amber-400" /><div class="min-w-0"><strong>需要确认后执行<span v-if="message.confirmation.tool" class="ml-1.5 font-mono text-[11px] text-amber-200/80">{{ message.confirmation.tool }}</span></strong><p>{{ message.confirmation.description }}</p><details class="agent-confirm-params" @toggle="initParamsEdit($event, message)"><summary>查看 / 编辑参数</summary><textarea v-model="message.confirmation.paramsText" class="agent-confirm-params-text" rows="6" spellcheck="false"></textarea><p class="mt-1 text-[10px] text-amber-200/60">JSON 格式;确认时将以此覆盖原参数(敏感值已脱敏显示,未改动的字段会以原值执行)。</p></details></div></div><div class="mt-3 flex gap-2"><button class="btn-primary !py-1.5 !text-xs" :disabled="message.confirmation.busy" @click="approveWithParams(message)"><Check class="h-3.5 w-3.5" />确认执行</button><button class="btn-secondary !py-1.5 !text-xs" :disabled="message.confirmation.busy" @click="reject(message)">拒绝</button></div></div><div v-if="message.usage" class="agent-token-usage"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>{{ message.usage.total_tokens || 0 }} tokens</div><div v-if="message.searchSources?.length" class="agent-sources"><div><Globe2 class="h-3.5 w-3.5" />参考来源</div><a v-for="source in message.searchSources" :key="source.url || source.title" :href="source.url" target="_blank" rel="noreferrer">{{ source.title || source.url || '搜索结果' }}<small>{{ source.snippet }}</small></a></div></div></article></div>
         <button v-if="!atBottom" class="agent-scroll-bottom" title="回到底部" @click="scrollToBottom"><ArrowDownToLine class="h-3.5 w-3.5" />回到底部</button>
         <div class="agent-composer"><div v-if="showLogPicker" class="agent-log-panel"><div class="agent-log-panel-head"><span>挂载容器日志</span><button class="text-xs text-zinc-500 hover:text-cyan-300" @click="showLogPicker = false">收起</button></div><LogContextPicker :projects="projects" @attach="onAttach" /></div><div v-if="showQuickPrompts" class="agent-log-panel"><div class="agent-log-panel-head"><span>常用指令</span><button class="text-xs text-zinc-500 hover:text-cyan-300" @click="showQuickPrompts = false">收起</button></div><div class="grid gap-1.5 sm:grid-cols-2"><button v-for="prompt in quickPrompts" :key="prompt" class="agent-quick-prompt" @click="applyQuickPrompt(prompt)"><Sparkles class="h-3.5 w-3.5 text-cyan-400" />{{ prompt }}</button></div></div><textarea ref="inputEl" v-model="input" class="agent-input" rows="3" placeholder="告诉 Agent 你想查看或操作什么…（Enter 发送，Shift+Enter 换行）" @keydown.enter.exact.prevent="submit"></textarea><div class="agent-composer-foot"><span class="flex min-w-0 items-center gap-2"><button class="agent-log-btn" :class="{ active: attachedCount }" title="选择容器日志,作为排障证据随消息发送" @click="showLogPicker = !showLogPicker"><ScrollText class="h-3.5 w-3.5" />挂载日志<em v-if="attachedCount">{{ attachedCount }}</em></button><button class="agent-log-btn" title="常用指令" @click="showQuickPrompts = !showQuickPrompts"><Wand2 class="h-3.5 w-3.5" />常用指令</button><button class="agent-log-btn" :class="{ active: webSearchEnabled }" title="开启后 Agent 可以检索 Docker、Compose 和软件官方资料" @click="webSearchEnabled = !webSearchEnabled"><Globe2 class="h-3.5 w-3.5" />联网搜索</button><span class="truncate">{{ running ? 'Agent 正在执行，你仍可以继续编辑输入内容' : '会话与上下文会自动保存' }}</span></span><button class="btn-primary" :disabled="running || !input.trim()" title="发送消息" @click="submit"><Send class="h-4 w-4" />发送</button></div></div>
       </main>
@@ -46,7 +46,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onActivated, onDeactivated, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, onActivated, onDeactivated, onBeforeUnmount, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { Activity, ArrowDownToLine, Bot, Brain, Check, Copy, Download, Eraser, Globe2, MessageCircle, MessageSquare, MoreHorizontal, Pencil, Plus, RefreshCw, ScrollText, Search, Send, ShieldAlert, Sparkles, Square, Trash2, UserRound, Wand2 } from 'lucide-vue-next';
 import { api } from '../api/client.js';
@@ -99,7 +99,7 @@ const chat = useAgentChat({
   },
   onApproval: (message, kind) => { if (kind === 'approved') appendActivity('已确认', '变更继续执行', { status: 'done' }); else appendActivity('已拒绝', '变更未执行', { status: 'rejected' }); },
 });
-const { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, resetSession, sendMessage, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom, setSubscriberActive } = chat;
+const { messages, input, running, sessionId, scrollEl, atBottom, onScroll, scrollBottom, scrollToBottom, nextMessageId, resetSession, sendMessage, regenerate, editAndResend, pendingQueue, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom, setSubscriberActive } = chat;
 const prompts = ['查看我现在可以操作的项目', '搜索 sherpa-onnx-matcha-zh-tts 的 Docker Compose 信息', '记住我偏好先查看日志再执行重启'];
 const sessionQueryLower = computed(() => sessionQuery.value.trim().toLowerCase());
 const filteredSessions = computed(() => {
@@ -163,6 +163,27 @@ function exportSession() {
   URL.revokeObjectURL(url);
   toast.success('会话已导出为 Markdown');
 }
+function getToolIcon(toolName) {
+  // 根据工具名返回图标组件
+  const iconMap = {
+    'list_projects': 'FolderKanban',
+    'get_project': 'FolderOpen',
+    'update_compose': 'FileEdit',
+    'restart_service': 'RefreshCw',
+    'get_logs': 'FileText',
+    'execute_command': 'Terminal',
+  };
+  return iconMap[toolName] || 'Wrench';
+}
+function getToolStatusLabel(status) {
+  const labels = { requested: '已请求', executing: '执行中', done: '完成', failed: '失败', rejected: '已拒绝' };
+  return labels[status] || status;
+}
+function startEdit(message) {
+  input.value = message.content;
+  editAndResend(message.id, message.content);
+  focusInput();
+}
 function copyMessage(message) {
   navigator.clipboard?.writeText(message.content).then(() => toast.success('已复制到剪贴板')).catch(() => toast.error('复制失败'));
 }
@@ -200,7 +221,28 @@ function selectProject(project) { projectId.value = project.id; input.value = `�
 const containerId = ref('');
 async function submit() { const text = input.value.trim(); if (!text) return; showLogPicker.value = false; showQuickPrompts.value = false; await sendMessage(text, { projectId: projectId.value || undefined, containerId: containerId.value || undefined, webSearchEnabled: webSearchEnabled.value, attachedLogs: attachedLogs.value || undefined }); await Promise.all([loadSessions(), loadMemories()]); }
 async function applyRouteContext() { const requestedProjectId = String(route.query.projectId || ''); const requestedContainerId = String(route.query.containerId || ''); if (requestedProjectId) projectId.value = requestedProjectId; if (requestedContainerId) containerId.value = requestedContainerId; if (route.query.diagnose && requestedProjectId && requestedContainerId) { try { const result = await api.getProjectLogs(requestedProjectId, requestedContainerId, 200); onAttach({ text: result.logs || '', count: result.count || 0 }); input.value = '请分析已挂载的容器日志，判断异常原因并给出修复建议'; } catch (error) { toast.error(`加载诊断日志失败:${error.message}`); } } }
-onMounted(async () => { await Promise.all([loadProjects(), loadSessions(), loadMemories()]); await applyRouteContext(); if (!sessionId.value && sessions.value.length) await openSession(sessions.value[0].sessionId); else if (!messages.value.length) focusInput(); });
+onMounted(async () => {
+  await Promise.all([loadProjects(), loadSessions(), loadMemories()]);
+  await applyRouteContext();
+  if (!sessionId.value && sessions.value.length) await openSession(sessions.value[0].sessionId);
+  else if (!messages.value.length) focusInput();
+  
+  // 快捷键: Cmd+K 聚焦输入框, Cmd+Enter 发送, Esc 中断
+  const handleKeydown = (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      focusInput();
+    } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      if (input.value.trim()) sendMessage(input.value.trim());
+    } else if (e.key === 'Escape' && running.value) {
+      e.preventDefault();
+      interrupt();
+    }
+  };
+  window.addEventListener('keydown', handleKeydown);
+  onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown));
+});
 onActivated(() => { mobileSessionsOpen.value = false; });
 onActivated(() => setSubscriberActive(true));
 onDeactivated(() => { mobileSessionsOpen.value = false; setSubscriberActive(false); });
