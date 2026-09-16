@@ -7,7 +7,7 @@ const apiMock = vi.hoisted(() => ({
 }));
 vi.mock('../src/api/client.js', () => ({ api: apiMock }));
 
-const { useAgentChat } = await import('../src/composables/useAgentChat.js');
+const { useAgentChat, WORKBENCH_CHANNEL, PAGE_DRAWER_CHANNEL } = await import('../src/composables/useAgentChat.js');
 
 describe('useAgentChat', () => {
   beforeEach(() => {
@@ -57,5 +57,64 @@ describe('useAgentChat', () => {
     await chat.approve(message);
     expect(apiMock.agentApprove).toHaveBeenCalledWith({ executionId: 'p', toolCallId: 'c', approved: true });
     expect(message.confirmation).toBeNull();
+  });
+
+  it('抽屉频道与工作台频道完全隔离,互不串会话', async () => {
+    const workbench = useAgentChat({ channel: WORKBENCH_CHANNEL });
+    apiMock.agentExecuteStream.mockImplementation(async (payload, onEvent) => {
+      onEvent({ type: 'token', content: '工作台的回答' });
+    });
+    await workbench.sendMessage('工作台的问题');
+
+    const drawer = useAgentChat({ channel: PAGE_DRAWER_CHANNEL });
+    // 抽屉此时必须是干净的:既没有工作台的消息,也没有它的 sessionId
+    expect(drawer.messages.value).toHaveLength(0);
+    expect(drawer.sessionId.value).toBeNull();
+
+    apiMock.createAgentSession.mockResolvedValue({ sessionId: 99 });
+    apiMock.agentExecuteStream.mockImplementation(async (payload, onEvent) => {
+      expect(payload.sessionId).toBe(99);
+      onEvent({ type: 'token', content: '抽屉的回答' });
+    });
+    await drawer.sendMessage('抽屉的问题', { pageContext: { page: '服务' } });
+
+    expect(drawer.messages.value.map((m) => m.content)).toEqual(['抽屉的问题', '抽屉的回答']);
+    expect(workbench.messages.value.map((m) => m.content)).toEqual(['工作台的问题', '工作台的回答']);
+  });
+
+  it('思考过程按轮次增量累积,done 之后仍然保留', async () => {
+    const chat = useAgentChat({ channel: 'thinking-test' });
+    apiMock.agentExecuteStream.mockImplementation(async (payload, onEvent) => {
+      onEvent({ type: 'thinking', round: 1 });
+      onEvent({ type: 'reasoning', round: 1, content: '先看容器状态。' });
+      onEvent({ type: 'reasoning', round: 1, content: '再看最近日志。' });
+      onEvent({ type: 'thinking', round: 2 });
+      onEvent({ type: 'reasoning', round: 2, content: '确认没有异常。' });
+      onEvent({ type: 'token', content: '结论:一切正常。' });
+      onEvent({ type: 'done', content: '结论:一切正常。' });
+    });
+    await chat.sendMessage('检查一下');
+
+    const assistant = chat.messages.value[1];
+    // 增量拼接而不是覆盖:这是"点开只有一句占位、结束就没了"的根因修复
+    expect(assistant.thinking).toEqual([
+      { round: 1, content: '先看容器状态。再看最近日志。', streaming: true },
+      { round: 2, content: '确认没有异常。', streaming: true },
+    ]);
+  });
+
+  it('tool_executing 的参数会落到对应工具条目上,展开不再是空', async () => {
+    const chat = useAgentChat({ channel: 'tool-params-test' });
+    apiMock.agentExecuteStream.mockImplementation(async (payload, onEvent) => {
+      onEvent({ type: 'tool_requested', tool: 'compose.restart', paramsText: '{"service":"web"}' });
+      onEvent({ type: 'tool_executing', tool: 'compose.restart', paramsText: '{"service":"web"}' });
+      onEvent({ type: 'tool_result', tool: 'compose.restart', success: true, durationMs: 120, summary: '{"ok":true}' });
+    });
+    await chat.sendMessage('重启 web');
+
+    const tool = chat.messages.value[1].tools[0];
+    expect(tool.paramsText).toBe('{"service":"web"}');
+    expect(tool.summary).toBe('{"ok":true}');
+    expect(tool.status).toBe('done');
   });
 });

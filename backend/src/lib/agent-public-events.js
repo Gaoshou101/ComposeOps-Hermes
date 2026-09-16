@@ -43,12 +43,17 @@ export function toPublicAgentEvent(event) {
     if (event.tool === 'cron.create') return { type: 'action_completed', kind: 'cron_created', result: result || {} };
     // 通用工具结果:只透出工具名/成败/耗时 + 脱敏截断的摘要,完整结果体不带给前端。
     // 失败时 result 为空,回退到 error/durationMs 组成的摘要,避免卡片"结果"栏整片空白。
+    // 摘要放宽到 600 字符:240 字符会把列表类结果截成半截 JSON,展开后看不出所以然。
+    // 结果体本身就是空对象/空数组时(工具无返回值),给一句人话兜底,避免展开是空白。
     let summary = '';
     try {
       const source = result === undefined ? { error: event.result?.error || '执行失败', durationMs: Number(event.result?.durationMs || 0) } : result;
       const serialized = JSON.stringify(source);
-      summary = typeof serialized === 'string' ? serialized.slice(0, 240) : '';
+      if (typeof serialized === 'string') summary = serialized.slice(0, 600);
     } catch {}
+    if (!summary || summary === '{}' || summary === '[]' || summary === 'null') {
+      summary = event.result?.success === false ? '执行失败,无返回内容' : '执行成功,该操作没有返回数据';
+    }
     return {
       type: 'tool_result',
       tool: String(event.tool || ''),
@@ -76,11 +81,21 @@ export function toPublicAgentEvent(event) {
   if (event.type === 'session_meta') {
     return { type: 'session_meta', userMessageId: Number(event.userMessageId) || 0 };
   }
-  // 思考中占位:仅一句状态文案,供聊天气泡的"思考过程"折叠面板展示
+  // 思考过程:两种事件
+  //   thinking  = 轮次分隔(只有 round,没有正文),前端据此开一个新的思考轮次分组;
+  //   reasoning = 模型真实推理增量(流式),原样透传不截断——截断会让思考过程看起来"没内容"。
   if (event.type === 'thinking') {
-    return { type: 'thinking', content: cleanText(String(event.content || '')).slice(0, 200) };
+    return { type: 'thinking', round: Number(event.round) || 0, content: cleanText(String(event.content || '')).slice(0, 400) };
   }
-  if (event.type === 'tool_executing') return { type: 'tool_executing', tool: String(event.tool || '') };
+  if (event.type === 'reasoning') {
+    return { type: 'reasoning', round: Number(event.round) || 0, content: String(event.content ?? '') };
+  }
+  if (event.type === 'tool_executing') {
+    // 执行参数必须透出:此前只带工具名,点开"参数与结果"是空的,用户看不到 Agent 到底要做什么。
+    let paramsText = '';
+    try { paramsText = JSON.stringify(redactValue(event.params || {})).slice(0, 800); } catch {}
+    return { type: 'tool_executing', tool: String(event.tool || ''), paramsText };
+  }
   if (event.type === 'tool_rejected') return { type: 'tool_rejected', tool: String(event.tool || '') };
   if (event.type === 'tool_error') return { type: 'tool_error', tool: String(event.tool || ''), error: cleanError(event.error) };
   if (event.type === 'error') return { type: 'error', content: cleanError(event.error || event.content) || 'Agent 执行失败' };

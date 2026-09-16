@@ -5,14 +5,14 @@
     <aside class="agent-drawer" role="dialog" aria-modal="true" aria-label="页面 Agent">
       <header class="agent-drawer-head">
         <div class="flex min-w-0 items-center gap-2"><Bot class="h-4 w-4 text-cyan-400" /><div class="min-w-0"><strong class="block truncate">页面 Agent</strong><small class="block truncate">{{ pageContext.page || '当前页面' }} · {{ pageContext.mode || '运维问答与操作' }}</small></div></div>
-        <div class="flex items-center gap-1"><button class="icon-btn" title="中断执行" :disabled="!running" @click="interrupt"><Square class="h-4 w-4" /></button><button class="icon-btn" title="关闭 Agent" @click="closeAgent"><X class="h-4 w-4" /></button></div>
+        <div class="flex items-center gap-1"><button class="icon-btn" title="新建会话(清空当前上下文)" aria-label="新建会话" @click="startFreshSession"><MessageSquarePlus class="h-4 w-4" /></button><button class="icon-btn" title="中断执行" :disabled="!running" @click="interrupt"><Square class="h-4 w-4" /></button><button class="icon-btn" title="关闭 Agent" @click="closeAgent"><X class="h-4 w-4" /></button></div>
       </header>
       <div class="agent-drawer-context"><span>已携带当前页面上下文</span><small>{{ contextSummary }}</small></div>
       <div ref="scrollEl" class="agent-drawer-messages" @click="handleRichBlockClick">
         <div v-if="!messages.length" class="agent-drawer-empty"><MessageCircle class="h-6 w-6 text-cyan-400" /><p>可以询问当前页面的数据、状态或操作方式。</p><button class="preset-chip" @click="input = defaultPrompt; focusInput()">{{ defaultPrompt }}</button></div>
         <article v-for="message in messages" :key="message.id" class="agent-drawer-message" :class="message.role">
           <div class="agent-drawer-avatar"><UserRound v-if="message.role === 'user'" class="h-3.5 w-3.5" /><Bot v-else class="h-3.5 w-3.5" /></div>
-          <div class="min-w-0 max-w-[calc(100%-2rem)]"><div v-if="message.tools?.length" class="agent-drawer-tools"><div class="agent-drawer-tool-track"><span v-for="(tool, index) in message.tools" :key="index" class="agent-drawer-tool-chip" :class="tool.status"><i></i>{{ tool.tool }}<em v-if="tool.durationMs">{{ (tool.durationMs / 1000).toFixed(1) }}s</em></span></div><details v-if="toolDetailCount(message)" class="agent-drawer-tool-detail"><summary>参数与结果({{ toolDetailCount(message) }})</summary><div v-for="(tool, index) in message.tools" :key="index" class="agent-drawer-tool-block" :class="tool.status"><strong>{{ tool.tool }} · {{ toolStatusLabel(tool.status) }}</strong><pre v-if="tool.paramsText && tool.paramsText !== '{}'">{{ tool.paramsText }}</pre><pre v-if="tool.error" class="is-error">{{ tool.error }}</pre><pre v-else-if="tool.summary">{{ tool.summary }}</pre></div></details></div><details v-if="message.role === 'assistant' && message.thinking" class="agent-drawer-thinking"><summary>思考过程</summary><div>{{ message.thinking }}</div></details><div v-if="message.streaming && !message.content" class="agent-typing"><i></i><i></i><i></i><span>正在处理</span></div><div v-else-if="message.role === 'assistant' && !message.content" class="agent-empty-reply">(未返回内容)</div><AgentMarkdown v-else-if="message.role === 'assistant'" class="agent-drawer-markdown" :content="message.content" /><div v-else class="agent-drawer-user">{{ message.content }}</div>
+          <div class="min-w-0 max-w-[calc(100%-2rem)]"><div v-if="message.tools?.length" class="agent-drawer-tools"><div class="agent-drawer-tool-track"><span v-for="(tool, index) in message.tools" :key="index" class="agent-drawer-tool-chip" :class="tool.status"><i></i>{{ tool.tool }}<em v-if="tool.durationMs">{{ (tool.durationMs / 1000).toFixed(1) }}s</em></span></div><details v-if="toolDetailCount(message)" class="agent-drawer-tool-detail"><summary>参数与结果({{ toolDetailCount(message) }})</summary><div v-for="(tool, index) in message.tools" :key="index" class="agent-drawer-tool-block" :class="tool.status"><strong>{{ tool.tool }} · {{ toolStatusLabel(tool.status) }}</strong><pre v-if="tool.paramsText && tool.paramsText !== '{}'">{{ tool.paramsText }}</pre><pre v-if="tool.error" class="is-error">{{ tool.error }}</pre><pre v-else-if="tool.summary">{{ tool.summary }}</pre></div></details></div><AgentThinking v-if="message.role === 'assistant'" :thinking="message.thinking" :live="!!message.thinkingStreaming" /><div v-if="message.streaming && !message.content" class="agent-typing"><i></i><i></i><i></i><span>正在处理</span></div><div v-else-if="message.role === 'assistant' && !message.content" class="agent-empty-reply">(未返回内容)</div><AgentMarkdown v-else-if="message.role === 'assistant'" class="agent-drawer-markdown" :content="message.content" /><div v-else class="agent-drawer-user">{{ message.content }}</div>
             <div v-if="message.confirmation" class="agent-drawer-confirm"><strong>需要确认后执行<span v-if="message.confirmation.tool" class="ml-1.5 font-mono text-[11px] text-amber-200/80">{{ message.confirmation.tool }}</span></strong><p>{{ message.confirmation.description }}</p><details class="agent-confirm-params" @toggle="initParamsEdit($event, message)"><summary>查看 / 编辑参数</summary><textarea v-model="message.confirmation.paramsText" class="agent-confirm-params-text" rows="5" spellcheck="false"></textarea></details><div class="mt-2 flex gap-2"><button class="btn-primary !py-1 !text-xs" :disabled="message.confirmation.busy" @click="approveWithParams(message)">确认执行</button><button class="btn-secondary !py-1 !text-xs" :disabled="message.confirmation.busy" @click="reject(message)">拒绝</button></div></div>
           </div>
         </article>
@@ -32,19 +32,26 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { Bot, MessageCircle, Send, Square, UserRound, X } from 'lucide-vue-next';
+import { Bot, MessageCircle, MessageSquarePlus, Send, Square, UserRound, X } from 'lucide-vue-next';
 import { useAgentConsole } from '../composables/useAgentConsole.js';
-import { useAgentChat } from '../composables/useAgentChat.js';
+import { PAGE_DRAWER_CHANNEL, useAgentChat } from '../composables/useAgentChat.js';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
-import { stripAgentProtocol } from '../lib/agent-text.js';
-import { api } from '../api/client.js';
 import AgentMarkdown from './common/AgentMarkdown.vue';
+import AgentThinking from './agent/AgentThinking.vue';
 
 const { open, context, closeAgent } = useAgentConsole();
-const chat = useAgentChat();
-const { messages, input, running, sessionId, scrollEl, nextMessageId, sendMessage, pendingQueue, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom } = chat;
+// 抽屉用自己的 channel:与 AI 助手工作台的状态彻底隔离。
+// 在别的页面点"页面 Agent"应该是全新会话,而不是续上工作台里那段对话。
+const chat = useAgentChat({ channel: PAGE_DRAWER_CHANNEL });
+const { messages, input, running, sessionId, scrollEl, resetSession, sendMessage, pendingQueue, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom } = chat;
 const inputEl = ref(null);
-const historyLoading = ref(false);
+// 抽屉每次打开都是一段独立会话;用户也可以在不关闭抽屉的情况下手动开新会话。
+function startFreshSession() {
+  if (running.value) { interrupt(); }
+  resetSession();
+  input.value = '';
+  focusInput();
+}
 const pageContext = computed(() => ({ page: context.value.page || '当前页面', route: window.location.hash.replace(/^#/, '') || '/', mode: context.value.mode || '运维问答与操作', summary: context.value.summary || '', state: context.value.state || '' }));
 const contextSummary = computed(() => pageContext.value.summary || pageContext.value.state || '路由与页面状态已同步');
 const defaultPrompt = computed(() => pageContext.value.mode === 'cron-editor' ? '根据当前表单帮我创建这个定时任务' : '请分析当前页面，并告诉我可以做什么');
@@ -56,25 +63,13 @@ function submit() {
   // 抽屉与工作台共用同一 chat 实例:执行中提交会进入队列,由 useAgentChat 自动续发。
   void sendMessage(text, { pageContext: pageContext.value });
 }
-async function restoreLatestSession() {
-  if (sessionId.value || messages.value.length || historyLoading.value) return;
-  historyLoading.value = true;
-  try {
-    const data = await api.getAiSessions(50, 'agent');
-    const latest = data.sessions?.[0];
-    if (latest && !sessionId.value && !messages.value.length) {
-      sessionId.value = Number(latest.sessionId);
-      const history = await api.getAiHistory(sessionId.value, 200);
-      messages.value = (history.messages || []).filter((item) => ['user', 'assistant'].includes(item.role)).map((item) => ({ id: nextMessageId(), role: item.role, content: stripAgentProtocol(item.content) }));
-    }
-  } catch {
-    // 工作台打开后会负责显示完整的加载错误
-  } finally {
-    historyLoading.value = false;
-  }
-}
-watch(open, (value) => { if (value) { focusInput(); void restoreLatestSession(); } });
-onMounted(() => { if (open.value) void restoreLatestSession(); });
+// 会话 id 在第一次发送时惰性创建(ensureSession),这里不做历史回填 ——
+// 抽屉是"就当前页面问一句"的轻入口,续上历史会让上下文与页面不符。
+watch(open, (value) => {
+  if (!value) return;
+  startFreshSession();
+});
+onMounted(() => { if (open.value) startFreshSession(); });
 const TOOL_STATUS_LABELS = { requested: '已请求', executing: '执行中', done: '完成', failed: '失败', rejected: '已拒绝' };
 function toolStatusLabel(status) { return TOOL_STATUS_LABELS[status] || status; }
 /** 抽屉是精简视图,工具详情收进一个折叠块;没有可展示内容时不渲染。 */

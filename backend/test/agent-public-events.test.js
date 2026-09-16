@@ -16,9 +16,13 @@ test('公开 Agent 事件隐藏工具协议和内部工具字段', () => {
   // session_meta 透出本次用户消息的落库 id,前端据此截断历史(编辑并重发)
   assert.deepEqual(toPublicAgentEvent({ type: 'session_meta', userMessageId: 42 }), { type: 'session_meta', userMessageId: 42 });
   assert.deepEqual(toPublicAgentEvent({ type: 'session_meta' }), { type: 'session_meta', userMessageId: 0 });
-  // thinking 占位事件必须透传,否则聊天气泡的"思考过程"折叠面板拿不到数据
-  assert.deepEqual(toPublicAgentEvent({ type: 'thinking', content: '正在思考第 1 轮...' }), { type: 'thinking', content: '正在思考第 1 轮...' });
-  assert.deepEqual(toPublicAgentEvent({ type: 'thinking' }), { type: 'thinking', content: '' });
+  // thinking 现在是"轮次分隔"事件:带 round,正文可选(旧占位文案仍兼容透传)
+  assert.deepEqual(toPublicAgentEvent({ type: 'thinking', round: 2 }), { type: 'thinking', round: 2, content: '' });
+  assert.deepEqual(toPublicAgentEvent({ type: 'thinking' }), { type: 'thinking', round: 0, content: '' });
+  assert.deepEqual(toPublicAgentEvent({ type: 'thinking', round: 1, content: '正在思考第 1 轮...' }), { type: 'thinking', round: 1, content: '正在思考第 1 轮...' });
+  // reasoning 是模型的真实推理增量:必须原样透传(截断会让"思考过程"看着没内容)
+  assert.deepEqual(toPublicAgentEvent({ type: 'reasoning', round: 1, content: '先看容器状态\n再决定是否重启' }), { type: 'reasoning', round: 1, content: '先看容器状态\n再决定是否重启' });
+  assert.deepEqual(toPublicAgentEvent({ type: 'reasoning', content: 'x' }), { type: 'reasoning', round: 0, content: 'x' });
   // token 分片必须在 ai.js 发射层(全量、有状态)完成协议剥离后原样透传:
   // 逐 token 清洗会吃掉分片边界的空白与换行,造成表格/代码块与正文粘连、英文空格丢失。
   assert.deepEqual(toPublicAgentEvent({ type: 'token', content: '回答 \n\n| 项目 | 状态 |' }), { type: 'token', content: '回答 \n\n| 项目 | 状态 |' });
@@ -44,9 +48,9 @@ test('公开 Agent 事件保留用户需要的上下文和完成通知', () => {
   assert.deepEqual(toPublicAgentEvent({ type: 'tool_result', tool: 'cron.create', result: { result: { name: 'backup' } } }), {
     type: 'action_completed', kind: 'cron_created', result: { name: 'backup' },
   });
-  // 通用工具结果只透出工具名/成败/耗时,结果体不外带
+  // 通用工具结果只透出工具名/成败/耗时,结果体不外带;空结果给一句人话兜底,避免展开是空白
   assert.deepEqual(toPublicAgentEvent({ type: 'tool_result', tool: 'compose.ps', result: { success: true, result: {}, durationMs: 120 } }), {
-    type: 'tool_result', tool: 'compose.ps', success: true, durationMs: 120, summary: '{}', error: '',
+    type: 'tool_result', tool: 'compose.ps', success: true, durationMs: 120, summary: '执行成功,该操作没有返回数据', error: '',
   });
   assert.deepEqual(toPublicAgentEvent({ type: 'tool_result', tool: 'compose.ps', result: { success: false, error: '容器不存在', durationMs: 12 } }), {
     type: 'tool_result', tool: 'compose.ps', success: false, durationMs: 12, summary: '{"error":"容器不存在","durationMs":12}', error: '容器不存在',
@@ -56,7 +60,11 @@ test('公开 Agent 事件保留用户需要的上下文和完成通知', () => {
     type: 'tool_requested', tool: 'config.inspect', paramsText: '{"password":"[REDACTED]","name":"api"}',
   });
   assert.deepEqual(toPublicAgentEvent({ type: 'tool_requested', tool: 'config.inspect' }), { type: 'tool_requested', tool: 'config.inspect', paramsText: '{}' });
-  assert.deepEqual(toPublicAgentEvent({ type: 'tool_executing', tool: 'config.inspect' }), { type: 'tool_executing', tool: 'config.inspect' });
+  // 执行阶段同样带脱敏参数:此前只带工具名,展开"参数与结果"是空的
+  assert.deepEqual(toPublicAgentEvent({ type: 'tool_executing', tool: 'config.inspect', params: { token: 'x', name: 'api' } }), {
+    type: 'tool_executing', tool: 'config.inspect', paramsText: '{"token":"[REDACTED]","name":"api"}',
+  });
+  assert.deepEqual(toPublicAgentEvent({ type: 'tool_executing', tool: 'config.inspect' }), { type: 'tool_executing', tool: 'config.inspect', paramsText: '{}' });
   assert.deepEqual(toPublicAgentEvent({ type: 'tool_rejected', tool: 'compose.restart' }), { type: 'tool_rejected', tool: 'compose.restart' });
   assert.deepEqual(toPublicAgentEvent({ type: 'tool_error', tool: 'compose.logs', error: '容器不存在' }), { type: 'tool_error', tool: 'compose.logs', error: '容器不存在' });
 });

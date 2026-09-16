@@ -107,6 +107,22 @@ describe('renderAgentMarkdown — SVG 主题化与尺寸', () => {
     expect(html).toContain('class="rich-block"');
     expect(html).toContain('rich-zoom-btn');
   });
+
+  it('满画布背景底板不加描边(否则整张图会多出一圈外框)', () => {
+    const html = renderAgentMarkdown('<svg viewBox="0 0 720 144"><rect x="0" y="0" width="720" height="144" fill="#0f1720" /><rect x="20" y="20" width="80" height="40" fill="#000000" /></svg>');
+    const background = html.match(/<rect[^>]*width="720"[^>]*>/i)?.[0] || '';
+    expect(background).not.toMatch(/stroke=/i);
+    // 内部的小形状仍需要描边来保证轮廓可辨
+    const inner = html.match(/<rect[^>]*width="80"[^>]*>/i)?.[0] || '';
+    expect(inner).toMatch(/stroke=/i);
+  });
+
+  it('背景底板写在 style 里的亮色也被剥掉(不能因为跳过描边逻辑而漏掉颜色清理)', () => {
+    const html = renderAgentMarkdown('<svg viewBox="0 0 40 20"><rect width="40" height="20" style="fill:#ffffff" /><text x="4" y="14">x</text></svg>');
+    const background = html.match(/<rect[^>]*>/i)?.[0] || '';
+    expect(background).not.toMatch(/fill:\s*#f{3,6}/i);
+    expect(background).not.toMatch(/stroke=/i);
+  });
 });
 
 describe('renderAgentMarkdown — HTML 表格主题化', () => {
@@ -142,6 +158,14 @@ describe('renderAgentMarkdown — 代码块', () => {
     expect(html).toContain('data-lang="text"');
   });
 
+  it('json/jsonc 等以 js 开头的语言标识不被误判(否则正文会多出 "on" 前缀)', () => {
+    const html = renderAgentMarkdown('```json\n{"a":1}\n```');
+    expect(html).toContain('language-json');
+    expect(html).not.toContain('language-js"');
+    expect(html).not.toMatch(/>on\s/);
+    expect(html).toContain('{"a":1}');
+  });
+
   it('html 代码块渲染为富内容并附带可折叠源码', () => {
     const html = renderAgentMarkdown('```html\n<table><tr><td>富内容</td></tr></table>\n```');
     expect(html).toContain('rich-block');
@@ -152,6 +176,53 @@ describe('renderAgentMarkdown — 代码块', () => {
   it('内部 trace JSON 代码块被整块丢弃', () => {
     const html = renderAgentMarkdown('```json\n{"phase":"tool_requested","tool":"restart_service"}\n```');
     expect(html).not.toContain('tool_requested');
+  });
+});
+
+describe('renderAgentMarkdown — 富内容不重复渲染', () => {
+  const svg = '<svg viewBox="0 0 720 144"><rect width="720" height="144" fill="white" /><text x="20" y="40">架构图</text></svg>';
+
+  it('模型自己附的"查看源码" details 里的围栏不再被二次渲染', () => {
+    // 用户在截图里看到的就是这个:标题 + 一张图 + 又一个"查看源码" + 同一张图
+    const html = renderAgentMarkdown(`${svg}\n\n<details><summary>查看源码</summary>\n\n\`\`\`svg\n${svg}\n\`\`\`\n\n</details>`);
+    expect((html.match(/class="rich-block"/g) || []).length).toBe(1);
+    expect((html.match(/查看源码/g) || []).length).toBe(1);
+    expect((html.match(/<details/g) || []).length).toBe(1);
+  });
+
+  it('details 内的源码保持为代码文本,而不是又渲染成一张图', () => {
+    const html = renderAgentMarkdown(`<details><summary>查看源码</summary>\n\n\`\`\`html\n<table><tr><td>x</td></tr></table>\n\`\`\`\n\n</details>`);
+    expect(html).not.toContain('rich-block');
+    expect(html).toContain('language-html');
+  });
+
+  it('围栏富内容与源码折叠仍成对出现', () => {
+    const html = renderAgentMarkdown(`\`\`\`svg\n${svg}\n\`\`\``);
+    expect((html.match(/class="rich-block"/g) || []).length).toBe(1);
+    expect((html.match(/查看源码/g) || []).length).toBe(1);
+    // 渲染结果在折叠块之前,源码在其中
+    expect(html.indexOf('rich-block')).toBeLessThan(html.indexOf('查看源码'));
+  });
+
+  it('表格不会被放大块重复包裹', () => {
+    const html = renderAgentMarkdown('<table><tr><td>a</td></tr></table>');
+    expect((html.match(/class="rich-block"/g) || []).length).toBe(1);
+    expect((html.match(/agent-table-wrap/g) || []).length).toBe(1);
+  });
+
+  it('details 内的普通语言围栏仍渲染为代码块,不会漏出裸反引号', () => {
+    const html = renderAgentMarkdown('<details><summary>原始输出</summary>\n\n```json\n{"a":1}\n```\n\n</details>');
+    expect(html).toContain('<pre');
+    expect(html).toContain('language-json');
+    expect(html).not.toContain('```');
+  });
+
+  it('闭合标签带空白或大写时,后续围栏仍能被富内容化', () => {
+    const svg = '<svg viewBox="0 0 20 20"><rect width="20" height="20" /></svg>';
+    for (const closing of ['</details>', '</details >', '</DETAILS>']) {
+      const html = renderAgentMarkdown(`<details><summary>源码</summary>\n\n\`\`\`svg\n${svg}\n\`\`\`\n\n${closing}\n\n\`\`\`svg\n${svg}\n\`\`\``);
+      expect((html.match(/class="rich-block"/g) || []).length, `closing=${closing}`).toBe(1);
+    }
   });
 });
 

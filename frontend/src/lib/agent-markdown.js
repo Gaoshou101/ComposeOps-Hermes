@@ -23,7 +23,16 @@ function normalizeAgentMarkdown(value) {
   for (const line of lines) {
     if (/^\s*```/.test(line)) {
       inFence = !inFence;
-      output.push(line.replace(/```(yaml|yml|json|bash|sh|shell|javascript|js|typescript|ts|dockerfile)(?=[^\n])/i, '```$1\n'));
+      // 两种形态一次修掉,且不能重复补换行:
+      //   1) 标准围栏 "```yaml\n" —— 语言后紧跟换行,原样保留;
+      //   2) 粘连输出 "```yamlservices:" —— 语言和正文糊在一行,补一个换行。
+      // 语言候选按"长匹配优先"排序(json 在 js 前),否则 `json` 会被 `js` 抢先命中,
+      // 变成 "```js\non..." —— 语言标错、正文还会多出一个 'on' 前缀。
+      const lineWithFence = line.replace(
+        /```(javascript|typescript|dockerfile|yaml|yml|json|shell|bash|sh|ts|js)([ \t]*)(\n?)/i,
+        (whole, lang, spaces, newline) => (newline ? `\`\`\`${lang}${newline}` : `\`\`\`${lang}\n`),
+      );
+      output.push(lineWithFence);
       continue;
     }
     if (!inFence) {
@@ -62,21 +71,50 @@ const INTERNAL_TRACE_PATTERN = /"phase"\s*:\s*"(tool_|loop_|understanding|planni
 
 const HTML_FRAGMENT_HINT = /<\/(div|p|span|section|table|svg|ul|ol|dl|details|article|header|main|figure)>/i;
 
+/** 单个代码围栏:富内容就地渲染,源码另收一份进 details。不满足条件则原样保留。 */
+function convertFence(whole, lang, body) {
+  const code = String(body || '').trim();
+  // 内部执行状态/协议 JSON:不属于给用户的内容,整块丢弃
+  if (INTERNAL_TRACE_PATTERN.test(body)) return '';
+  if (String(body || '').includes('```')) return whole;
+  const langLower = String(lang || '').toLowerCase();
+  const langOk = !langLower || ['html', 'svg', 'xml'].includes(langLower);
+  if (!langOk) return whole;
+  // 富内容判定:含 <svg>/<table>,或整体是一段完整 HTML 片段(以标签开头、有闭合标签)
+  const richSvgTable = /<(svg[\s>]|table[\s>])/i.test(code);
+  const htmlFragment = /^<[a-zA-Z][^>]*>/.test(code) && HTML_FRAGMENT_HINT.test(code);
+  if (!richSvgTable && !(langOk && htmlFragment)) return whole;
+  return `\n\n${code}\n\n<details><summary>查看源码</summary>\n\n\`\`\`${langLower || 'html'}\n${body}\n\`\`\`\n\n</details>\n\n`;
+}
+
+/**
+ * 单遍扫描:代码围栏富内容化 + details 深度跟踪。
+ *
+ * 关键点:模型经常先给一段渲染结果、再自己附一个"查看源码"的 details(源码以围栏形式放在里面)。
+ * 那种 details 里的围栏必须原样保留,否则会被再渲染一次 —— 用户就会看到
+ * "标题 + 一张图 + 又一个查看源码 + 一张一样的图"的重复嵌套。
+ */
+// 闭合标签允许 ">" 前有空白(`</details >`),否则计数会永久卡在 1,
+// 后续所有围栏都被当成"源码预览"而不再富内容化。
+const FENCE_OR_DETAILS = /```([\w-]*)[ \t]*\n([\s\S]*?)\n```|<details\b[^>]*>|<\/details\s*>/gi;
+
 function renderableCodeBlocks(source) {
-  return source.replace(/```([\w-]*)[ \t]*\n([\s\S]*?)\n```/g, (whole, lang, body) => {
-    const code = body.trim();
-    // 内部执行状态/协议 JSON:不属于给用户的内容,整块丢弃
-    if (INTERNAL_TRACE_PATTERN.test(body)) return '';
-    if (body.includes('```')) return whole;
-    const langLower = String(lang || '').toLowerCase();
-    const langOk = !langLower || ['html', 'svg', 'xml'].includes(langLower);
-    if (!langOk) return whole;
-    // 富内容判定:含 <svg>/<table>,或整体是一段完整 HTML 片段(以标签开头、有闭合标签)
-    const richSvgTable = /<(svg[\s>]|table[\s>])/i.test(code);
-    const htmlFragment = /^<[a-zA-Z][^>]*>/.test(code) && HTML_FRAGMENT_HINT.test(code);
-    if (!richSvgTable && !(langOk && htmlFragment)) return whole;
-    return `\n\n${code}\n\n<details><summary>查看源码</summary>\n\n\`\`\`${langLower || 'html'}\n${body}\n\`\`\`\n\n</details>\n\n`;
-  });
+  const text = String(source || '');
+  let output = '';
+  let cursor = 0;
+  let detailsDepth = 0;
+  let match;
+  FENCE_OR_DETAILS.lastIndex = 0;
+  while ((match = FENCE_OR_DETAILS.exec(text)) !== null) {
+    const whole = match[0];
+    output += text.slice(cursor, match.index);
+    cursor = match.index + whole.length;
+    if (/^<details\b/i.test(whole)) { detailsDepth += 1; output += whole; continue; }
+    if (/^<\/details/i.test(whole)) { detailsDepth = Math.max(0, detailsDepth - 1); output += whole; continue; }
+    // 已折叠的源码块内部:围栏保持原样,不再富内容化
+    output += detailsDepth > 0 ? whole : convertFence(whole, match[1], match[2]);
+  }
+  return output + text.slice(cursor);
 }
 
 /* ============================================================================
@@ -144,6 +182,27 @@ function themeColorFor(value, { isText = false } = {}) {
 
 const SHAPE_TAGS = new Set(['rect', 'circle', 'ellipse', 'polygon', 'path', 'line', 'polyline', 'g', 'use', 'foreignobject']);
 
+/**
+ * 这张 rect 是不是"整张图的背景底板"?
+ *
+ * 模型画图习惯先铺一块和 viewBox 等大的 rect 当底。它被当成普通形状处理时,
+ * 会被加上描边 —— 结果就是整张图外面套了一圈莫名其妙的边框,这是 SVG 观感
+ * 差的主要来源之一。底板只保留填充,不参与描边。
+ */
+function isCanvasBackgroundRect(svg, node) {
+  if (node.tagName.toLowerCase() !== 'rect') return false;
+  if (!svg.hasAttribute('viewBox')) return false;
+  const [, , vbWidth, vbHeight] = svg.getAttribute('viewBox').trim().split(/[\s,]+/).map(Number);
+  if (!(vbWidth > 0 && vbHeight > 0)) return false;
+  const x = parseFloat(node.getAttribute('x') || '0');
+  const y = parseFloat(node.getAttribute('y') || '0');
+  const w = parseFloat(node.getAttribute('width') || '0');
+  const h = parseFloat(node.getAttribute('height') || '0');
+  if (![x, y, w, h].every(Number.isFinite)) return false;
+  // 允许 2px 内的坐标误差,覆盖 "<rect width=W height=H>" 与轻微内缩两种写法
+  return x <= 2 && y <= 2 && w >= vbWidth - 4 && h >= vbHeight - 4;
+}
+
 /** 把 svg 里残留的亮/暗色 fill、stroke、bgcolor 重映射到主题色。 */
 function rethemeSvg(svg) {
   const nodes = [svg, ...svg.querySelectorAll('*')];
@@ -151,13 +210,20 @@ function rethemeSvg(svg) {
     const tag = node.tagName.toLowerCase();
     const isText = tag === 'text' || tag === 'tspan';
     const shape = SHAPE_TAGS.has(tag);
+    const canvasBackground = isCanvasBackgroundRect(svg, node);
     for (const attr of ['fill', 'stroke', 'bgcolor', 'stop-color', 'flood-color']) {
       if (!node.hasAttribute(attr)) continue;
       const mapped = themeColorFor(node.getAttribute(attr), { isText });
       if (mapped) node.setAttribute(attr, mapped);
     }
-    // 纯黑形状在暗底上等于隐形:除了换填充色,再补一道描边保证轮廓可辨。
-    if (shape && node.getAttribute('fill') === DARK_SHAPE_FILL && !node.hasAttribute('stroke')) {
+    // 满画布底板:只做底色,不带描边(否则整张图会多出一圈外框)
+    if (canvasBackground) {
+      node.removeAttribute('stroke');
+      node.removeAttribute('stroke-width');
+      // 不能直接 continue:下面的 style 颜色清理同样要执行,
+      // 否则 style="fill:#fff" 的底板会漏过去,暗色主题里留一块白。
+    } else if (shape && node.getAttribute('fill') === DARK_SHAPE_FILL && !node.hasAttribute('stroke')) {
+      // 纯黑形状在暗底上等于隐形:除了换填充色,再补一道描边保证轮廓可辨。
       node.setAttribute('stroke', DARK_SHAPE_STROKE);
     }
     // 文字颜色一律交给主题 CSS:模型常写 fill=black,暗底上直接看不见。
@@ -263,17 +329,48 @@ function postProcessHtml(html) {
   return root.innerHTML;
 }
 
-/** 给净化后的 SVG/表格包上可全屏查看的块(按钮事件由消息容器委托处理)。 */
+/**
+ * 给 SVG/表格包上可全屏查看的块(按钮事件由消息容器委托处理)。
+ *
+ * 这里必须走 DOM 而不是正则:正则无法知道元素是否已被包过、是否位于
+ * details/pre/code 里(源码预览),也无从判断嵌套关系 —— 之前正是正则
+ * 无差别包裹,把源码 details 里的 SVG 又渲染了一遍,出现两层"查看源码"。
+ */
 function wrapFullscreenBlocks(html) {
-  const wrap = (inner) => (
-    `<div class="rich-block"><div class="rich-block-body">${inner}</div>` +
-    '<button type="button" class="rich-zoom-btn" title="放大查看(Esc 关闭)"><span aria-hidden="true">⤢</span></button></div>'
-  );
-  return html
-    .replace(/<svg[\s\S]*?<\/svg>/gi, (match) => wrap(match))
-    .replace(/<table[\s\S]*?<\/table>/gi, (match) => wrap(match))
-    // 顶层 div 片段(不含嵌套 div)也支持放大;嵌套 div 保持原样避免错误包裹
-    .replace(/<div(?:(?!<\/?(?:div[\s>]|table[\s>]|svg[\s>]))[\s\S])*?<\/div>/gi, (match) => (match.length > 60 ? wrap(match) : match));
+  if (!html || typeof DOMParser === 'undefined') return html;
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
+  const root = doc.body;
+  // 只包裹"还没被包过、也不在任何折叠/代码容器内"的块。
+  // 表格自己会被 rethemeTables 套一层 .agent-table-wrap(横向滚动),
+  // 那是"包裹层"而不是"已在折叠里",所以不能把它当排除条件。
+  const candidates = [...root.querySelectorAll('svg, table')]
+    .filter((node) => !node.closest('.rich-block, details, pre, code'));
+  for (const node of candidates) {
+    // 表格已在 rethemeTables 里套了横向滚动容器,放大块要包在这个容器外
+    const target = node.tagName.toLowerCase() === 'table' && node.parentElement?.classList.contains('agent-table-wrap')
+      ? node.parentElement
+      : node;
+    if (target.parentElement?.classList.contains('rich-block-body')) continue;
+
+    const block = doc.createElement('div');
+    block.className = 'rich-block';
+    const body = doc.createElement('div');
+    body.className = 'rich-block-body';
+    target.replaceWith(block);
+    body.appendChild(target);
+    block.appendChild(body);
+
+    const button = doc.createElement('button');
+    button.type = 'button';
+    button.className = 'rich-zoom-btn';
+    button.title = '放大查看(Esc 关闭)';
+    const glyph = doc.createElement('span');
+    glyph.setAttribute('aria-hidden', 'true');
+    glyph.textContent = '\u2922'; // ⤢ 放大箭头
+    button.appendChild(glyph);
+    block.appendChild(button);
+  }
+  return root.innerHTML;
 }
 
 /** 流式期间代码围栏可能尚未闭合:渲染时临时补虚拟闭合,让 SVG/表格渐进渲染而非裸奔源码。 */

@@ -324,8 +324,9 @@ export class OperationsAgent {
         let lastUsage = null;
 
         try {
-          // 发送 thinking 事件(折叠面板)
-          onEvent({ type: 'thinking', content: `正在思考第 ${loopCount} 轮...` });
+          // 轮次开始标记:前端据此在"思考过程"里开一个新的轮次分组。
+          // 这里只发轮次号,不再塞"正在思考第 N 轮..."占位文本——文本一律来自模型真实 reasoning。
+          onEvent({ type: 'thinking', round: loopCount });
           // 使用流式输出实时推送 LLM 思考过程
           const response = await callOpenAI({
             ...cfg,
@@ -334,6 +335,11 @@ export class OperationsAgent {
             stream: true,
             onToken: (token) => {
               onEvent({ type: 'token', content: token });
+            },
+            // 推理模型(deepseek-reasoner / claude thinking 等)的思考增量:
+            // 逐块透出给聊天气泡的"思考过程"面板,而不是只留一句占位。
+            onReasoning: (chunk) => {
+              if (chunk) onEvent({ type: 'reasoning', round: loopCount, content: chunk });
             },
             signal: abortController.signal,
           });

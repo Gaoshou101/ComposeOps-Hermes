@@ -264,7 +264,7 @@ export async function fetchAiModels({ baseUrl, apiKey } = {}) {
  * @param {AbortSignal} [opts.signal]  取消信号
  * @returns {Promise<{content:string, finishReason:string, toolCalls:Array}>} 结构化响应
  */
-export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stream = false, onToken, signal }) {
+export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stream = false, onToken, onReasoning, signal }) {
   if (!apiKey) throw new Error('AI 未配置 API Key');
   if (!baseUrl) throw new Error('AI 未配置 Base URL');
 
@@ -275,6 +275,11 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
     body.tools = tools;
   }
   let fullText = '';
+  let fullReasoning = '';
+  // 推理增量上限:异常模型可能无限吐 reasoning(循环/失控),
+  // 无上限会让后端内存与前端 DOM 一起膨胀。超出后停止外发,只保留前段。
+  const MAX_REASONING_CHARS = 120000;
+  let reasoningTruncated = false;
   let finishReason = '';
   let toolCalls = [];
   let emittedContentLength = 0;
@@ -304,6 +309,8 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
     const data = await resp.json();
     const message = data?.choices?.[0]?.message || {};
     fullText = message.content || '';
+    fullReasoning = message.reasoning_content || message.reasoning || '';
+    if (onReasoning && fullReasoning) onReasoning(fullReasoning.slice(0, MAX_REASONING_CHARS));
     finishReason = data?.choices?.[0]?.finish_reason || '';
     toolCalls = message.tool_calls || [];
     const result = normalizeToolResponse(fullText, toolCalls, finishReason);
@@ -332,7 +339,20 @@ export async function callOpenAI({ baseUrl, apiKey, model, messages, tools, stre
         if (!choice) continue;
         
         // 累积 content
-        const delta = choice.delta?.content || '';
+        const deltaContent = choice.delta?.content || '';
+        const deltaReasoning = choice.delta?.reasoning_content || choice.delta?.reasoning || '';
+        if (deltaReasoning) {
+          fullReasoning += deltaReasoning;
+          if (onReasoning && !reasoningTruncated) {
+            if (fullReasoning.length > MAX_REASONING_CHARS) {
+              reasoningTruncated = true;
+              onReasoning('\n\n…(推理内容过长,后续已省略)');
+            } else {
+              onReasoning(deltaReasoning);
+            }
+          }
+        }
+        const delta = deltaContent;
         if (delta) {
           fullText += delta;
           // 实时计算“剥除文本协议后”的可见回复,只把新增部分推给前端:
