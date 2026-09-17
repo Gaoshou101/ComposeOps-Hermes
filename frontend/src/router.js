@@ -21,6 +21,8 @@ const routes = [
   { path: '/review', name: 'review', component: () => import('./views/ChangeReviewView.vue') },
   { path: '/rollback', name: 'rollback', component: () => import('./views/RollbackView.vue') },
   { path: '/ops-center', name: 'ops-center', component: () => import('./views/OperationsCenterView.vue') },
+  { path: '/knowledge', name: 'knowledge', component: () => import('./views/KnowledgeGraphView.vue') },
+  { path: '/node-groups', name: 'node-groups', component: () => import('./views/NodeGroupView.vue') },
   { path: '/blueprints', redirect: '/marketplace' },
   { path: '/cron', name: 'cron', component: () => import('./views/CronTasksView.vue') },
   { path: '/gitops', name: 'gitops', component: () => import('./views/GitOpsView.vue') },

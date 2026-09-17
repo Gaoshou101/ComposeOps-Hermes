@@ -10,13 +10,14 @@
           <option value="">选择项目</option>
           <option v-for="p in store.projects" :key="p.id" :value="p.id">{{ p.projectName }}</option>
         </select>
+        <label class="toggle-label whitespace-nowrap" title="同时展示所有项目的服务,支持跨项目依赖"><input v-model="crossProject" type="checkbox" @change="loadProject" />跨项目</label>
         <button class="btn-secondary" :disabled="loading" @click="loadProject"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />刷新</button>
       </div>
     </div>
 
     <p v-if="error" class="alert-error">{{ error }}</p>
 
-    <EmptyState v-if="!selectedProjectId" icon="Network" title="选择项目查看拓扑" description="从上方下拉框选择一个 Compose 项目,自动生成服务依赖关系图" class="flex-1" />
+    <EmptyState v-if="!selectedProjectId && !crossProject" icon="Network" title="选择项目查看拓扑" description="从上方下拉框选择一个 Compose 项目,或开启跨项目模式查看全局依赖" class="flex-1" />
 
     <template v-else>
       <!-- 项目概览 -->
@@ -100,6 +101,7 @@ import EmptyState from '../components/common/EmptyState.vue';
 
 const store = useServicesStore();
 const selectedProjectId = ref('');
+const crossProject = ref(false);
 const loading = ref(false);
 const error = ref('');
 const services = ref([]);
@@ -112,8 +114,8 @@ const levelGap = 220;
 const nodeGap = 90;
 
 const project = computed(() => store.projects.find((p) => p.id === selectedProjectId.value));
-const containerCount = computed(() => project.value?.containers?.length || 0);
-const runningContainers = computed(() => (project.value?.containers || []).filter((c) => c.state === 'running').length);
+const containerCount = computed(() => (crossProject.value ? store.projects.reduce((n, p) => n + (p.containers?.length || 0), 0) : project.value?.containers?.length || 0));
+const runningContainers = computed(() => (crossProject.value ? store.projects.reduce((n, p) => n + (p.containers || []).filter((c) => c.state === 'running').length, 0) : (project.value?.containers || []).filter((c) => c.state === 'running').length));
 const networkCount = computed(() => networks.value.length);
 const volumeCount = computed(() => volumes.value.length);
 const edgeCount = computed(() => services.value.reduce((n, s) => n + s.dependsOn.length, 0));
@@ -200,7 +202,8 @@ function edgePath(edge) {
 }
 
 function svcState(svc) {
-  const container = (project.value?.containers || []).find((c) => c.name.includes(svc.name));
+  const projectData = crossProject.value ? store.projects.find((p) => p.id === svc.projectId) : project.value;
+  const container = (projectData?.containers || []).find((c) => c.name.includes(svc.name));
   if (!container) return 'none';
   if (container.health === 'unhealthy') return 'unhealthy';
   return container.state === 'running' ? 'running' : 'stopped';
@@ -231,25 +234,42 @@ function svcStateLabel(svc) {
 }
 
 async function loadProject() {
-  if (!selectedProjectId.value) return;
+  if (!selectedProjectId.value && !crossProject.value) return;
   loading.value = true;
   error.value = '';
   services.value = [];
   networks.value = [];
   volumes.value = [];
   try {
-    const data = await api.getComposeFile(selectedProjectId.value, 0);
-    const parsed = YAML.parse(data.content || '');
-    const svcMap = parsed?.services || {};
-    services.value = Object.entries(svcMap).map(([name, cfg]) => ({
-      name,
-      image: cfg.image || '',
-      dependsOn: Array.isArray(cfg.depends_on) ? cfg.depends_on : cfg.depends_on ? Object.keys(cfg.depends_on) : [],
-      ports: (cfg.ports || []).map((p) => String(p)),
-      volumes: (cfg.volumes || []).map((v) => String(v)),
-    }));
-    networks.value = Object.keys(parsed?.networks || {});
-    volumes.value = Object.keys(parsed?.volumes || {});
+    const targets = crossProject.value ? store.projects : store.projects.filter((p) => p.id === selectedProjectId.value);
+    const results = await Promise.allSettled(targets.map((p) => api.getComposeFile(p.id, 0)));
+    const allServices = [];
+    const allNetworks = new Set();
+    const allVolumes = new Set();
+    results.forEach((result, idx) => {
+      if (result.status !== 'fulfilled') return;
+      const target = targets[idx];
+      const parsed = YAML.parse(result.value.content || '');
+      const svcMap = parsed?.services || {};
+      for (const [name, cfg] of Object.entries(svcMap)) {
+        const displayName = crossProject.value ? `${target.projectName}/${name}` : name;
+        allServices.push({
+          name: displayName,
+          rawName: name,
+          projectId: target.id,
+          projectName: target.projectName,
+          image: cfg.image || '',
+          dependsOn: (Array.isArray(cfg.depends_on) ? cfg.depends_on : cfg.depends_on ? Object.keys(cfg.depends_on) : []).map((d) => (crossProject.value ? `${target.projectName}/${d}` : d)),
+          ports: (cfg.ports || []).map((p) => String(p)),
+          volumes: (cfg.volumes || []).map((v) => String(v)),
+        });
+      }
+      for (const n of Object.keys(parsed?.networks || {})) allNetworks.add(n);
+      for (const v of Object.keys(parsed?.volumes || {})) allVolumes.add(v);
+    });
+    services.value = allServices;
+    networks.value = [...allNetworks];
+    volumes.value = [...allVolumes];
   } catch (e) {
     error.value = `拓扑解析失败: ${e.message}`;
   } finally {

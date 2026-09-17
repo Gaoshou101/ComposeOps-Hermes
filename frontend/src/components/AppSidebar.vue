@@ -48,12 +48,13 @@
 <script setup>
 import { ref } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
-import { Boxes, Clock3, FileCode2, ScrollText, TerminalSquare, Bot, ChartNoAxesCombined, HardDrive, History, Settings, Store, Activity, GitBranch, DollarSign, Package, Menu, ShieldCheck, Timer, Network, FileSearch, RotateCcw, Workflow } from 'lucide-vue-next';
+import { Boxes, Clock3, FileCode2, ScrollText, TerminalSquare, Bot, ChartNoAxesCombined, HardDrive, History, Settings, Store, Activity, GitBranch, DollarSign, Package, Menu, ShieldCheck, Timer, Network, FileSearch, RotateCcw, Workflow, Waypoints, ServerCog } from 'lucide-vue-next';
 const groups = [
   { label: '运行', items: [
     { to: '/dashboard', icon: Activity, label: '总览' },
     { to: '/services', icon: Boxes, label: '服务' },
     { to: '/topology', icon: Network, label: '拓扑' },
+    { to: '/node-groups', icon: ServerCog, label: '节点组' },
     { to: '/compose', icon: FileCode2, label: '配置' },
     { to: '/converter', icon: Package, label: '转换' },
   ] },
@@ -75,6 +76,7 @@ const groups = [
   ] },
   { label: '系统', items: [
     { to: '/resources', icon: HardDrive, label: '存储清理' },
+    { to: '/knowledge', icon: Waypoints, label: '知识图谱' },
     { to: '/timeline', icon: Timer, label: '时间机器' },
     { to: '/operations', icon: History, label: '记录' },
     { to: '/cost', icon: DollarSign, label: '成本分析' },
