@@ -13,3 +13,8 @@ coverage/
 *.tgz
 backend/data/cron-jobs.json
 backend/data/backups/
+.v2c/
+.zcode/
+.codegraph/
+.ccg/
+.claude/

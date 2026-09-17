@@ -48,13 +48,14 @@
 <script setup>
 import { ref } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
-import { Boxes, Clock3, FileCode2, ScrollText, TerminalSquare, Bot, ChartNoAxesCombined, HardDrive, History, Settings, Store, Activity, GitBranch, DollarSign, Package, Menu, ShieldCheck, Timer, Network, FileSearch, RotateCcw, Workflow, Waypoints, ServerCog } from 'lucide-vue-next';
+import { Boxes, Clock3, FileCode2, ScrollText, TerminalSquare, Bot, ChartNoAxesCombined, HardDrive, History, Settings, Store, Activity, GitBranch, DollarSign, Package, Menu, ShieldCheck, Timer, Network, FileSearch, RotateCcw, Workflow, Waypoints, ServerCog, Database, BellRing } from 'lucide-vue-next';
 const groups = [
   { label: '运行', items: [
     { to: '/dashboard', icon: Activity, label: '总览' },
     { to: '/services', icon: Boxes, label: '服务' },
     { to: '/topology', icon: Network, label: '拓扑' },
     { to: '/node-groups', icon: ServerCog, label: '节点组' },
+    { to: '/cmdb', icon: Database, label: '资产中心' },
     { to: '/compose', icon: FileCode2, label: '配置' },
     { to: '/converter', icon: Package, label: '转换' },
   ] },
@@ -71,6 +72,8 @@ const groups = [
   { label: '扩展', items: [
     { to: '/marketplace', icon: Store, label: '应用市场' },
     { to: '/ops-center', icon: Workflow, label: '运维任务' },
+    { to: '/workflows', icon: Workflow, label: '工作流' },
+    { to: '/events', icon: BellRing, label: '事件中心' },
     { to: '/cron', icon: Clock3, label: '定时任务' },
     { to: '/gitops', icon: GitBranch, label: 'GitOps' },
   ] },

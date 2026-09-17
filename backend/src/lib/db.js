@@ -268,6 +268,119 @@ const MIGRATIONS = [
       database.exec(`CREATE INDEX IF NOT EXISTS idx_inspections_created ON inspections(created_at DESC)`);
     },
   },
+  {
+    version: 7,
+    name: '统一资产模型(CMDB)',
+    up(database) {
+      // 统一资产:Host/Project/Container/Volume/Network 等全部收敛为 asset 实体。
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS assets (
+          id TEXT PRIMARY KEY,
+          kind TEXT NOT NULL,               -- host | project | container | volume | network | service
+          name TEXT NOT NULL,
+          display_name TEXT NOT NULL DEFAULT '',
+          host_id TEXT NOT NULL DEFAULT 'local',
+          status TEXT NOT NULL DEFAULT 'unknown', -- online | offline | running | stopped | unknown
+          properties TEXT NOT NULL DEFAULT '{}',
+          tags TEXT NOT NULL DEFAULT '[]',
+          owner TEXT NOT NULL DEFAULT '',
+          environment TEXT NOT NULL DEFAULT '',
+          source TEXT NOT NULL DEFAULT 'manual', -- manual | scanner | docker
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_assets_kind ON assets(kind);
+        CREATE INDEX IF NOT EXISTS idx_assets_host ON assets(host_id);
+        CREATE INDEX IF NOT EXISTS idx_assets_name ON assets(name);
+
+        CREATE TABLE IF NOT EXISTS asset_relations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+          target_id TEXT NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+          relation TEXT NOT NULL,           -- depends_on | runs_on | owns | contains | connects_to
+          properties TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_asset_relations_source ON asset_relations(source_id);
+        CREATE INDEX IF NOT EXISTS idx_asset_relations_target ON asset_relations(target_id);
+      `);
+    },
+  },
+  {
+    version: 8,
+    name: '统一事件中心(event_records)',
+    up(database) {
+      // 统一事件流:告警/巡检/部署/回滚/Agent/GitOps 全部进入同一张表,作为时间线与事件中心的单一事实来源。
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS event_records (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_type TEXT NOT NULL DEFAULT 'alert', -- alert | inspection | deployment | rollback | agent | gitops | workflow | system
+          source TEXT NOT NULL DEFAULT 'system',
+          title TEXT NOT NULL DEFAULT '',
+          detail TEXT NOT NULL DEFAULT '',
+          severity TEXT NOT NULL DEFAULT 'info',     -- info | warning | danger
+          status TEXT NOT NULL DEFAULT 'open',       -- open | acknowledged | resolved | closed
+          asset_id TEXT,
+          asset_name TEXT NOT NULL DEFAULT '',
+          payload TEXT NOT NULL DEFAULT '{}',
+          read INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_event_records_created ON event_records(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_event_records_type ON event_records(event_type);
+        CREATE INDEX IF NOT EXISTS idx_event_records_asset ON event_records(asset_id);
+      `);
+    },
+  },
+  {
+    version: 9,
+    name: '工作流引擎(workflow_definitions/instances/steps)',
+    up(database) {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS workflow_definitions (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          trigger_type TEXT NOT NULL DEFAULT 'manual', -- manual | cron | event
+          trigger_config TEXT NOT NULL DEFAULT '{}',
+          nodes TEXT NOT NULL DEFAULT '[]',            -- JSON: 节点编排(trigger/condition/agent/approval/action/verify)
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS workflow_instances (
+          id TEXT PRIMARY KEY,
+          definition_id TEXT NOT NULL REFERENCES workflow_definitions(id) ON DELETE CASCADE,
+          name TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'pending', -- pending | running | waiting_approval | success | failed | cancelled
+          current_node TEXT NOT NULL DEFAULT '',
+          context TEXT NOT NULL DEFAULT '{}',
+          result TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          started_at TEXT,
+          finished_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_workflow_instances_def ON workflow_instances(definition_id);
+        CREATE INDEX IF NOT EXISTS idx_workflow_instances_status ON workflow_instances(status);
+
+        CREATE TABLE IF NOT EXISTS workflow_steps (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          instance_id TEXT NOT NULL REFERENCES workflow_instances(id) ON DELETE CASCADE,
+          node_id TEXT NOT NULL DEFAULT '',
+          node_type TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL DEFAULT 'pending', -- pending | running | waiting_approval | success | failed | skipped
+          input TEXT NOT NULL DEFAULT '{}',
+          output TEXT NOT NULL DEFAULT '{}',
+          error TEXT NOT NULL DEFAULT '',
+          started_at TEXT,
+          finished_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_workflow_steps_instance ON workflow_steps(instance_id, id);
+      `);
+    },
+  },
 ];
 
 /** 幂等加列:列已存在时直接返回 false,不抛错。 */
@@ -981,6 +1094,334 @@ function mapInspectionRow(row) {
     durationMs: row.duration_ms == null ? null : Number(row.duration_ms),
     createdAt: row.created_at,
   };
+}
+
+// ===== 统一资产模型(CMDB) =====
+
+export function upsertAsset({ id, kind, name, displayName = '', hostId = 'local', status = 'unknown', properties = {}, tags = [], owner = '', environment = '', source = 'manual' }) {
+  const assetId = id || `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  db.prepare(`
+    INSERT INTO assets(id, kind, name, display_name, host_id, status, properties, tags, owner, environment, source, updated_at)
+    VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(id) DO UPDATE SET
+      kind = excluded.kind,
+      name = excluded.name,
+      display_name = excluded.display_name,
+      host_id = excluded.host_id,
+      status = excluded.status,
+      properties = excluded.properties,
+      tags = excluded.tags,
+      owner = excluded.owner,
+      environment = excluded.environment,
+      source = excluded.source,
+      updated_at = excluded.updated_at
+  `).run(
+    assetId,
+    String(kind || 'service'),
+    String(name || ''),
+    String(displayName || ''),
+    String(hostId || 'local'),
+    String(status || 'unknown'),
+    JSON.stringify(properties || {}),
+    JSON.stringify(tags || []),
+    String(owner || ''),
+    String(environment || ''),
+    String(source || 'manual')
+  );
+  return getAsset(assetId);
+}
+
+export function getAsset(id) {
+  const row = db.prepare('SELECT * FROM assets WHERE id = ?').get(id);
+  return row ? mapAssetRow(row) : null;
+}
+
+export function listAssets({ kind = '', hostId = '', query = '', limit = 500 } = {}) {
+  const conditions = [];
+  const params = [];
+  if (kind) { conditions.push('kind = ?'); params.push(kind); }
+  if (hostId) { conditions.push('host_id = ?'); params.push(hostId); }
+  if (query) { conditions.push('(name LIKE ? OR display_name LIKE ? OR owner LIKE ?)'); const like = `%${query}%`; params.push(like, like, like); }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 500, 2000));
+  const rows = db.prepare(`SELECT * FROM assets ${where} ORDER BY kind, name LIMIT ?`).all(...params, safeLimit);
+  return rows.map(mapAssetRow);
+}
+
+export function deleteAsset(id) {
+  return db.prepare('DELETE FROM assets WHERE id = ?').run(id).changes > 0;
+}
+
+export function addAssetRelation(sourceId, targetId, relation, properties = {}) {
+  db.prepare(`
+    INSERT INTO asset_relations(source_id, target_id, relation, properties)
+    VALUES(?, ?, ?, ?)
+  `).run(sourceId, targetId, String(relation || 'depends_on'), JSON.stringify(properties || {}));
+  return true;
+}
+
+export function listAssetRelations() {
+  return db.prepare(`
+    SELECT r.id, r.source_id AS sourceId, r.target_id AS targetId, r.relation, r.properties, r.created_at AS createdAt,
+           s.name AS sourceName, s.kind AS sourceKind, t.name AS targetName, t.kind AS targetKind
+    FROM asset_relations r
+    JOIN assets s ON s.id = r.source_id
+    JOIN assets t ON t.id = r.target_id
+    ORDER BY r.id
+  `).all().map((row) => ({ ...row, properties: safeParse(row.properties, {}) }));
+}
+
+export function deleteAssetRelation(id) {
+  return db.prepare('DELETE FROM asset_relations WHERE id = ?').run(Number(id)).changes > 0;
+}
+
+function mapAssetRow(row) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    name: row.name,
+    displayName: row.display_name,
+    hostId: row.host_id,
+    status: row.status,
+    properties: safeParse(row.properties, {}),
+    tags: safeParse(row.tags, []),
+    owner: row.owner,
+    environment: row.environment,
+    source: row.source,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// ===== 统一事件中心 =====
+
+export function addEventRecord({ eventType = 'alert', source = 'system', title, detail = '', severity = 'info', status = 'open', assetId = null, assetName = '', payload = {} }) {
+  const result = db.prepare(`
+    INSERT INTO event_records(event_type, source, title, detail, severity, status, asset_id, asset_name, payload)
+    VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    String(eventType || 'alert'),
+    String(source || 'system'),
+    String(title || ''),
+    String(detail || ''),
+    String(severity || 'info'),
+    String(status || 'open'),
+    assetId || null,
+    String(assetName || ''),
+    JSON.stringify(payload || {})
+  );
+  return getEventRecord(Number(result.lastInsertRowid));
+}
+
+export function getEventRecord(id) {
+  const row = db.prepare('SELECT * FROM event_records WHERE id = ?').get(Number(id));
+  return row ? mapEventRecordRow(row) : null;
+}
+
+export function listEventRecords({ eventType = '', severity = '', status = '', limit = 100 } = {}) {
+  const conditions = [];
+  const params = [];
+  if (eventType) { conditions.push('event_type = ?'); params.push(eventType); }
+  if (severity) { conditions.push('severity = ?'); params.push(severity); }
+  if (status) { conditions.push('status = ?'); params.push(status); }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 500));
+  const rows = db.prepare(`SELECT * FROM event_records ${where} ORDER BY id DESC LIMIT ?`).all(...params, safeLimit);
+  return rows.map(mapEventRecordRow);
+}
+
+export function updateEventRecord(id, patch = {}) {
+  const current = db.prepare('SELECT * FROM event_records WHERE id = ?').get(Number(id));
+  if (!current) return null;
+  const status = patch.status !== undefined ? String(patch.status) : current.status;
+  const read = patch.read !== undefined ? (patch.read ? 1 : 0) : current.read;
+  db.prepare("UPDATE event_records SET status = ?, read = ?, updated_at = datetime('now') WHERE id = ?").run(status, read, Number(id));
+  return getEventRecord(Number(id));
+}
+
+export function pruneEventRecords(days = 30) {
+  const safeDays = Math.max(1, Number(days) || 30);
+  return db.prepare("DELETE FROM event_records WHERE julianday('now') - julianday(created_at) > ?").run(safeDays);
+}
+
+function mapEventRecordRow(row) {
+  return {
+    id: Number(row.id),
+    eventType: row.event_type,
+    source: row.source,
+    title: row.title,
+    detail: row.detail,
+    severity: row.severity,
+    status: row.status,
+    assetId: row.asset_id,
+    assetName: row.asset_name,
+    payload: safeParse(row.payload, {}),
+    read: Number(row.read) || 0,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// ===== 工作流引擎 =====
+
+export function createWorkflowDefinition({ id, name, description = '', triggerType = 'manual', triggerConfig = {}, nodes = [], enabled = 1 }) {
+  const defId = id || `wf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  db.prepare(`
+    INSERT INTO workflow_definitions(id, name, description, trigger_type, trigger_config, nodes, enabled)
+    VALUES(?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    defId,
+    String(name || ''),
+    String(description || ''),
+    String(triggerType || 'manual'),
+    JSON.stringify(triggerConfig || {}),
+    JSON.stringify(nodes || []),
+    enabled ? 1 : 0
+  );
+  return getWorkflowDefinition(defId);
+}
+
+export function getWorkflowDefinition(id) {
+  const row = db.prepare('SELECT * FROM workflow_definitions WHERE id = ?').get(id);
+  return row ? mapWorkflowDefinitionRow(row) : null;
+}
+
+export function listWorkflowDefinitions() {
+  return db.prepare('SELECT * FROM workflow_definitions ORDER BY created_at DESC').all().map(mapWorkflowDefinitionRow);
+}
+
+export function updateWorkflowDefinition(id, patch = {}) {
+  const current = getWorkflowDefinition(id);
+  if (!current) return null;
+  const name = patch.name !== undefined ? String(patch.name) : current.name;
+  const description = patch.description !== undefined ? String(patch.description) : current.description;
+  const triggerType = patch.triggerType !== undefined ? String(patch.triggerType) : current.triggerType;
+  const triggerConfig = patch.triggerConfig !== undefined ? JSON.stringify(patch.triggerConfig) : JSON.stringify(current.triggerConfig);
+  const nodes = patch.nodes !== undefined ? JSON.stringify(patch.nodes) : JSON.stringify(current.nodes);
+  const enabled = patch.enabled !== undefined ? (patch.enabled ? 1 : 0) : current.enabled;
+  db.prepare(`
+    UPDATE workflow_definitions SET name = ?, description = ?, trigger_type = ?, trigger_config = ?, nodes = ?, enabled = ?, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(name, description, triggerType, triggerConfig, nodes, enabled, id);
+  return getWorkflowDefinition(id);
+}
+
+export function deleteWorkflowDefinition(id) {
+  return db.prepare('DELETE FROM workflow_definitions WHERE id = ?').run(id).changes > 0;
+}
+
+export function createWorkflowInstance({ id, definitionId, name = '', status = 'pending', context = {} }) {
+  const instanceId = id || `wfi-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  db.prepare(`
+    INSERT INTO workflow_instances(id, definition_id, name, status, context)
+    VALUES(?, ?, ?, ?, ?)
+  `).run(instanceId, definitionId, String(name || ''), String(status || 'pending'), JSON.stringify(context || {}));
+  return getWorkflowInstance(instanceId);
+}
+
+export function getWorkflowInstance(id) {
+  const row = db.prepare('SELECT * FROM workflow_instances WHERE id = ?').get(id);
+  if (!row) return null;
+  const instance = mapWorkflowInstanceRow(row);
+  instance.steps = db.prepare('SELECT * FROM workflow_steps WHERE instance_id = ? ORDER BY id').all(id).map(mapWorkflowStepRow);
+  return instance;
+}
+
+export function listWorkflowInstances({ status = '', limit = 50 } = {}) {
+  const conditions = [];
+  const params = [];
+  if (status) { conditions.push('status = ?'); params.push(status); }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 200));
+  const rows = db.prepare(`SELECT * FROM workflow_instances ${where} ORDER BY created_at DESC LIMIT ?`).all(...params, safeLimit);
+  return rows.map(mapWorkflowInstanceRow);
+}
+
+export function updateWorkflowInstance(id, patch = {}) {
+  const current = db.prepare('SELECT * FROM workflow_instances WHERE id = ?').get(id);
+  if (!current) return null;
+  const status = patch.status !== undefined ? String(patch.status) : current.status;
+  const currentNode = patch.currentNode !== undefined ? String(patch.currentNode) : current.current_node;
+  const context = patch.context !== undefined ? JSON.stringify(patch.context) : current.context;
+  const result = patch.result !== undefined ? JSON.stringify(patch.result) : current.result;
+  const startedAt = patch.startedAt !== undefined ? patch.startedAt : current.started_at;
+  const finishedAt = patch.finishedAt !== undefined ? patch.finishedAt : current.finished_at;
+  db.prepare(`
+    UPDATE workflow_instances SET status = ?, current_node = ?, context = ?, result = ?, started_at = ?, finished_at = ?
+    WHERE id = ?
+  `).run(status, currentNode, context, result, startedAt, finishedAt, id);
+  return getWorkflowInstance(id);
+}
+
+export function addWorkflowStep({ instanceId, nodeId = '', nodeType = '', status = 'pending', input = {}, output = {}, error = '' }) {
+  const result = db.prepare(`
+    INSERT INTO workflow_steps(instance_id, node_id, node_type, status, input, output, error)
+    VALUES(?, ?, ?, ?, ?, ?, ?)
+  `).run(instanceId, String(nodeId || ''), String(nodeType || ''), String(status || 'pending'), JSON.stringify(input || {}), JSON.stringify(output || {}), String(error || ''));
+  return Number(result.lastInsertRowid);
+}
+
+export function updateWorkflowStep(id, patch = {}) {
+  const current = db.prepare('SELECT * FROM workflow_steps WHERE id = ?').get(Number(id));
+  if (!current) return null;
+  const status = patch.status !== undefined ? String(patch.status) : current.status;
+  const output = patch.output !== undefined ? JSON.stringify(patch.output) : current.output;
+  const error = patch.error !== undefined ? String(patch.error) : current.error;
+  const startedAt = patch.startedAt !== undefined ? patch.startedAt : current.started_at;
+  const finishedAt = patch.finishedAt !== undefined ? patch.finishedAt : current.finished_at;
+  db.prepare(`
+    UPDATE workflow_steps SET status = ?, output = ?, error = ?, started_at = ?, finished_at = ?
+    WHERE id = ?
+  `).run(status, output, error, startedAt, finishedAt, Number(id));
+  return db.prepare('SELECT * FROM workflow_steps WHERE id = ?').get(Number(id));
+}
+
+function mapWorkflowDefinitionRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    triggerType: row.trigger_type,
+    triggerConfig: safeParse(row.trigger_config, {}),
+    nodes: safeParse(row.nodes, []),
+    enabled: Number(row.enabled) || 0,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapWorkflowInstanceRow(row) {
+  return {
+    id: row.id,
+    definitionId: row.definition_id,
+    name: row.name,
+    status: row.status,
+    currentNode: row.current_node,
+    context: safeParse(row.context, {}),
+    result: safeParse(row.result, {}),
+    createdAt: row.created_at,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+  };
+}
+
+function mapWorkflowStepRow(row) {
+  return {
+    id: Number(row.id),
+    instanceId: row.instance_id,
+    nodeId: row.node_id,
+    nodeType: row.node_type,
+    status: row.status,
+    input: safeParse(row.input, {}),
+    output: safeParse(row.output, {}),
+    error: row.error,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+  };
+}
+
+function safeParse(value, fallback) {
+  try { const parsed = JSON.parse(value); return parsed ?? fallback; } catch { return fallback; }
 }
 
 // ===== 会话/Agent 审计数据保留策略 =====

@@ -6,6 +6,7 @@
         <p class="page-subtitle">统一关联 Host、项目、容器、卷、网络、告警与 AI 分析,支撑智能运维决策</p>
       </div>
       <div class="page-actions">
+        <button class="btn-secondary" :class="{ '!border-accent !text-accent': useCmdb }" @click="toggleSource"><Database class="w-4 h-4" />{{ useCmdb ? '资产中心数据' : '实时数据' }}</button>
         <button class="btn-secondary" :disabled="loading" @click="load"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />刷新</button>
       </div>
     </div>
@@ -98,25 +99,28 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { AlertTriangle, Bot, Boxes, HardDrive, RefreshCw, Server } from 'lucide-vue-next';
+import { AlertTriangle, Bot, Boxes, Database, HardDrive, RefreshCw, Server } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import { useServicesStore } from '../stores/services.js';
+import { useCmdbStore } from '../stores/cmdb.js';
 import Skeleton from '../components/common/Skeleton.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 
 const store = useServicesStore();
+const cmdb = useCmdbStore();
 const loading = ref(false);
 const error = ref('');
 const hosts = ref([]);
 const alerts = ref([]);
 const inspectionCount = ref(0);
+const useCmdb = ref(false);
 
 const nodeW = 150;
 const nodeH = 44;
 
-const projects = computed(() => store.projects);
-const containerCount = computed(() => projects.value.reduce((n, p) => n + (p.containers?.length || 0), 0));
-const volumeCount = computed(() => projects.value.reduce((n, p) => n + (p.containers || []).reduce((m, c) => m + (c.volumes?.length || 0), 0), 0));
+const projects = computed(() => useCmdb.value ? cmdb.projects : store.projects);
+const containerCount = computed(() => useCmdb.value ? cmdb.containers.length : projects.value.reduce((n, p) => n + (p.containers?.length || 0), 0));
+const volumeCount = computed(() => useCmdb.value ? cmdb.assets.filter((a) => a.kind === 'volume').length : projects.value.reduce((n, p) => n + (p.containers || []).reduce((m, c) => m + (c.volumes?.length || 0), 0), 0));
 const alertCount = computed(() => alerts.value.length);
 const activeHostName = computed(() => hosts.value.find((h) => h.active)?.name || 'Local Daemon');
 
@@ -129,18 +133,24 @@ const nodes = computed(() => {
   });
   const projectStartY = 60;
   projects.value.forEach((p, i) => {
-    list.push({ key: `project-${p.id}`, type: 'project', label: p.projectName, sub: `${p.containers?.length || 0} 容器`, x: 340, y: projectStartY + i * 90 });
+    const label = useCmdb.value ? (p.displayName || p.name) : p.projectName;
+    const sub = useCmdb.value ? (p.status || '') : `${p.containers?.length || 0} 容器`;
+    list.push({ key: `project-${p.id}`, type: 'project', label, sub, x: 340, y: projectStartY + i * 90 });
   });
   const volumeStartY = 60;
   const volumes = [];
-  projects.value.forEach((p) => {
-    for (const c of p.containers || []) {
-      for (const v of c.volumes || []) {
-        const name = String(v).split(':')[0];
-        if (name && !volumes.includes(name)) volumes.push(name);
+  if (useCmdb.value) {
+    cmdb.assets.filter((a) => a.kind === 'volume').forEach((v) => volumes.push(v.name));
+  } else {
+    projects.value.forEach((p) => {
+      for (const c of p.containers || []) {
+        for (const v of c.volumes || []) {
+          const name = String(v).split(':')[0];
+          if (name && !volumes.includes(name)) volumes.push(name);
+        }
       }
-    }
-  });
+    });
+  }
   volumes.slice(0, 12).forEach((v, i) => {
     list.push({ key: `volume-${v}`, type: 'volume', label: v, sub: '数据卷', x: 590, y: volumeStartY + i * 70 });
   });
@@ -167,7 +177,7 @@ const edges = computed(() => {
     }
   }
   for (const a of alerts.value.slice(0, 8)) {
-    const target = projects.value.find((p) => a.target?.includes(p.id) || a.title?.includes(p.projectName));
+    const target = projects.value.find((p) => a.target?.includes(p.id) || a.title?.includes(p.projectName || p.name));
     if (target) list.push({ key: `${a.id}->${target.id}`, from: `alert-${a.id}`, to: `project-${target.id}` });
   }
   return list;
@@ -207,19 +217,29 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
-    const [hostData, alertData, inspectionData] = await Promise.allSettled([
-      api.getHosts(),
-      api.getAlertEvents(50),
-      api.getInspectionOverview(20),
-    ]);
-    hosts.value = hostData.status === 'fulfilled' ? (hostData.value.hosts || []) : [];
-    alerts.value = alertData.status === 'fulfilled' ? (alertData.value.events || []) : [];
-    inspectionCount.value = inspectionData.status === 'fulfilled' ? (inspectionData.value.reports?.length || 0) : 0;
+    if (useCmdb.value) {
+      await cmdb.loadTopology();
+      hosts.value = cmdb.hosts.map((h) => ({ id: h.id, name: h.displayName || h.name, type: h.properties?.type || 'local', active: h.hostId === 'local' }));
+    } else {
+      const [hostData, alertData, inspectionData] = await Promise.allSettled([
+        api.getHosts(),
+        api.getAlertEvents(50),
+        api.getInspectionOverview(20),
+      ]);
+      hosts.value = hostData.status === 'fulfilled' ? (hostData.value.hosts || []) : [];
+      alerts.value = alertData.status === 'fulfilled' ? (alertData.value.events || []) : [];
+      inspectionCount.value = inspectionData.status === 'fulfilled' ? (inspectionData.value.reports?.length || 0) : 0;
+    }
   } catch (e) {
     error.value = e.message || '图谱加载失败';
   } finally {
     loading.value = false;
   }
+}
+
+function toggleSource() {
+  useCmdb.value = !useCmdb.value;
+  void load();
 }
 
 onMounted(async () => {

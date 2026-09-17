@@ -8,33 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **AI Ops Agent**: single chat entry with a native tool-loop engine (47 tools)
-  - Risk-graded confirmation gate, full audit trail, long-term memory, optional web search with sources
-  - Container-log mounting into prompts with untrusted-fence guarding
-  - Rich rendering: markdown tables, embedded HTML, SVG diagrams with in-page zoom lightbox
-  - Tool execution traces, quick prompt library, streaming output with follow-scroll and session search
-- **Data volume backup**: named-volume tar.gz snapshots via helper containers
-  - Backup / restore / download / delete UI in Storage view; cron job type `volume-backup`
-  - Keeps the latest 20 snapshots per volume; directory configurable via `backup.volume_dir`
-- **GitOps webhook**: `POST /gitops/webhook/:id` with token auth (`gitops.webhook_token`, disabled unless configured)
-- **Marketplace AI discovery**: web-search-assisted app template drafts, saved via custom templates after review
-- **Env file family**: edit `.env`, `*.env` and `.env.example` per project with a file switcher
-- **Scheduled jobs**: new `volume-backup` cron type alongside db-backup/prune/image jobs
+- **统一资产模型 (CMDB)**: Host/Project/Container/Volume/Network 收敛为统一 `assets` 实体
+  - 资产同步从 Docker 扫描重建,支持 `asset_relations` 依赖关系与拓扑查询
+  - 新增 `/cmdb/*` API 与「资产中心」页面(`/cmdb`),作为知识图谱与事件中心的单一事实来源
+- **统一事件中心 (Event Center 2.0)**: 告警/巡检/部署/回滚/Agent/GitOps/工作流全部收敛为 `event_records`
+  - 新增 `/events/*` API 与「事件中心」页面(`/events`),支持按类型/级别/状态过滤与状态流转
+  - 事件统计聚合,作为时间线的单一事实来源
+- **工作流引擎 (Workflow Engine)**: 轻量编排引擎,节点类型 trigger/condition/agent/approval/action/verify
+  - 新增 `/workflows/*` API 与「工作流中心」页面(`/workflows`)
+  - 支持手动/定时/事件触发,approval 节点进入等待审批,Agent 作为工作流节点实现编排解耦
+- **知识图谱升级**: 支持切换「实时数据 / 资产中心数据」两种数据源,直接读取 CMDB 统一资产模型
 
 ### Changed
-- Merged the standalone AI diagnosis page into the Agent page (`/ai` redirects to `/agent`); removed `/ai/chat` and `/ai/exec`
-- Chat UX: follow-scroll with jump-to-bottom pill, 120 ms token coalescing for smooth streaming, message copy button
-- **富内容渲染重写**: 净化后的 DOM 后处理剥掉模型自带的颜色声明(白底黑字不再在暗色主题里刺眼),
-  SVG 亮度感知重映射 + 自动补 `viewBox` + 流体宽度(`max-height: 70vh` 不再裁图),
-  表格统一包进 `.agent-table-wrap` 支持横向滚动,代码块右下角语言徽标
-- **执行动态面板改为卡片式时间轴**: 每步带状态图标胶囊(按 running/done/failed/rejected 着色)、
-  工具与耗时 chip、超过 90 字符自动折叠"展开/收起";空态改为虚线引导卡
-- **Agent 抽屉补齐工作台能力**: 工具轨迹新增"参数与结果(N)"折叠块(逐工具展示脱敏参数/错误/摘要)与"思考过程"折叠块
-- Navigation de-conflicted: 实时监控 / 历史指标 / 存储清理; cost analysis moved to the System group
-- Route-level keep-alive with idle chunk prefetch and page transitions for snappier sidebar switching
-- Container-event refresh debounce (800 ms) to avoid request storms; EventCenter polling reduced to 60 s
-- Visual polish: background glow, slim scrollbars, sidebar active gradient, card hover glow, assistant bubble panel, brand gradient title
-- Documentation: README facts corrected (47 tools, port 28765 mapping, API-key storage wording), volume backup / GitOps / marketplace sections added
+- 数据库迁移扩展至 v9(统一资产模型 / 事件中心 / 工作流引擎)
+- 侧边栏新增「资产中心」「事件中心」「工作流」入口
 
 ### Fixed
 - Agent streaming corruption from per-chunk text sanitization (protocol stripping now stateful at the emission layer with prefix hold-back)

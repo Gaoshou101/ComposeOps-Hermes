@@ -53,7 +53,7 @@ import { preloadRouteChunks } from './router.js';
 const keepAliveViews = [
   'ComposeView', 'ShellView', 'AgentWorkflowView', 'AgentExecutionHistoryView',
   'SettingsView', 'MarketplaceView', 'ConverterView', 'GitOpsView', 'CostAnalysisView',
-  'ResourcesView',
+  'ResourcesView', 'CMDBView', 'EventCenterView', 'WorkflowCenterView',
 ];
 
 const auth = useAuthStore();

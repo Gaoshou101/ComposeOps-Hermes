@@ -249,6 +249,30 @@ export const api = {
   createMarketplaceTemplate: (payload) => request('/marketplace/templates/custom', { method: 'POST', body: JSON.stringify(payload) }),
   updateMarketplaceTemplate: (id, payload) => request(`/marketplace/templates/custom/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteMarketplaceTemplate: (id) => request(`/marketplace/templates/custom/${id}`, { method: 'DELETE' }),
+  // CMDB 统一资产中心
+  getCmdbAssets: (params = {}) => request(`/cmdb/assets?${new URLSearchParams(params)}`, { cacheable: true }),
+  getCmdbAsset: (id) => request(`/cmdb/assets/${encodeURIComponent(id)}`),
+  deleteCmdbAsset: (id) => request(`/cmdb/assets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  syncCmdbAssets: () => request('/cmdb/assets/sync', { method: 'POST' }),
+  getCmdbTopology: () => request('/cmdb/topology', { cacheable: true }),
+  addCmdbRelation: (payload) => request('/cmdb/relations', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteCmdbRelation: (id) => request(`/cmdb/relations/${id}`, { method: 'DELETE' }),
+  // 统一事件中心
+  getEvents: (params = {}) => request(`/events/events?${new URLSearchParams(params)}`, { cacheable: true }),
+  getEventStats: () => request('/events/events/stats', { cacheable: true }),
+  updateEvent: (id, patch) => request(`/events/events/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  pruneEvents: (days = 30) => request('/events/events/prune', { method: 'POST', body: JSON.stringify({ days }) }),
+  // 工作流中心
+  getWorkflowDefinitions: () => request('/workflows/definitions', { cacheable: true }),
+  getWorkflowDefinition: (id) => request(`/workflows/definitions/${id}`),
+  createWorkflowDefinition: (payload) => request('/workflows/definitions', { method: 'POST', body: JSON.stringify(payload) }),
+  updateWorkflowDefinition: (id, payload) => request(`/workflows/definitions/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteWorkflowDefinition: (id) => request(`/workflows/definitions/${id}`, { method: 'DELETE' }),
+  runWorkflow: (id, context = {}) => request(`/workflows/definitions/${id}/run`, { method: 'POST', body: JSON.stringify({ context }) }),
+  getWorkflowInstances: (params = {}) => request(`/workflows/instances?${new URLSearchParams(params)}`, { cacheable: true }),
+  getWorkflowInstance: (id) => request(`/workflows/instances/${id}`),
+  approveWorkflowInstance: (id, payload) => request(`/workflows/instances/${id}/approve`, { method: 'POST', body: JSON.stringify(payload) }),
+  cancelWorkflowInstance: (id) => request(`/workflows/instances/${id}/cancel`, { method: 'POST' }),
 };
 
 /**
