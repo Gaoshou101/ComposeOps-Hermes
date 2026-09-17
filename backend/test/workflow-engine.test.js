@@ -56,7 +56,7 @@ test('workflow: 审批通过后继续执行到完成', async () => {
     nodes: [
       { id: 'trigger', type: 'trigger', config: {} },
       { id: 'approval', type: 'approval', config: {} },
-      { id: 'action', type: 'action', config: { action: 'deploy' } },
+      { id: 'verify', type: 'verify', config: {} },
     ],
   });
   const instance = startWorkflow(definition.id, {});
@@ -69,7 +69,7 @@ test('workflow: 审批通过后继续执行到完成', async () => {
   await new Promise((resolve) => setTimeout(resolve, 50));
   const done = getInstance(instance.id);
   assert.equal(done.status, 'success');
-  assert.ok(done.steps.some((step) => step.nodeType === 'action' && step.status === 'success'));
+  assert.ok(done.steps.some((step) => step.nodeType === 'verify' && step.status === 'success'));
 });
 
 test('workflow: 拒绝审批则取消', async () => {
@@ -90,4 +90,22 @@ test('workflow: 删除定义', () => {
   const definition = createDefinition({ name: '待删', nodes: [{ id: 't', type: 'trigger', config: {} }] });
   assert.ok(removeDefinition(definition.id));
   assert.equal(getDefinition(definition.id), null);
+});
+
+test('workflow: agent 节点接入 Agent 引擎(未配置 API Key 时优雅失败)', async () => {
+  const definition = createDefinition({
+    name: 'Agent分析流',
+    nodes: [
+      { id: 'trigger', type: 'trigger', config: {} },
+      { id: 'agent', type: 'agent', config: { prompt: '分析当前项目状态' } },
+    ],
+  });
+  const instance = startWorkflow(definition.id, {});
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const done = getInstance(instance.id);
+  // 未配置 AI API Key 时,agent 节点应优雅失败(而非崩溃),工作流标记为 failed。
+  assert.equal(done.status, 'failed');
+  const agentStep = done.steps.find((step) => step.nodeType === 'agent');
+  assert.ok(agentStep);
+  assert.equal(agentStep.status, 'failed');
 });

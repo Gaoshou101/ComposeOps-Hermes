@@ -13,6 +13,9 @@ import {
 } from '../lib/db.js';
 import { addEventRecord } from '../lib/db.js';
 import { emitEvent } from './events.js';
+import { getAgent } from './agent.js';
+import { findProject } from './scanner.js';
+import { prepareProjectAction } from './project-action-runner.js';
 
 /**
  * 轻量工作流引擎:
@@ -90,6 +93,7 @@ async function runWorkflow(instanceId) {
   const completedNodeIds = new Set(
     (instance.steps || []).filter((step) => step.status === 'success').map((step) => step.nodeId)
   );
+  let currentStepId = null;
 
   try {
     for (const node of nodes) {
@@ -103,6 +107,7 @@ async function runWorkflow(instanceId) {
         status: 'running',
         input: { ...(node.config || {}), context },
       });
+      currentStepId = stepId;
       updateWorkflowInstance(instanceId, { currentNode: node.id });
       const startedAt = new Date().toISOString();
       updateWorkflowStep(stepId, { startedAt });
@@ -131,6 +136,10 @@ async function runWorkflow(instanceId) {
       payload: { instanceId, definitionId: definition.id },
     });
   } catch (error) {
+    // 标记当前执行中的步骤为失败,避免停留在 running。
+    if (currentStepId) {
+      updateWorkflowStep(currentStepId, { status: 'failed', error: error.message, finishedAt: new Date().toISOString() });
+    }
     updateWorkflowInstance(instanceId, { status: 'failed', result: { error: error.message }, finishedAt: new Date().toISOString() });
     addEventRecord({
       eventType: 'workflow',
@@ -156,16 +165,66 @@ async function executeNode(node, context) {
       return { output: { matched }, context: { conditionMatched: matched } };
     }
     case 'agent': {
-      // Agent 节点:调用 Agent 执行(只读分析或生成方案)。此处为占位,实际接入 agent engine。
-      const prompt = node.config?.prompt || '';
-      return { output: { agentResult: `Agent 分析完成:${prompt || '无提示词'}` } };
+      // Agent 节点:真正调用 Agent 引擎做只读分析。
+      // 使用 validator 角色(仅只读工具),避免在无 SSE 连接的工作流里阻塞等待确认。
+      const prompt = node.config?.prompt || '请分析当前运维上下文并给出诊断结论与建议。';
+      const projectId = node.config?.projectId || context.projectId || null;
+      const agent = getAgent();
+      const events = [];
+      const result = await agent.executeWithLoop(
+        prompt,
+        {
+          projectId,
+          role: 'validator',
+          webSearchEnabled: false,
+          history: [],
+        },
+        (event) => events.push(event),
+        null
+      );
+      if (!result.success) {
+        throw Object.assign(new Error(result.finalContent || 'Agent 分析未完成'), { statusCode: 500 });
+      }
+      return {
+        output: {
+          agentResult: result.finalContent || '',
+          success: true,
+          events: events.filter((e) => ['trace', 'tool_result', 'done', 'error'].includes(e.type)).slice(-20),
+        },
+        context: { agentResult: result.finalContent || '' },
+      };
     }
     case 'action': {
+      // Action 节点:真正执行 Compose 项目操作(up/stop/restart/pull)。
       const action = node.config?.action || '';
-      return { output: { action, executed: true } };
+      const projectId = node.config?.projectId || context.projectId || null;
+      if (!projectId) throw Object.assign(new Error('action 节点缺少 projectId'), { statusCode: 400 });
+      const project = await findProject(projectId);
+      if (!project) throw Object.assign(new Error(`项目不存在:${projectId}`), { statusCode: 404 });
+      const prepared = await prepareProjectAction(project, action);
+      const outputLines = [];
+      const exitCode = await prepared.run((stream, chunk) => outputLines.push(chunk));
+      if (exitCode !== 0) {
+        throw Object.assign(new Error(`操作 ${action} 失败(exit ${exitCode})`), { statusCode: 500 });
+      }
+      return {
+        output: { action, projectId, exitCode, output: outputLines.join('').slice(-4000) },
+        context: { lastAction: action, lastProjectId: projectId },
+      };
     }
     case 'verify': {
-      return { output: { verified: true } };
+      // Verify 节点:只读验证项目状态(ps)。
+      const projectId = node.config?.projectId || context.projectId || null;
+      if (!projectId) return { output: { verified: true } };
+      const project = await findProject(projectId);
+      if (!project) return { output: { verified: false, reason: '项目不存在' } };
+      const prepared = await prepareProjectAction(project, 'ps');
+      const outputLines = [];
+      const exitCode = await prepared.run((stream, chunk) => outputLines.push(chunk));
+      return {
+        output: { verified: exitCode === 0, exitCode, output: outputLines.join('').slice(-2000) },
+        context: { verified: exitCode === 0 },
+      };
     }
     default:
       return { output: {} };

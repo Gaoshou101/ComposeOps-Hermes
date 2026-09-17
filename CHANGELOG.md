@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 新增 `/workflows/*` API 与「工作流中心」页面(`/workflows`)
   - 支持手动/定时/事件触发,approval 节点进入等待审批,Agent 作为工作流节点实现编排解耦
 - **知识图谱升级**: 支持切换「实时数据 / 资产中心数据」两种数据源,直接读取 CMDB 统一资产模型
+- **工作流 Agent 节点真正接入 Agent 引擎**: `agent` 节点调用真实 Tool Loop 引擎(validator 只读角色)做诊断分析,
+  `action` 节点执行真实 Compose 项目操作(up/stop/restart/pull),`verify` 节点只读验证项目状态
+  - 失败节点自动标记 failed 并终止工作流,不再停留在 running
 
 ### Changed
 - 数据库迁移扩展至 v9(统一资产模型 / 事件中心 / 工作流引擎)
