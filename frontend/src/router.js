@@ -1,7 +1,8 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 
 const routes = [
-  { path: '/', redirect: '/services' },
+  { path: '/', redirect: '/dashboard' },
+  { path: '/dashboard', name: 'dashboard', component: () => import('./views/DashboardView.vue') },
   { path: '/services', name: 'services', component: () => import('./views/ServicesView.vue') },
   { path: '/compose', name: 'compose', component: () => import('./views/ComposeView.vue') },
   { path: '/logs', name: 'logs', component: () => import('./views/LogsView.vue') },
@@ -15,6 +16,9 @@ const routes = [
   { path: '/metrics', name: 'metrics', component: () => import('./views/ResourceMonitorView.vue') },
   { path: '/resources', name: 'resources', component: () => import('./views/ResourcesView.vue') },
   { path: '/operations', name: 'operations', component: () => import('./views/OperationsView.vue') },
+  { path: '/timeline', name: 'timeline', component: () => import('./views/TimelineView.vue') },
+  { path: '/topology', name: 'topology', component: () => import('./views/TopologyView.vue') },
+  { path: '/review', name: 'review', component: () => import('./views/ChangeReviewView.vue') },
   { path: '/blueprints', redirect: '/marketplace' },
   { path: '/cron', name: 'cron', component: () => import('./views/CronTasksView.vue') },
   { path: '/gitops', name: 'gitops', component: () => import('./views/GitOpsView.vue') },
