@@ -20,6 +20,7 @@ const routes = [
   { path: '/topology', name: 'topology', component: () => import('./views/TopologyView.vue') },
   { path: '/review', name: 'review', component: () => import('./views/ChangeReviewView.vue') },
   { path: '/rollback', name: 'rollback', component: () => import('./views/RollbackView.vue') },
+  { path: '/ops-center', name: 'ops-center', component: () => import('./views/OperationsCenterView.vue') },
   { path: '/blueprints', redirect: '/marketplace' },
   { path: '/cron', name: 'cron', component: () => import('./views/CronTasksView.vue') },
   { path: '/gitops', name: 'gitops', component: () => import('./views/GitOpsView.vue') },
