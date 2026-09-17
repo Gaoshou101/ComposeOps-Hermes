@@ -8,7 +8,7 @@ import test from 'node:test';
 const tempDir = mkdtempSync(join(tmpdir(), 'composeops-drift-'));
 process.env.DB_PATH = join(tempDir, 'test.db');
 
-const { scanRepoDrift, planDriftRepair, scanAllRepoDrift, planAllRepoDrift } = await import('../src/services/gitops-drift.js');
+const { scanRepoDrift, planDriftRepair, scanAllRepoDrift } = await import('../src/services/gitops-drift.js');
 const { setSetting } = await import('../src/lib/db.js');
 
 /** 建一个带 compose 文件的全新 git 仓库并返回其路径。 */

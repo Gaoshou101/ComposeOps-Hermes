@@ -407,7 +407,7 @@ export async function runInspection({ source = 'manual', persist = true } = {}) 
   Object.assign(stats, containerResult.stats);
 
   const disk = await readRootDisk();
-  let df = null;
+  let df;
   try {
     df = await getSystemStorageDf();
   } catch {

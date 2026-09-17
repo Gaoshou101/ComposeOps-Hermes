@@ -122,8 +122,6 @@ const edgeCount = computed(() => services.value.reduce((n, s) => n + s.dependsOn
 const nodes = computed(() => {
   const levels = computeLevels(services.value);
   const result = [];
-  const maxLevel = Math.max(0, ...levels.map((l) => l.level));
-  const maxCount = Math.max(1, ...levels.map((l) => l.count));
   for (const item of levels) {
     const x = 80 + item.level * levelGap;
     const y = 60 + (item.count > 1 ? (item.index - (item.count - 1) / 2) * nodeGap : 0);

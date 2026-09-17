@@ -66,7 +66,7 @@ export default async function gitopsRoutes(fastify) {
 
   // GET /drift —— 全仓库漂移状态(只读):未提交改动 / 落后远端 / detached
   fastify.get('/drift', async () => {
-    return await planAllRepoDrift();
+    return planAllRepoDrift();
   });
 
   // 添加 GitOps 仓库
