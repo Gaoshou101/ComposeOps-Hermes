@@ -45,16 +45,25 @@ const { open, context, closeAgent } = useAgentConsole();
 const chat = useAgentChat({ channel: PAGE_DRAWER_CHANNEL });
 const { messages, input, running, sessionId, scrollEl, resetSession, sendMessage, pendingQueue, approve, reject, interrupt, handleRichBlockClick, zoomOpen, zoomContent, zoomScale, onZoomWheel, closeZoom } = chat;
 const inputEl = ref(null);
+// 页面通过"交给 Agent"按钮携带一段预填 prompt 打开抽屉:事件可能早于
+// open 的 watch 派发,先暂存,startFreshSession 清空输入后再写入。
+let pendingPrompt = '';
+function handleAgentPrompt(event) { pendingPrompt = String(event.detail?.prompt || ''); }
 // 抽屉每次打开都是一段独立会话;用户也可以在不关闭抽屉的情况下手动开新会话。
 function startFreshSession() {
   if (running.value) { interrupt(); }
   resetSession();
   input.value = '';
+  if (pendingPrompt) { input.value = pendingPrompt; pendingPrompt = ''; }
   focusInput();
 }
 const pageContext = computed(() => ({ page: context.value.page || '当前页面', route: window.location.hash.replace(/^#/, '') || '/', mode: context.value.mode || '运维问答与操作', summary: context.value.summary || '', state: context.value.state || '' }));
 const contextSummary = computed(() => pageContext.value.summary || pageContext.value.state || '路由与页面状态已同步');
-const defaultPrompt = computed(() => pageContext.value.mode === 'cron-editor' ? '根据当前表单帮我创建这个定时任务' : '请分析当前页面，并告诉我可以做什么');
+const defaultPrompt = computed(() => {
+  if (pageContext.value.mode === "cron-editor") return "根据当前表单帮我创建这个定时任务";
+  if (pageContext.value.mode === "inspection-fix" || pageContext.value.mode === "inspection-review") return "分析这次巡检结论,给出处置建议";
+  return "请分析当前页面,并告诉我可以做什么";
+});
 useEscapeKey({ active: open, onClose: closeAgent, layer: 'drawer', lockBody: true });
 function focusInput() { void nextTick(() => inputEl.value?.focus()); }
 function submit() {
@@ -69,7 +78,11 @@ watch(open, (value) => {
   if (!value) return;
   startFreshSession();
 });
-onMounted(() => { if (open.value) startFreshSession(); });
+onMounted(() => {
+  if (open.value) startFreshSession();
+  window.addEventListener('composeops:agent-prompt', handleAgentPrompt);
+});
+onBeforeUnmount(() => window.removeEventListener('composeops:agent-prompt', handleAgentPrompt));
 const TOOL_STATUS_LABELS = { requested: '已请求', executing: '执行中', done: '完成', failed: '失败', rejected: '已拒绝' };
 function toolStatusLabel(status) { return TOOL_STATUS_LABELS[status] || status; }
 /** 抽屉是精简视图,工具详情收进一个折叠块;没有可展示内容时不渲染。 */

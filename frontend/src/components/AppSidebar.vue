@@ -48,7 +48,7 @@
 <script setup>
 import { ref } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
-import { Boxes, Clock3, FileCode2, ScrollText, TerminalSquare, Bot, ChartNoAxesCombined, HardDrive, History, Settings, Store, Activity, GitBranch, DollarSign, Package, Menu } from 'lucide-vue-next';
+import { Boxes, Clock3, FileCode2, ScrollText, TerminalSquare, Bot, ChartNoAxesCombined, HardDrive, History, Settings, Store, Activity, GitBranch, DollarSign, Package, Menu, ShieldCheck } from 'lucide-vue-next';
 const groups = [
   { label: '运行', items: [
     { to: '/services', icon: Boxes, label: '服务' },
@@ -59,6 +59,7 @@ const groups = [
     { to: '/logs', icon: ScrollText, label: '日志' },
     { to: '/shell', icon: TerminalSquare, label: '终端' },
     { to: '/agent', icon: Bot, label: 'AI 助手' },
+    { to: '/inspection', icon: ShieldCheck, label: 'AI 巡检' },
     { to: '/monitor', icon: ChartNoAxesCombined, label: '实时监控' },
     { to: '/metrics', icon: Activity, label: '历史指标' },
   ] },

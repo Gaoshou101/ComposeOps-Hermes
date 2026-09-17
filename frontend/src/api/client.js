@@ -192,6 +192,12 @@ export const api = {
   getAlertEvents: (limit = 50) => request(`/ops/alert-events?limit=${limit}`),
   updateAlertEvent: (id, patch) => request(`/ops/alert-events/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   pruneAlertEvents: (days = 7) => request('/ops/alert-events/prune', { method: 'POST', body: JSON.stringify({ days }) }),
+  // AI 巡检
+  getInspectionOverview: (limit = 20) => request(`/ops/inspection/overview?limit=${limit}`),
+  getInspectionReport: (id) => request(`/ops/inspection/reports/${id}`),
+  runInspection: () => request('/ops/inspection/run', { method: 'POST', body: JSON.stringify({}) }),
+  saveInspectionSchedule: (payload) => request('/ops/inspection/schedule', { method: 'PUT', body: JSON.stringify(payload) }),
+  pruneInspections: (days = 180) => request('/ops/inspection/prune', { method: 'POST', body: JSON.stringify({ days }) }),
   // ai
   getAiConfig: () => request('/ai/config'),
   saveAiConfig: (payload) => request('/ai/config', { method: 'POST', body: JSON.stringify(payload) }),

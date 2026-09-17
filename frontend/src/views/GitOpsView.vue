@@ -19,6 +19,22 @@
       </div>
     </header>
 
+    <!-- Drift 状态条 -->
+    <div v-if="drift && drift.repos?.length" class="flex flex-col gap-3 border-b border-[#1E2636] bg-[#0A0D12] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <span class="font-medium text-slate-200">漂移检测</span>
+        <span class="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-400">一致 {{ drift.counts?.clean || 0 }}</span>
+        <span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-400">有差异 {{ drift.counts?.diverged || 0 }}</span>
+        <span class="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-sky-400">落后远端 {{ drift.counts?.behind || 0 }}</span>
+        <span v-if="drift.counts?.detached" class="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-rose-400">游离提交 {{ drift.counts.detached }}</span>
+        <span v-if="drift.scannedAt" class="text-slate-500">扫描于 {{ new Date(drift.scannedAt).toLocaleString('zh-CN') }}</span>
+      </div>
+      <button @click="loadDrift" class="flex h-8 items-center gap-1.5 rounded-full border border-[#1E2636] bg-[#0F131C] px-3 text-xs text-slate-300 transition hover:border-[#38BDF8]/30">
+        <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+        重新检测
+      </button>
+    </div>
+
     <!-- Repository List -->
     <main class="flex-1 overflow-auto px-6 py-6">
       <div v-if="loading" class="flex items-center justify-center py-12">
@@ -48,6 +64,29 @@
             <span :class="['flex-none text-xs font-medium', getStatusColor(repo.status)]">
               {{ getStatusLabel(repo.status) }}
             </span>
+          </div>
+          <div v-if="driftMap[repo.id]" class="flex flex-col gap-2 rounded-2xl border border-[#1E2636] bg-[#0A0D12] p-3">
+            <p class="flex items-start gap-2 text-xs leading-5 text-slate-300">
+              <span :class="driftDotClass(driftMap[repo.id].status)"></span>
+              <span class="min-w-0">{{ driftMap[repo.id].summary || '无漂移' }}</span>
+            </p>
+            <div v-if="driftMap[repo.id].drifts?.length" class="space-y-1">
+              <p v-for="item in driftMap[repo.id].drifts.slice(0, 5)" :key="item.file"
+                class="flex items-center gap-2 truncate font-mono text-[11px]" :class="item.type === 'deleted' ? 'text-rose-400' : 'text-amber-300'">
+                <span class="shrink-0 rounded border border-current/20 px-1">{{ item.type === 'deleted' ? '删除' : '修改' }}</span>
+                <span class="truncate">{{ item.file }}</span>
+              </p>
+              <p v-if="driftMap[repo.id].drifts.length > 5" class="text-[11px] text-slate-500">等共 {{ driftMap[repo.id].drifts.length }} 处</p>
+            </div>
+            <div v-if="driftMap[repo.id].behind > 0" class="text-[11px] text-sky-300">
+              落后远端 {{ driftMap[repo.id].behind }} 个提交,执行同步可拉齐
+            </div>
+            <div v-if="driftMap[repo.id].repairs?.length" class="flex flex-wrap gap-1.5">
+              <span v-for="(repair, index) in driftMap[repo.id].repairs" :key="index"
+                class="shrink-0 rounded-full border border-[#1E2636] bg-[#0F131C] px-2 py-0.5 text-[11px] text-slate-400">
+                {{ repair.action === 'none' ? '无需处理' : repair.action }}
+              </span>
+            </div>
           </div>
 
           <div class="grid grid-cols-2 gap-3 text-xs">
@@ -275,7 +314,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { useToastStore } from '../stores/toast.js';
 import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 
@@ -288,6 +327,31 @@ function showNotification(type, title, message) {
 
 const repos = ref([]);
 const loading = ref(false);
+const drift = ref(null);
+const driftMap = computed(() => {
+  const map = {};
+  for (const item of drift.value?.repos || []) map[item.repoId] = item;
+  return map;
+});
+function driftDotClass(status) {
+  return {
+    clean: 'w-2 h-2 rounded-full shrink-0 mt-1 bg-emerald-400',
+    behind: 'w-2 h-2 rounded-full shrink-0 mt-1 bg-sky-400',
+    diverged: 'w-2 h-2 rounded-full shrink-0 mt-1 bg-amber-400',
+    detached: 'w-2 h-2 rounded-full shrink-0 mt-1 bg-rose-400',
+    not_cloned: 'w-2 h-2 rounded-full shrink-0 mt-1 bg-slate-500',
+    error: 'w-2 h-2 rounded-full shrink-0 mt-1 bg-rose-400',
+  }[status] || 'w-2 h-2 rounded-full shrink-0 mt-1 bg-slate-500';
+}
+async function loadDrift() {
+  try {
+    const res = await fetch('/api/v1/gitops/drift');
+    if (!res.ok) throw new Error('Failed to load drift');
+    drift.value = await res.json();
+  } catch (err) {
+    drift.value = null;
+  }
+}
 const showAddModal = ref(false);
 const showEditModal = ref(false);
 const showHistoryModal = ref(false);
@@ -484,6 +548,7 @@ function getStatusLabel(status) {
 onMounted(() => {
   loadProjects();
   loadRepos();
+  loadDrift();
 });
 </script>
 

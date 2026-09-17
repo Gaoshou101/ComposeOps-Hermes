@@ -244,6 +244,30 @@ const MIGRATIONS = [
       database.exec(`CREATE INDEX IF NOT EXISTS idx_volume_backups_project ON volume_backups(project_id, created_at DESC)`);
     },
   },
+  {
+    version: 6,
+    name: '巡检报告与容量预测样本',
+    up(database) {
+      // 每条巡检都落一行:既是报告历史,也是容量预测的采样点(disk_used/disk_total)。
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS inspections (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source TEXT NOT NULL DEFAULT 'manual',
+          score INTEGER NOT NULL DEFAULT 100,
+          grade TEXT NOT NULL DEFAULT 'healthy',
+          findings_json TEXT NOT NULL DEFAULT '[]',
+          predictions_json TEXT NOT NULL DEFAULT '[]',
+          summary TEXT NOT NULL DEFAULT '',
+          stats_json TEXT NOT NULL DEFAULT '{}',
+          disk_used INTEGER,
+          disk_total INTEGER,
+          duration_ms INTEGER,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      database.exec(`CREATE INDEX IF NOT EXISTS idx_inspections_created ON inspections(created_at DESC)`);
+    },
+  },
 ];
 
 /** 幂等加列:列已存在时直接返回 false,不抛错。 */
@@ -880,6 +904,83 @@ export function pruneVolumeBackups(projectId, volume, keep = VOLUME_BACKUP_KEEP)
       SELECT id FROM volume_backups WHERE project_id = ? AND volume = ? ORDER BY id DESC LIMIT ?
     )
   `).all(projectId, volume, projectId, volume, keep).map((row) => ({ id: Number(row.id), file: row.file }));
+}
+
+// ===== 巡检报告 =====
+
+const INSPECTION_KEEP = 120; // 报告留最近 120 次,容量预测最多回看 30 天,足够
+
+/** 落一条巡检报告,返回行 id。 */
+export function addInspection({ source = 'manual', score = 100, grade = 'healthy', findings = [], predictions = [], summary = '', stats = {}, diskUsed = null, diskTotal = null, durationMs = null }) {
+  const result = db.prepare(`
+    INSERT INTO inspections(source, score, grade, findings_json, predictions_json, summary, stats_json, disk_used, disk_total, duration_ms)
+    VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    String(source || 'manual'),
+    Math.max(0, Math.min(Number(score) || 0, 100)),
+    String(grade || 'healthy'),
+    JSON.stringify(findings || []),
+    JSON.stringify(predictions || []),
+    String(summary || '').slice(0, 4000),
+    JSON.stringify(stats || {}),
+    diskUsed == null ? null : Math.round(Number(diskUsed) || 0),
+    diskTotal == null ? null : Math.round(Number(diskTotal) || 0),
+    durationMs == null ? null : Math.round(Number(durationMs) || 0)
+  );
+  const id = Number(result.lastInsertRowid);
+  // 超限裁剪:同一张表既存报告又存预测样本,不能无限增长。
+  db.prepare(`
+    DELETE FROM inspections WHERE id NOT IN (SELECT id FROM inspections ORDER BY id DESC LIMIT ?)
+  `).run(INSPECTION_KEEP);
+  return id;
+}
+
+/** 读取一条巡检报告(含解析后的 findings/predictions)。 */
+export function getInspection(id) {
+  const row = db.prepare('SELECT * FROM inspections WHERE id = ?').get(Number(id));
+  return row ? mapInspectionRow(row) : null;
+}
+
+/** 列出巡检报告,仅返回摘要所需的字段(不含 findings 明细,避免列表接口过重)。 */
+export function listInspections(limit = 20) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
+  return db.prepare('SELECT * FROM inspections ORDER BY id DESC LIMIT ?').all(safeLimit).map(mapInspectionRow);
+}
+
+/** 供容量预测使用的磁盘采样点(按时间正序)。 */
+export function listDiskSamples(days = 30) {
+  const safeDays = Math.max(1, Math.min(Number(days) || 30, 365));
+  const cutoff = new Date(Date.now() - safeDays * 86400000).toISOString().slice(0, 19).replace('T', ' ');
+  return db.prepare(`
+    SELECT created_at AS createdAt, disk_used AS diskUsed, disk_total AS diskTotal
+    FROM inspections
+    WHERE created_at >= ? AND disk_used IS NOT NULL AND disk_total IS NOT NULL
+    ORDER BY id ASC
+  `).all(cutoff).map((row) => ({ createdAt: row.createdAt, diskUsed: Number(row.diskUsed) || 0, diskTotal: Number(row.diskTotal) || 0 }));
+}
+
+/** 清理超过保留期的巡检报告,返回删除行数。 */
+export function pruneInspections(days = 180) {
+  const safeDays = Math.max(7, Number(days) || 180);
+  return db.prepare("DELETE FROM inspections WHERE julianday('now') - julianday(created_at) > ?").run(safeDays);
+}
+
+function mapInspectionRow(row) {
+  const parse = (value, fallback) => {
+    try { const parsed = JSON.parse(value); return parsed ?? fallback; } catch { return fallback; }
+  };
+  return {
+    id: Number(row.id),
+    source: row.source,
+    score: Number(row.score) || 0,
+    grade: row.grade,
+    findings: parse(row.findings_json, []),
+    predictions: parse(row.predictions_json, []),
+    summary: row.summary,
+    stats: parse(row.stats_json, {}),
+    durationMs: row.duration_ms == null ? null : Number(row.duration_ms),
+    createdAt: row.created_at,
+  };
 }
 
 // ===== 会话/Agent 审计数据保留策略 =====

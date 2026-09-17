@@ -18,6 +18,7 @@ const JOB_TYPES = {
   'images-check': { label: '镜像更新检查', description: '全局检测纳管项目镜像是否有远程更新(写入雷达缓存)' },
   'pull-images': { label: '定时拉取镜像', description: '对所有可编辑项目执行 docker compose pull' },
   'volume-backup': { label: '数据卷备份', description: '对所有纳管项目的命名卷执行 tar 备份,保留最近份数' },
+  'inspection': { label: 'AI 巡检', description: '执行一次只读巡检并留存报告(容器/磁盘/内存/备份时效)' },
 };
 
 /** 解析单个 cron 字段 → 匹配函数(纯函数,便于单测)。 */
@@ -298,9 +299,9 @@ async function executeJob(job) {
         return `数据卷备份完成,共 ${backed} 个卷`;
       }
       case 'pull-images': {
-        const projects = (await scanProjects()).filter((project) => project.managed && project.editable);
         const { spawnComposeCommand } = await import('./compose-runner.js');
         const { runWorkspaceComposeArgs } = await import('./compose-workspace.js');
+        const projects = (await scanProjects()).filter((project) => project.managed && project.editable);
         let pulled = 0;
         const errors = [];
         for (const project of projects) {
@@ -318,6 +319,11 @@ async function executeJob(job) {
         return pulled
           ? (errors.length ? `拉取 ${pulled} 个成功,${errors.length} 个失败` : `已拉取 ${pulled} 个项目的镜像`)
           : '没有可拉取镜像的项目';
+      }
+      case 'inspection': {
+        const { runInspection } = await import('./inspection.js');
+        const report = await runInspection({ source: 'cron' });
+        return `巡检完成:${report.summary}(评分 ${report.score})`;
       }
       default:
         throw new Error('未知任务类型');

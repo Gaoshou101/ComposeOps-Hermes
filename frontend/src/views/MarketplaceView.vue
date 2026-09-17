@@ -2,8 +2,9 @@
   <div class="marketplace-view">
     <header class="page-header">
       <h1>应用市场</h1>
-      <div class="actions">
-        <button @click="openAiDiscover" class="btn-secondary" :disabled="aiDiscovering"><Sparkles class="w-4 h-4" :class="{ 'animate-pulse': aiDiscovering }" />{{ aiDiscovering ? 'AI 查找中…' : 'AI 找应用' }}</button>
+<div class="actions">
+        <button @click="openAgentRecommend" class="btn-secondary"><Bot class="w-4 h-4" />让 Agent 推荐</button>
+        <button @click="openAiDiscover" class="btn-secondary" :disabled="aiDiscovering"><Sparkles class="w-4 h-4" :class="{ 'animate-pulse': aiDiscovering }" />{{ aiDiscovering ? 'AI 查找中...' : 'AI 找应用' }}</button>
         <button @click="showCreateModal = true" class="btn-primary">
           <span class="icon">+</span>
           创建模板
@@ -259,11 +260,13 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
 import { useToastStore } from '../stores/toast.js';
+import { useAgentConsole } from '../composables/useAgentConsole.js';
 import { api } from '../api/client.js';
 import ConfirmDialog from '../components/common/ConfirmDialog.vue';
-import { LoaderCircle, Rocket } from 'lucide-vue-next';
+import { Bot, LoaderCircle, Rocket } from 'lucide-vue-next';
 
 const toast = useToastStore();
+const { openAgent, updateAgentContext } = useAgentConsole();
 
 const loading = ref(false);
 const error = ref('');
@@ -400,6 +403,25 @@ function openAiDiscover() {
   aiQuery.value = '';
   aiPreview.value = null;
   showAiModal.value = true;
+}
+/** 让 Agent 推荐 → 打开 Agent 抽屉,预填一段带模板/变量上下文的需求描述。 */
+function openAgentRecommend() {
+  const list = (filteredTemplates.value || []).slice(0, 30);
+  const brief = list.length
+    ? list.map((item) => `- ${item.id.replace(/^builtin-/i, '')}:${item.name}(${item.category || '未分类'})${(item.variables || item.envSchema)?.length ? `,变量:${(item.variables || item.envSchema).map((v) => v.key || v.label).join(',')}` : ''}`).join('\n')
+    : '应用市场模板列表为空';
+  updateAgentContext({
+    page: '应用市场',
+    mode: 'marketplace-recommend',
+    summary: '请根据用户需求从应用市场模板中推荐并说明差异',
+    state: JSON.stringify({ templates: brief }),
+  });
+  openAgent();
+  window.dispatchEvent(new CustomEvent('composeops:agent-prompt', {
+    detail: {
+      prompt: `用户在这里想部署一个应用,请澄清或直接推荐最合适的模板。可用模板与所需变量:\n\n${brief}\n\n请先调用 app.list 确认可选应用(只读),结合用户需求给出 1-3 个推荐并说明差异;确定后可以调用 app.deploy 一键部署(需要用户确认)。`,
+    },
+  }));
 }
 async function runAiDiscover() {
   if (!aiQuery.value.trim() || aiDiscovering.value) return;

@@ -9,6 +9,24 @@
       </div>
     </div>
     <p v-if="store.error" class="alert-error">{{ store.error }}</p>
+    <!-- AI 巡检结论卡:最新一次巡检的一句话结论,点击进入巡检中心 -->
+    <div v-if="inspection.latest" class="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <button class="flex min-w-0 flex-1 items-start gap-3 text-left" @click="router.push('/inspection')" title="查看完整巡检报告">
+        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl border font-mono text-lg font-semibold" :class="inspectionTileClass">{{ inspection.latest.score }}</span>
+        <span class="min-w-0 flex-1">
+          <span class="flex flex-wrap items-center gap-2">
+            <span class="text-sm font-medium text-surface-100">AI 巡检:{{ inspectionGradeLabel }}</span>
+            <span class="count-badge" :class="inspectionGradeBadge">{{ inspection.latest.grade === 'healthy' ? '无需处理' : inspectionGradeLabel }}</span>
+          </span>
+          <span class="mt-1 block truncate text-sm text-surface-300">{{ inspection.latest.summary || '最近一次巡检' }}</span>
+          <span class="mt-0.5 block text-xs text-muted">{{ inspection.latest.createdAt ? formatInspectionTime(inspection.latest.createdAt) : '' }}</span>
+        </span>
+      </button>
+      <div class="flex shrink-0 items-center gap-2">
+        <button class="btn-secondary !px-2.5 !py-1.5 text-xs" @click="askAgentReviewInspection"><Bot class="h-3.5 w-3.5" />让 Agent 分析</button>
+        <button class="btn-primary !px-2.5 !py-1.5 text-xs" @click="router.push('/inspection')">查看巡检</button>
+      </div>
+    </div>
     <div v-if="store.projects.length" class="metric-grid">
       <button class="metric-tile" :class="{ active: filter === 'managed' }" @click="filter = filter === 'managed' ? 'all' : 'managed'"><span class="metric-icon text-blue-300"><Boxes class="h-5 w-5" /></span><span><strong>{{ managedCount }}</strong><small>已纳管项目</small></span><span class="metric-meta">共 {{ store.projects.length }} 个</span></button>
       <button class="metric-tile" :class="{ active: filter === 'running' }" @click="filter = filter === 'running' ? 'all' : 'running'"><span class="metric-icon text-emerald-300"><CircleCheckBig class="h-5 w-5" /></span><span><strong>{{ healthyCount }}</strong><small>健康运行</small></span><span class="metric-meta">项目状态正常</span></button>
@@ -49,11 +67,12 @@
 <script setup>
 import { computed, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { AlertTriangle, Boxes, CircleCheckBig, Container, Gauge, Keyboard, RefreshCw, Search } from 'lucide-vue-next';
+import { AlertTriangle, Bot, Boxes, CircleCheckBig, Container, Gauge, Keyboard, RefreshCw, Search } from 'lucide-vue-next';
 import { useServicesStore } from '../stores/services.js';
 import { useToastStore } from '../stores/toast.js';
 import { useKeyboardNavigation } from '../composables/useKeyboardNavigation.js';
 import { useWebSocket } from '../composables/useWebSocket.js';
+import { useAgentConsole } from '../composables/useAgentConsole.js';
 import { api, streamComposeControl, wsUrl } from '../api/client.js';
 import ProjectActivityDrawer from '../components/ProjectActivityDrawer.vue';
 import ProjectEnvModal from '../components/services/ProjectEnvModal.vue';
@@ -70,10 +89,50 @@ import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 const store = useServicesStore();
 const route = useRoute();
 const router = useRouter();
+const { openAgent, updateAgentContext } = useAgentConsole();
 const autoRefresh = ref(true); const busy = ref(false); const expandedIds = ref(new Set());
 const searchQuery = ref(''); const filter = ref('all'); const sort = ref('priority');
 const selectedIds = ref([]); const updateSettings = ref({ lastResults: [] }); const focusedProject = ref('');
+const inspection = ref(null); const inspectionLoading = ref(false);
 const batchTasks = ref([]); const activityProject = ref(null); const envProject = ref(null); const diagnosis = ref(null); const upgradeProject = ref(null); const dbDumpProject = ref(null); const runningAction = ref({ id: '', action: '' }); const kbFocusId = ref(''); const restartTarget = ref(null);
+const GP = { healthy: 90, attention: 75, degraded: 55, critical: 0 };
+const GRADE_LABELS = { healthy: '健康', attention: '需关注', degraded: '需处理', critical: '严重' };
+const inspectionGradeLabel = computed(() => GRADE_LABELS[inspection.value?.latest?.grade] || '健康');
+const inspectionGradeBadge = computed(() => {
+  const grade = inspection.value?.latest?.grade;
+  return { healthy: 'text-emerald-300', attention: 'text-amber-300', degraded: 'text-amber-300', critical: 'text-rose-300' }[grade] || 'text-surface-400';
+});
+const inspectionTileClass = computed(() => {
+  const score = inspection.value?.latest?.score;
+  const base = 'border';
+  if (score == null) return `${base} border-surface-700 bg-surface-900 text-surface-300`;
+  if (score >= GP.healthy) return `${base} border-emerald-500/40 bg-emerald-500/10 text-emerald-300`;
+  if (score >= GP.attention) return `${base} border-amber-500/40 bg-amber-500/10 text-amber-300`;
+  return `${base} border-rose-500/40 bg-rose-500/10 text-rose-300`;
+});
+function formatInspectionTime(value) {
+  if (!value) return '';
+  const time = value.includes('T') ? new Date(value) : new Date(`${value.replace(' ', 'T')}Z`);
+  if (Number.isNaN(time.getTime())) return value;
+  return `上次巡检 ${time.toLocaleString('zh-CN', { hour12: false })}`;
+}
+async function loadInspection() {
+  if (inspectionLoading.value) return;
+  inspectionLoading.value = true;
+  try {
+    inspection.value = await api.getInspectionOverview(1);
+  } catch {
+    inspection.value = null;
+  } finally {
+    inspectionLoading.value = false;
+  }
+}
+function askAgentReviewInspection() {
+  const latest = inspection.value?.latest;
+  updateAgentContext({ page: '服务总览', mode: 'inspection-review', summary: '请分析最近一次 AI 巡检结论' });
+  openAgent();
+  window.dispatchEvent(new CustomEvent('composeops:agent-prompt', { detail: { prompt: `请分析最近一次 AI 巡检结论并给出处置建议:\n\n${latest ? `评分 ${latest.score}/${GRADE_LABELS[latest.grade]}:${latest.summary}` : '暂无巡检报告'}` } }));
+}
 let jobPollTimer; let activeJobId = ''; let jobPollInFlight = false;
 let controlController = null;
 const output = reactive({ open: false, text: '', action: '', name: '', projectId: '', exitCode: null, running: false });
@@ -291,6 +350,7 @@ onMounted(async () => {
   updateSettings.value = updates;
 
   startRealtime();
+  void loadInspection();
 
   if (route.query.job) void pollJob(String(route.query.job));
   void openEnvFromQuery();

@@ -11,6 +11,7 @@ import {
   getGitOpsHistory,
   rollbackGitOpsRepo,
 } from '../services/gitops.js';
+import { planAllRepoDrift } from '../services/gitops-drift.js';
 import { addOperation, getSetting } from '../lib/db.js';
 
 const repoIdParam = {
@@ -61,6 +62,11 @@ export default async function gitopsRoutes(fastify) {
   // 列出所有 GitOps 仓库
   fastify.get('/', async () => {
     return { repositories: listGitOpsRepos() };
+  });
+
+  // GET /drift —— 全仓库漂移状态(只读):未提交改动 / 落后远端 / detached
+  fastify.get('/drift', async () => {
+    return await planAllRepoDrift();
   });
 
   // 添加 GitOps 仓库

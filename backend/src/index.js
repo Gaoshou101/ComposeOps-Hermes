@@ -2,6 +2,7 @@ import { buildApp } from './app.js';
 import { startAlertMonitor } from './services/alert-monitor.js';
 import { startHealthAlerter } from './services/health-alerter.js';
 import { startCronScheduler } from './services/cron-scheduler.js';
+import { startInspectionScheduler } from './services/inspection.js';
 import { initializeBackgroundJobs } from './services/background-jobs.js';
 import { initGitOps } from './services/gitops.js';
 import { startMetricsCollection } from './services/metrics-collector.js';
@@ -20,6 +21,7 @@ const start = async () => {
     startAlertMonitor();
     startHealthAlerter();
     startCronScheduler();
+    startInspectionScheduler(); // 自动巡检(默认关闭,按 setting 的间隔触发,见 inspection.js)
     initGitOps();
     startMetricsCollection(2); // 每 2 秒采集一次容器指标（Netdata 风格高频更新）
     startDataMaintenance(); // 周期清理 ai_history / operation_history / agent_plans / compose_backups

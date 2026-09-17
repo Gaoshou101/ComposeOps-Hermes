@@ -92,7 +92,7 @@
 import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useRoute, useRouter } from 'vue-router';
-import { Activity, ArrowRight, Bot, Boxes, ChartNoAxesCombined, ChevronDown, FileCode2, History, KeyRound, Layers, LogOut, Play, RotateCw, Rows3, ScrollText, Search, Settings, Square, Store, TerminalSquare, X } from 'lucide-vue-next';
+import { Activity, ArrowRight, Bot, Boxes, ChartNoAxesCombined, ChevronDown, FileCode2, History, KeyRound, Layers, LogOut, Play, RotateCw, Rows3, ScrollText, Search, Settings, ShieldCheck, Square, Store, TerminalSquare, X } from 'lucide-vue-next';
 import EventCenter from './EventCenter.vue';
 import HostSwitcher from './HostSwitcher.vue';
 import { api } from '../api/client.js';
@@ -117,7 +117,7 @@ function toggleDensity() { density.value = density.value === 'compact' ? 'comfor
 function asArray(value) { return Array.isArray(value) ? value : []; }
 const allProjects = ref([]);
 const quickProjects = computed(() => asArray(allProjects.value).slice(0, 12));
-const pageNames = { services: '服务总览', compose: 'Compose 配置', logs: '实时日志', shell: '容器终端', converter: '配置转换', agent: 'AI 智能运维 Agent', 'agent-history': 'Agent 执行历史', monitor: '实时监控', metrics: '历史指标', resources: '存储清理', operations: '操作记录', cron: '定时任务', gitops: 'GitOps', cost: '成本分析', marketplace: '应用市场', settings: '系统设置' };
+const pageNames = { services: '服务总览', compose: 'Compose 配置', logs: '实时日志', shell: '容器终端', converter: '配置转换', agent: 'AI 智能运维 Agent', 'agent-history': 'Agent 执行历史', inspection: 'AI 巡检中心', monitor: '实时监控', metrics: '历史指标', resources: '存储清理', operations: '操作记录', cron: '定时任务', gitops: 'GitOps', cost: '成本分析', marketplace: '应用市场', settings: '系统设置' };
 const currentPage = computed(() => pageNames[route.name] || '运维控制台');
 const envProjects = ref([]);
 const appBlueprints = ref([]);
@@ -127,6 +127,7 @@ const baseCommands = [
   { to: '/logs', label: '实时日志', description: '连接容器输出并搜索、暂停或导出', icon: ScrollText, keywords: 'stdout stderr search 日志' },
   { to: '/shell', label: '容器终端', description: '打开受限的交互式 Shell', icon: TerminalSquare, keywords: 'terminal bash sh 终端' },
   { to: '/agent', label: 'AI 智能运维 Agent', description: '挂载日志、检索资料并执行 Compose 运维操作', icon: Bot, keywords: 'agent ai chat workflow 编排 执行 工具 运维 诊断 诊断 chat' },
+  { to: '/inspection', label: 'AI 巡检中心', description: '只读巡检容器、磁盘、内存与备份时效,输出结论与建议', icon: ShieldCheck, keywords: 'inspection scan health check 巡检 体检 检查 报告' },
   { to: '/monitor', label: '实时监控', description: '检查容器 CPU、内存用量的实时概览', icon: ChartNoAxesCombined, keywords: 'metrics cpu memory 监控 realtime 实时' },
   { to: '/metrics', label: '历史指标', description: '回看容器资源指标的历史曲线与异常', icon: Activity, keywords: 'history chart metrics 指标 曲线 历史' },
   { to: '/operations', label: '操作记录', description: '审计 Compose、配置和维护操作', icon: History, keywords: 'history audit 记录 审计' },
