@@ -113,6 +113,6 @@ jobs:
         with:
           context: .
           push: false
-          tags: composeops/opsdash:ci-test
+          tags: stanly1997/opsdash:ci-test
           cache-from: type=gha
           cache-to: type=gha,mode=max

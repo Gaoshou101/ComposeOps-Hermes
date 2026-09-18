@@ -89,10 +89,10 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            composeops/opsdash:latest
-            composeops/opsdash:${{ steps.meta.outputs.version }}
-            composeops/opsdash:${{ steps.meta.outputs.major }}
-            composeops/opsdash:${{ steps.meta.outputs.minor }}
+            stanly1997/opsdash:latest
+            stanly1997/opsdash:${{ steps.meta.outputs.version }}
+            stanly1997/opsdash:${{ steps.meta.outputs.major }}
+            stanly1997/opsdash:${{ steps.meta.outputs.minor }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       
@@ -101,5 +101,5 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-          repository: composeops/opsdash
+          repository: stanly1997/opsdash
           readme-filepath: ./README.en.md

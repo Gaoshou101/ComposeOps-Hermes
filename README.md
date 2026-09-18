@@ -142,7 +142,7 @@ curl -fsSL https://raw.githubusercontent.com/StanlySGY/ComposeOps/main/docker-co
 docker compose pull && docker compose up -d
 ```
 
-> 镜像发布在 Docker Hub `composeops/opsdash`（tag：`latest` / 主版本 / 完整版本号）。若你的网络访问 Docker Hub 困难，用方式 B 本地构建（已内置国内镜像源加速）。
+> 镜像发布在 Docker Hub `stanly1997/opsdash`（tag：`latest` / 主版本 / 完整版本号）。若你的网络访问 Docker Hub 困难，用方式 B 本地构建（已内置国内镜像源加速）。
 
 **方式 B：源码构建**
 
@@ -229,7 +229,7 @@ docker run -d --rm --name opsdash-ws-myapp \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /opt/myapp:/opt/myapp \
   --workdir /opt/myapp \
-  composeops/opsdash:latest sleep 3600
+  stanly1997/opsdash:latest sleep 3600
 ```
 
 - **复用策略**：90 秒内连续操作无需重建

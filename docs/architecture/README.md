@@ -308,7 +308,7 @@ Workspace Manager
     │     -v /var/run/docker.sock:/var/run/docker.sock \
     │     -v /project/path:/project/path \
     │     --workdir /project/path \
-    │     composeops/opsdash:latest sleep 3600
+    │     stanly1997/opsdash:latest sleep 3600
     │
     ▼
 Execute in workspace:
@@ -548,7 +548,7 @@ docker run -d --rm --name opsdash-ws-myapp \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /opt/myapp:/opt/myapp \
   --workdir /opt/myapp \
-  composeops/opsdash:latest sleep 3600
+  stanly1997/opsdash:latest sleep 3600
 
 # Execute compose command
 docker exec opsdash-ws-myapp docker compose up -d

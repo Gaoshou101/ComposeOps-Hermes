@@ -46,7 +46,7 @@ services:
       # (镜像内部已内置 docker / docker compose / git / ssh,无需再装 docker-ce-cli。)
       args:
         APT_MIRROR: mirrors.tuna.tsinghua.edu.cn
-    image: composeops/opsdash:latest
+    image: stanly1997/opsdash:latest
     container_name: opsdash
     restart: unless-stopped
     init: true

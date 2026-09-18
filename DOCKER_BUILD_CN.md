@@ -102,7 +102,7 @@ BuildKit 会自动把 `HTTP_PROXY`/`HTTPS_PROXY` 透传到构建阶段,apt 与 n
 ## 验证镜像
 
 ```bash
-docker run --rm --entrypoint sh composeops/opsdash:latest -c '
+docker run --rm --entrypoint sh stanly1997/opsdash:latest -c '
   docker --version && docker compose version &&
   git --version && ssh -V &&
   node -e "require(\"better-sqlite3\");console.log(\"sqlite OK\")"'
@@ -113,6 +113,6 @@ docker run --rm --entrypoint sh composeops/opsdash:latest -c '
 要确认 apt 源已切换:
 
 ```bash
-docker run --rm composeops/opsdash:latest cat /etc/apt/sources.list.d/debian.sources | grep URIs
+docker run --rm stanly1997/opsdash:latest cat /etc/apt/sources.list.d/debian.sources | grep URIs
 # 应输出: URIs: http://mirrors.tuna.tsinghua.edu.cn/debian
 ```

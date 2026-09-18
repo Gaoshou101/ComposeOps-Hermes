@@ -454,13 +454,13 @@ Releases are automated via GitHub Actions on version tags:
    ```
 2. The [`release.yml`](.github/workflows/release.yml) workflow then:
    - Builds the frontend and creates a GitHub Release with notes extracted from `CHANGELOG.md` (requires a matching `## [x.y.z]` entry);
-   - Builds multi-arch Docker images (amd64 + arm64) and pushes them to Docker Hub as `composeops/opsdash` with `latest`, major, minor, and full-version tags.
+   - Builds multi-arch Docker images (amd64 + arm64) and pushes them to Docker Hub as `stanly1997/opsdash` with `latest`, major, minor, and full-version tags.
 
 **Required repository secrets** (Settings → Secrets and variables → Actions):
 
 | Secret | Purpose |
 |--------|---------|
-| `DOCKER_USERNAME` | Docker Hub username for `composeops/opsdash` |
+| `DOCKER_USERNAME` | Docker Hub username for `stanly1997/opsdash` |
 | `DOCKER_PASSWORD` | Docker Hub access token (use a token, not the account password) |
 
 Without these secrets the GitHub Release still ships; only the Docker Hub push fails. To publish under your own namespace, also update the `tags:` block in `release.yml` and the image references in both READMEs / `docker-compose.yml`.

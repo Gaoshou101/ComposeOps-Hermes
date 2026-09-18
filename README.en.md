@@ -133,7 +133,7 @@ curl -fsSL https://raw.githubusercontent.com/StanlySGY/ComposeOps/main/docker-co
 docker compose pull && docker compose up -d
 ```
 
-> Images are published on Docker Hub as `composeops/opsdash` (tags: `latest`, major, full version). Behind a proxy or prefer building yourself? Use Option B — the Dockerfile ships with mirror defaults so `docker compose up -d --build` works out of the box.
+> Images are published on Docker Hub as `stanly1997/opsdash` (tags: `latest`, major, full version). Behind a proxy or prefer building yourself? Use Option B — the Dockerfile ships with mirror defaults so `docker compose up -d --build` works out of the box.
 
 **Option B: Build from source**
 
