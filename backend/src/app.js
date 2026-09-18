@@ -166,10 +166,10 @@ export async function buildApp({ logger = { level: process.env.LOG_LEVEL || 'inf
     const staticRoot = path.join(__dirname, '../../frontend/dist');
     try {
       const fastifyStatic = (await import('@fastify/static')).default;
+      // decorateReply 保持默认 true:下方 SPA fallback 依赖 reply.sendFile。
       await fastify.register(fastifyStatic, {
         root: staticRoot,
         prefix: '/',
-        decorateReply: false,
       });
       // SPA fallback
       fastify.setNotFoundHandler((request, reply) => {
