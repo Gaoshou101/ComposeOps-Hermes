@@ -16,6 +16,7 @@
           <option value="__goto_marketplace__">📦 前往模板市场</option>
         </select>
         <button class="btn-secondary" :disabled="!content" @click="formatYaml"><AlignLeft class="w-4 h-4" />格式化</button>
+        <button class="btn-secondary" title="把 docker run 命令转换为 Compose 片段" @click="showConverter = true"><ArrowRightLeft class="w-4 h-4" />转换</button>
         <button class="btn-secondary" :disabled="!projectId" @click="loadBackups"><History class="w-4 h-4" />备份</button>
         <button class="btn-primary" :disabled="saving || previewLoading || !dirty" @click="save"><Save class="w-4 h-4" />{{ saving || previewLoading ? '校验中...' : '保存' }}</button>
       </div>
@@ -73,6 +74,13 @@
     <div v-if="showServiceEditor" class="modal-backdrop z-[55]" @click.self="showServiceEditor = false">
       <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-2xl max-h-[85vh] overflow-auto">
         <ServiceEditor :model-value="currentService" :is-new="isNewService" @save="saveServiceFromEditor" @close="showServiceEditor = false" />
+      </div>
+    </div>
+
+    <div v-if="showConverter" class="modal-backdrop z-[55]" @click.self="showConverter = false">
+      <div class="modal flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden">
+        <div class="modal-header shrink-0"><span>Docker Run 转换器</span><button class="icon-btn" title="关闭" @click="showConverter = false"><X class="h-4 w-4" /></button></div>
+        <div class="min-h-0 flex-1 overflow-y-auto p-4"><DockerRunConverter /></div>
       </div>
     </div>
 
@@ -165,7 +173,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useToastStore } from '../stores/toast.js';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
-import { AlignLeft, ArrowLeft, Eye, FileCode2, HardDrive, History, Layout, Network, Pencil, Plus, RotateCw, Save, ShieldAlert, ShieldCheck, Trash2, Undo2, Variable, X } from 'lucide-vue-next';
+import { AlignLeft, ArrowLeft, ArrowRightLeft, Eye, FileCode2, HardDrive, History, Layout, Network, Pencil, Plus, RotateCw, Save, ShieldAlert, ShieldCheck, Trash2, Undo2, Variable, X } from 'lucide-vue-next';
+import DockerRunConverter from '../components/DockerRunConverter.vue';
 import Skeleton from '../components/common/Skeleton.vue';
 import { diffLines } from '../lib/diff.js';
 // 移除硬编码模板,改用模板市场 API
@@ -234,7 +243,7 @@ const route = useRoute(); const router = useRouter();
 const editorEl = ref(null); const editorReady = ref(false); const projects = ref([]); const projectId = ref(route.query.projectId || '');
 const fileIndex = ref(0); const filePath = ref(''); const content = ref(''); const original = ref('');
 const saving = ref(false); const error = ref(''); const message = ref(''); const backups = ref([]);
-const showBackups = ref(false); const comparison = ref(null);
+const showBackups = ref(false); const comparison = ref(null); const showConverter = ref(false);
 const diffOld = computed(() => comparison.value ? diffLines(comparison.value.content, content.value).filter((row) => row.type !== 'add') : []);
 const diffNew = computed(() => comparison.value ? diffLines(comparison.value.content, content.value).filter((row) => row.type !== 'remove') : []);
 const semanticIssues = ref([]);
@@ -260,6 +269,7 @@ const project = computed(() => projects.value.find((p) => p.id === projectId.val
 const dirty = computed(() => content.value !== original.value);
 const toast = useToastStore();
 useEscapeKey({ active: showBackups, onClose: () => { showBackups.value = false; }, layer: 'modal', lockBody: true });
+useEscapeKey({ active: showConverter, onClose: () => { showConverter.value = false; }, layer: 'modal', lockBody: true });
 useEscapeKey({ active: computed(() => !!comparison.value), onClose: () => { comparison.value = null; }, layer: 'modal', lockBody: true });
 useEscapeKey({ active: computed(() => showPreview.value), onClose: closePreview, layer: 'modal', lockBody: true });
 useEscapeKey({ active: showServiceEditor, onClose: () => { showServiceEditor.value = false; }, layer: 'modal', lockBody: true });

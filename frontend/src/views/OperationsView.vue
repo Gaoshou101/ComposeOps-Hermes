@@ -1,6 +1,6 @@
 <template>
-  <div class="page-shell">
-    <div class="page-header">
+  <div :class="embedded ? '' : 'page-shell'">
+    <div v-if="!embedded" class="page-header">
       <div><h1 class="page-title">操作中心</h1><p class="page-subtitle">跟踪后台任务进度，审计 Compose 操作、配置修改和维护结果</p></div>
       <div class="page-actions"><button class="btn-secondary" :disabled="loading" @click="load"><RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" />刷新</button></div>
     </div>
@@ -119,6 +119,8 @@ import EmptyState from '../components/common/EmptyState.vue';
 
 const route = useRoute();
 const router = useRouter();
+// embedded 模式供事件中心「操作与任务」tab 复用:隐藏页头,且不再读写路由 query(tab 归父级页面管)
+const props = defineProps({ embedded: { type: Boolean, default: false } });
 const operations = ref([]); const jobs = ref([]); const loading = ref(false); const error = ref('');
 const selectedOperation = ref(null); const selectedJob = ref(null); const selectedJobItem = ref(null);
 
@@ -135,9 +137,9 @@ function saveFilters(filters) {
 
 const savedFilters = loadFilters();
 const query = ref(''); const jobQuery = ref('');
-const statusFilter = ref(savedFilters.statusFilter || (route.query.status === 'failed' ? 'failed' : 'all'));
+const statusFilter = ref(savedFilters.statusFilter || (!props.embedded && route.query.status === 'failed' ? 'failed' : 'all'));
 const jobStatusFilter = ref(savedFilters.jobStatusFilter || 'all');
-const activeTab = ref(route.query.tab === 'jobs' || route.query.job ? 'jobs' : 'operations');
+const activeTab = ref(props.embedded ? 'operations' : (route.query.tab === 'jobs' || route.query.job ? 'jobs' : 'operations'));
 let jobPollTimer;
 let jobStreamController = null;
 
@@ -175,6 +177,7 @@ async function load() {
 }
 function setTab(tab) {
   activeTab.value = tab;
+  if (props.embedded) return;
   const next = { ...route.query, tab };
   if (tab !== 'jobs') delete next.job;
   router.replace({ query: next });
@@ -193,7 +196,7 @@ async function openJob(id, updateRoute = true) {
   selectedJobItem.value = job.items.find((item) => item.id === previousItemId) || job.items[0] || null;
   const index = jobs.value.findIndex((item) => item.id === job.id);
   if (index >= 0) jobs.value[index] = { ...jobs.value[index], ...job, items: undefined };
-  if (updateRoute && route.query.job !== id) router.replace({ query: { ...route.query, tab: 'jobs', job: id } });
+  if (updateRoute && !props.embedded && route.query.job !== id) router.replace({ query: { ...route.query, tab: 'jobs', job: id } });
   
   // 活跃任务使用 SSE 推送
   if (['queued', 'running'].includes(job.status)) {
@@ -231,6 +234,7 @@ function closeJob() {
   }
   selectedJob.value = null;
   selectedJobItem.value = null;
+  if (props.embedded) return;
   const next = { ...route.query };
   delete next.job;
   router.replace({ query: next });
@@ -249,6 +253,7 @@ watch([statusFilter, jobStatusFilter], () => {
   saveFilters({ statusFilter: statusFilter.value, jobStatusFilter: jobStatusFilter.value });
 });
 watch(() => route.query.job, (id) => {
+  if (props.embedded) return;
   if (id && selectedJob.value?.id !== String(id)) void openJob(String(id), false);
   if (!id && selectedJob.value) {
     clearTimeout(jobPollTimer);
@@ -260,7 +265,7 @@ watch(() => route.query.job, (id) => {
     selectedJobItem.value = null;
   }
 });
-onMounted(async () => { await load(); if (route.query.job) await openJob(String(route.query.job), false); });
+onMounted(async () => { await load(); if (!props.embedded && route.query.job) await openJob(String(route.query.job), false); });
 let opsActivatedOnce = false;
 onActivated(() => { if (opsActivatedOnce) void load(); opsActivatedOnce = true; });
 onUnmounted(() => {

@@ -32,7 +32,7 @@
         <span>{{ unreadCount }} 未读 · {{ eventCount }} 个需要关注</span>
         <div class="flex items-center gap-2">
           <button class="text-muted hover:text-surface-200 text-xs" @click="pruneAll">清空 7 天前</button>
-          <router-link to="/operations" class="text-accent hover:text-blue-300" @click="open = false">操作中心</router-link>
+          <router-link to="/events?tab=operations" class="text-accent hover:text-blue-300" @click="open = false">操作与任务</router-link>
         </div>
       </footer>
     </section>
@@ -171,7 +171,7 @@ const persistedEvents = computed(() => alertEvents.value
     id: event.id,
     title: event.title,
     detail: event.detail,
-    to: event.target || '/operations',
+    to: event.target || '/events',
     icon: markRaw(event.priority === 'danger' ? CircleX : AlertTriangle),
     tone: event.priority === 'danger' ? 'danger' : 'warning',
     priority: event.priority,

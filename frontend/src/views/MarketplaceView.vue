@@ -55,7 +55,7 @@
         <div class="label">自定义模板</div>
         <div class="value">{{ stats.totalCustom }}</div>
       </div>
-      <div class="stat-card highlight">
+      <div class="stat-card" :class="{ highlight: stats.totalFavorites > 0 }">
         <div class="label">我的收藏</div>
         <div class="value">{{ stats.totalFavorites }}</div>
       </div>

@@ -1,10 +1,5 @@
 <template>
   <div class="converter-wrapper">
-    <div class="converter-header">
-      <h2 class="converter-title">Docker Run → Compose</h2>
-      <p class="converter-subtitle">将 docker run 命令转换为 docker-compose.yml</p>
-    </div>
-
     <div class="converter-body">
       <div class="input-section">
         <label class="input-label">Docker Run 命令</label>
@@ -327,24 +322,6 @@ function downloadYaml() {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.converter-header {
-  text-align: center;
-}
-
-.converter-title {
-  color: #F3F4F6;
-  font-size: 28px;
-  font-weight: 600;
-  margin-bottom: 8px;
-}
-
-.converter-subtitle {
-  color: #9CA3AF;
-  font-size: 15px;
 }
 
 .converter-body {

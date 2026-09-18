@@ -30,6 +30,7 @@
     <ToastContainer />
     <CheatSheetModal :open="cheatSheet" @close="cheatSheet = false" />
     <AgentDrawer />
+    <OnboardingGuide />
   </div>
 </template>
 
@@ -40,6 +41,7 @@ import AppSidebar from './components/AppSidebar.vue';
 import ToastContainer from './components/common/ToastContainer.vue';
 import CheatSheetModal from './components/common/CheatSheetModal.vue';
 import AgentDrawer from './components/AgentDrawer.vue';
+import OnboardingGuide from './components/common/OnboardingGuide.vue';
 import LoginView from './views/LoginView.vue';
 import { useAuthStore } from './stores/auth.js';
 import { useServicesStore } from './stores/services.js';
@@ -52,8 +54,8 @@ import { preloadRouteChunks } from './router.js';
 // 实时数据页与任务页刻意不保活,切页后及时释放 WebSocket、SSE 和轮询。
 const keepAliveViews = [
   'ComposeView', 'ShellView', 'AgentWorkflowView', 'AgentExecutionHistoryView',
-  'SettingsView', 'MarketplaceView', 'ConverterView', 'GitOpsView', 'CostAnalysisView',
-  'ResourcesView', 'CMDBView', 'EventCenterView', 'WorkflowCenterView',
+  'SettingsView', 'MarketplaceView', 'GitOpsView', 'CostAnalysisView',
+  'ResourcesView', 'CMDBView', 'WorkflowCenterView',
 ];
 
 const auth = useAuthStore();

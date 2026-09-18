@@ -3,8 +3,8 @@
     <section class="rounded-3xl border border-emerald-900/40 bg-gradient-to-r from-slate-950 via-slate-900 to-emerald-950/40 p-6">
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 class="text-3xl font-bold text-slate-100">AI 运维决策中心</h1>
-          <p class="mt-2 text-slate-400">ComposeOps 2.0 · 系统健康、运营态势与 AI 决策建议</p>
+          <h1 class="text-3xl font-bold text-slate-100">运维总览</h1>
+          <p class="mt-2 text-slate-400">系统健康、运营态势与 AI 决策建议</p>
         </div>
         <div class="flex gap-3">
           <div class="rounded-2xl border border-slate-800 px-4 py-3">
@@ -68,7 +68,7 @@
       <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
         <div class="mb-4 flex items-center justify-between">
           <h3 class="font-semibold text-slate-100">最近事件</h3>
-          <router-link to="/timeline" class="text-xs text-emerald-400 hover:text-emerald-300">查看全部 →</router-link>
+          <router-link to="/events?tab=timeline" class="text-xs text-emerald-400 hover:text-emerald-300">查看全部 →</router-link>
         </div>
         <div v-if="recentEvents.length" class="space-y-2">
           <div v-for="event in recentEvents" :key="event.key" class="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900/60 px-3 py-2">

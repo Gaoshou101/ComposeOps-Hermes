@@ -1,15 +1,5 @@
 <template>
-  <div class="page-shell">
-    <div class="page-header">
-      <div>
-        <h1 class="page-title">运维时间机器</h1>
-        <p class="page-subtitle">统一聚合 Agent、告警、容器、GitOps、操作与定时任务事件,回溯系统变化</p>
-      </div>
-      <div class="page-actions">
-        <button class="btn-secondary" :disabled="loading" @click="load"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />刷新</button>
-      </div>
-    </div>
-
+  <div class="flex min-h-0 flex-1 flex-col gap-4">
     <p v-if="error" class="alert-error">{{ error }}</p>
 
     <!-- 摘要统计 -->
@@ -52,7 +42,7 @@
     <Skeleton v-if="loading && !events.length" variant="table" :rows="6" label="事件加载中" class="flex-1" />
     <EmptyState v-else-if="!events.length" icon="History" title="暂无事件" description="执行操作、运行 Agent 或触发定时任务后,事件会出现在这里" />
     <EmptyState v-else-if="!filteredEvents.length" icon="Search" title="没有匹配的事件" description="调整筛选条件后重试" action-label="清除筛选" class="flex-1" @action="resetFilters" />
-    <div v-else class="flex-1">
+    <div v-else class="min-h-0 flex-1 overflow-y-auto pr-1">
       <div class="relative space-y-1">
         <div class="absolute left-[7px] top-2 bottom-2 w-px bg-surface-800"></div>
         <div v-for="event in filteredEvents" :key="event.key" class="relative flex gap-3 py-2 pl-0">
@@ -76,11 +66,12 @@
 </template>
 
 <script setup>
+// 运维时间机器:客户端聚合操作/Agent/告警/定时/GitOps 五路事件的只读时间线,嵌入事件中心 tab
 import { computed, onMounted, ref } from 'vue';
-import { Bot, CircleX, Clock3, GitBranch, History, RefreshCw, Search } from 'lucide-vue-next';
-import { api } from '../api/client.js';
-import Skeleton from '../components/common/Skeleton.vue';
-import EmptyState from '../components/common/EmptyState.vue';
+import { Bot, CircleX, Clock3, GitBranch, History, Search } from 'lucide-vue-next';
+import { api } from '../../api/client.js';
+import Skeleton from '../common/Skeleton.vue';
+import EmptyState from '../common/EmptyState.vue';
 
 const loading = ref(false);
 const error = ref('');

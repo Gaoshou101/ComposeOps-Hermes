@@ -279,6 +279,11 @@ async function loadProject() {
 
 onMounted(async () => {
   await store.refresh(false);
+  // 空画布对首次访问不友好:有项目时默认选中第一个,直接展示拓扑
+  if (!selectedProjectId.value && !crossProject.value && store.projects.length) {
+    selectedProjectId.value = store.projects[0].id;
+    await loadProject();
+  }
 });
 </script>
 

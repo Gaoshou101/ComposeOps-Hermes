@@ -1,21 +1,24 @@
 <template>
-  <header class="app-header z-[45] h-16 flex items-center justify-between px-4 sm:px-6 shrink-0">
-    <div class="flex min-w-0 items-center gap-3">
-      <div class="brand-mark"><Boxes class="w-5 h-5" /></div>
+  <header class="app-header z-[45] h-16 flex items-center justify-between gap-2 px-3 sm:px-6 shrink-0">
+    <div class="flex min-w-0 items-center gap-2 sm:gap-3">
+      <div class="brand-mark shrink-0"><Boxes class="w-5 h-5" /></div>
       <div class="min-w-0">
-        <span class="brand-title text-sm sm:text-base font-semibold tracking-tight">ComposeOps</span>
+        <span class="brand-title block max-w-36 truncate text-sm sm:text-base font-semibold tracking-tight">ComposeOps</span>
         <p class="text-muted truncate">{{ currentPage }}</p>
       </div>
     </div>
-    <div class="flex items-center gap-2 sm:gap-3 text-sm">
-      <button class="command-trigger" title="快速跳转" aria-label="打开快速跳转" @click="commandOpen = true">
+    <div class="flex shrink-0 items-center gap-1.5 sm:gap-3 text-sm">
+      <button class="command-trigger hidden sm:inline-flex" title="快速跳转" aria-label="打开快速跳转" @click="commandOpen = true">
         <Search class="h-4 w-4" />
         <span class="hidden md:inline">快速跳转</span>
       </button>
-      <span v-if="backendOnline" class="status-pill text-emerald-300">
+      <button class="icon-btn sm:hidden" title="快速跳转" aria-label="打开快速跳转" @click="commandOpen = true">
+        <Search class="h-4 w-4" />
+      </button>
+      <span v-if="backendOnline" class="status-pill text-emerald-300 hidden md:inline-flex">
         <span class="status-ping bg-emerald-400"></span><span class="hidden sm:inline">服务正常</span>
       </span>
-      <span v-else class="status-pill text-rose-300">
+      <span v-else class="status-pill text-rose-300 md:inline-flex hidden">
         <span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span><span class="hidden sm:inline">服务离线</span>
       </span>
       <div class="relative">
@@ -42,9 +45,9 @@
       <HostSwitcher />
       <EventCenter />
       <button class="icon-btn" title="打开页面 Agent" aria-label="打开页面 Agent" @click="emitAgentOpen"><Bot class="w-4 h-4 text-cyan-300" /></button>
-      <button class="icon-btn header-density" :title="density === 'compact' ? '切换为舒适视图' : '切换为紧凑视图'" aria-label="视图密度" @click="toggleDensity"><Rows3 class="w-4 h-4" /></button>
+      <button class="icon-btn hidden sm:inline-flex header-density" :title="density === 'compact' ? '切换为舒适视图' : '切换为紧凑视图'" aria-label="视图密度" @click="toggleDensity"><Rows3 class="w-4 h-4" /></button>
       <span class="hidden lg:inline text-muted">{{ currentTime }}</span>
-      <span class="h-5 w-px bg-surface-800"></span>
+      <span class="hidden sm:inline h-5 w-px bg-surface-800"></span>
       <button class="icon-btn" title="退出登录" aria-label="退出登录" @click="$emit('logout')"><LogOut class="w-4 h-4" /></button>
     </div>
   </header>
@@ -92,7 +95,7 @@
 import { computed, nextTick, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useRoute, useRouter } from 'vue-router';
-import { Activity, ArrowRight, Bot, Boxes, ChartNoAxesCombined, ChevronDown, FileCode2, History, KeyRound, Layers, LogOut, Play, RotateCw, Rows3, ScrollText, Search, Settings, ShieldCheck, Square, Store, TerminalSquare, X } from 'lucide-vue-next';
+import { Activity, ArrowRight, Bot, Boxes, ChartNoAxesCombined, ChevronDown, FileCode2, FileSearch, BellRing, History, KeyRound, Layers, LogOut, Play, RotateCw, Rows3, ScrollText, Search, Settings, ShieldCheck, Square, Store, TerminalSquare, X } from 'lucide-vue-next';
 import EventCenter from './EventCenter.vue';
 import HostSwitcher from './HostSwitcher.vue';
 import { api } from '../api/client.js';
@@ -117,7 +120,7 @@ function toggleDensity() { density.value = density.value === 'compact' ? 'comfor
 function asArray(value) { return Array.isArray(value) ? value : []; }
 const allProjects = ref([]);
 const quickProjects = computed(() => asArray(allProjects.value).slice(0, 12));
-const pageNames = { services: '服务总览', compose: 'Compose 配置', logs: '实时日志', shell: '容器终端', converter: '配置转换', agent: 'AI 智能运维 Agent', 'agent-history': 'Agent 执行历史', inspection: 'AI 巡检中心', monitor: '实时监控', metrics: '历史指标', resources: '存储清理', operations: '操作记录', cron: '定时任务', gitops: 'GitOps', cost: '成本分析', marketplace: '应用市场', settings: '系统设置' };
+const pageNames = { services: '服务总览', compose: 'Compose 配置', logs: '实时日志', shell: '容器终端', agent: 'AI 智能运维 Agent', 'agent-history': 'Agent 执行历史', inspection: 'AI 巡检中心', monitor: '实时监控', review: '变更与回滚', events: '事件中心', resources: '存储清理', cron: '定时任务', gitops: 'GitOps', cost: '成本分析', marketplace: '应用市场', settings: '系统设置' };
 const currentPage = computed(() => pageNames[route.name] || '运维控制台');
 const envProjects = ref([]);
 const appBlueprints = ref([]);
@@ -129,8 +132,10 @@ const baseCommands = [
   { to: '/agent', label: 'AI 智能运维 Agent', description: '挂载日志、检索资料并执行 Compose 运维操作', icon: Bot, keywords: 'agent ai chat workflow 编排 执行 工具 运维 诊断 诊断 chat' },
   { to: '/inspection', label: 'AI 巡检中心', description: '只读巡检容器、磁盘、内存与备份时效,输出结论与建议', icon: ShieldCheck, keywords: 'inspection scan health check 巡检 体检 检查 报告' },
   { to: '/monitor', label: '实时监控', description: '检查容器 CPU、内存用量的实时概览', icon: ChartNoAxesCombined, keywords: 'metrics cpu memory 监控 realtime 实时' },
-  { to: '/metrics', label: '历史指标', description: '回看容器资源指标的历史曲线与异常', icon: Activity, keywords: 'history chart metrics 指标 曲线 历史' },
-  { to: '/operations', label: '操作记录', description: '审计 Compose、配置和维护操作', icon: History, keywords: 'history audit 记录 审计' },
+  { to: '/monitor?tab=history', label: '历史指标', description: '回看容器资源指标的历史曲线与异常', icon: Activity, keywords: 'history chart metrics 指标 曲线 历史' },
+  { to: '/events?tab=operations', label: '操作与任务', description: '审计 Compose、配置和维护操作,跟踪后台任务', icon: History, keywords: 'history audit 记录 审计 任务 job' },
+  { to: '/events', label: '事件中心', description: '统一查看告警事件、运维时间线与操作任务', icon: BellRing, keywords: 'alert event timeline 事件 告警 时间线' },
+  { to: '/review', label: '变更与回滚', description: '部署前 AI 评审变更,出问题后一键回滚', icon: FileSearch, keywords: 'review rollback change 变更 评审 回滚' },
   { to: '/settings', label: '系统设置', description: '配置通知、更新、AI 与项目纳管', icon: Settings, keywords: 'notification maintenance mounts 设置' },
   { to: '/settings?tab=mounts', label: '项目纳管', description: '选择允许控制和编辑 Compose 的项目', icon: Boxes, keywords: 'permission mount compose 权限 目录' },
   { to: '/settings?tab=notifications', label: '异常通知', description: '设置容器、内存和存储告警渠道', icon: Settings, keywords: 'alert webhook telegram email 告警' },

@@ -11,6 +11,12 @@
       </div>
     </div>
 
+    <div class="tabs" role="tablist" aria-label="资产中心视图">
+      <button :class="{ active: tab === 'assets' }" role="tab" @click="setTab('assets')"><Server class="h-4 w-4" />资产清单</button>
+      <button :class="{ active: tab === 'graph' }" role="tab" @click="setTab('graph')"><Waypoints class="h-4 w-4" />知识图谱</button>
+    </div>
+
+    <template v-if="tab === 'assets'">
     <p v-if="error" class="alert-error">{{ error }}</p>
 
     <!-- 概览统计 -->
@@ -59,14 +65,29 @@
         </table>
       </div>
     </section>
+    </template>
+    <KnowledgeGraphView v-else embedded />
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { Boxes, Container, RefreshCw, Server, Trash2, Waypoints } from 'lucide-vue-next';
 import { useCmdbStore } from '../stores/cmdb.js';
 import { useToastStore } from '../stores/toast.js';
+import KnowledgeGraphView from './KnowledgeGraphView.vue';
+
+const route = useRoute();
+const router = useRouter();
+const tab = ref(route.query.tab === 'graph' ? 'graph' : 'assets');
+function setTab(next) {
+  tab.value = next;
+  const query = { ...route.query };
+  if (next === 'graph') query.tab = 'graph'; else delete query.tab;
+  router.replace({ query });
+}
+watch(() => route.query.tab, (value) => { tab.value = value === 'graph' ? 'graph' : 'assets'; });
 
 const cmdb = useCmdbStore();
 const toast = useToastStore();

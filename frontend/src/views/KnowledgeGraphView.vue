@@ -1,6 +1,6 @@
 <template>
-  <div class="page-shell">
-    <div class="page-header">
+  <div :class="embedded ? '' : 'page-shell'">
+    <div v-if="!embedded" class="page-header">
       <div>
         <h1 class="page-title">运维知识图谱</h1>
         <p class="page-subtitle">统一关联 Host、项目、容器、卷、网络、告警与 AI 分析,支撑智能运维决策</p>
@@ -98,6 +98,8 @@
 </template>
 
 <script setup>
+// embedded 模式供 CMDBView 的「知识图谱」tab 复用,隐藏独立页头
+defineProps({ embedded: { type: Boolean, default: false } });
 import { computed, onMounted, ref } from 'vue';
 import { AlertTriangle, Bot, Boxes, Database, HardDrive, RefreshCw, Server } from 'lucide-vue-next';
 import { api } from '../api/client.js';

@@ -1,6 +1,6 @@
 <template>
-  <div class="page-shell">
-    <div class="page-header">
+  <div :class="embedded ? '' : 'page-shell'">
+    <div v-if="!embedded" class="page-header">
       <div>
         <h1 class="page-title">自动回滚中心</h1>
         <p class="page-subtitle">统一管理 Compose 配置、数据卷、镜像升级与 GitOps 的回滚恢复</p>
@@ -143,6 +143,8 @@
 </template>
 
 <script setup>
+// embedded 模式供 ReleaseView 的 tab 复用,隐藏独立页头
+defineProps({ embedded: { type: Boolean, default: false } });
 import { computed, onMounted, ref } from 'vue';
 import { FileCode2, GitBranch, HardDrive, History, RefreshCw, RotateCcw, X } from 'lucide-vue-next';
 import { api } from '../api/client.js';

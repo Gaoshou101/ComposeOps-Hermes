@@ -1,6 +1,6 @@
 <template>
-  <div class="page-shell">
-    <div class="page-header">
+  <div :class="embedded ? '' : 'page-shell'">
+    <div v-if="!embedded" class="page-header">
       <div>
         <h1 class="page-title">AI 变更评审</h1>
         <p class="page-subtitle">部署前自动审查 Compose 变更,评估影响范围与风险等级</p>
@@ -172,6 +172,8 @@
 </template>
 
 <script setup>
+// embedded 模式供 ReleaseView 的 tab 复用,隐藏独立页头
+defineProps({ embedded: { type: Boolean, default: false } });
 import { computed, onMounted, ref } from 'vue';
 import { Bot, RefreshCw, Rocket, ShieldCheck, X } from 'lucide-vue-next';
 import { api, streamComposeControl } from '../api/client.js';

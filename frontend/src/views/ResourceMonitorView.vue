@@ -1,7 +1,7 @@
 <template>
-  <div class="page-shell resource-monitor-view">
+  <div :class="embedded ? 'resource-monitor-view' : 'page-shell resource-monitor-view'">
     <!-- Header -->
-    <div class="mb-4 flex items-center justify-between">
+    <div v-if="!embedded" class="mb-4 flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-bold text-zinc-100">历史指标</h1>
         <p class="mt-1 text-sm text-zinc-400">实时容器资源使用情况与告警配置</p>
@@ -172,6 +172,8 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+// embedded 模式供 MonitorView 的「历史指标」tab 复用,隐藏独立页头
+defineProps({ embedded: { type: Boolean, default: false } });
 import { Activity, AlertTriangle, Bell, Cpu, Database, HardDrive, Minus, Network, RefreshCw, TrendingDown, TrendingUp, X } from 'lucide-vue-next';
 import { api, metricsApi } from '../api/client.js';
 import StatusBadge from '../components/common/StatusBadge.vue';
