@@ -4,8 +4,8 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 ## 🌟 Ways to Contribute
 
-- 🐛 **Report bugs** via [GitHub Issues](https://github.com/YourUsername/ComposeOps/issues)
-- 💡 **Suggest features** in [GitHub Discussions](https://github.com/YourUsername/ComposeOps/discussions)
+- 🐛 **Report bugs** via [GitHub Issues](https://github.com/StanlySGY/ComposeOps/issues)
+- 💡 **Suggest features** in [GitHub Discussions](https://github.com/StanlySGY/ComposeOps/discussions)
 - 📝 **Improve documentation** (guides, examples, translations)
 - 🧪 **Add tests** to increase coverage
 - 🎨 **Enhance UI/UX** (design improvements, accessibility)
@@ -33,7 +33,7 @@ Thank you for your interest in contributing! This document provides guidelines a
 
 3. **Add upstream remote**
    ```bash
-   git remote add upstream https://github.com/YourUsername/ComposeOps.git
+   git remote add upstream https://github.com/StanlySGY/ComposeOps.git
    ```
 
 4. **Install dependencies**
@@ -439,9 +439,36 @@ Use the [Feature Request template](.github/ISSUE_TEMPLATE/feature_request.md):
 
 ## 📬 Questions & Support
 
-- **Usage questions**: [GitHub Discussions](https://github.com/YourUsername/ComposeOps/discussions)
-- **Bugs**: [GitHub Issues](https://github.com/YourUsername/ComposeOps/issues)
+- **Usage questions**: [GitHub Discussions](https://github.com/StanlySGY/ComposeOps/discussions)
+- **Bugs**: [GitHub Issues](https://github.com/StanlySGY/ComposeOps/issues)
 - **Security issues**: See [SECURITY.md](SECURITY.md)
+
+## 🚢 Release & Publishing (Maintainers)
+
+Releases are automated via GitHub Actions on version tags:
+
+1. **Tag a release** (CI must be green on `main` first):
+   ```bash
+   git tag -a v1.2.0 -m "Release v1.2.0"
+   git push origin v1.2.0
+   ```
+2. The [`release.yml`](.github/workflows/release.yml) workflow then:
+   - Builds the frontend and creates a GitHub Release with notes extracted from `CHANGELOG.md` (requires a matching `## [x.y.z]` entry);
+   - Builds multi-arch Docker images (amd64 + arm64) and pushes them to Docker Hub as `composeops/opsdash` with `latest`, major, minor, and full-version tags.
+
+**Required repository secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | Purpose |
+|--------|---------|
+| `DOCKER_USERNAME` | Docker Hub username for `composeops/opsdash` |
+| `DOCKER_PASSWORD` | Docker Hub access token (use a token, not the account password) |
+
+Without these secrets the GitHub Release still ships; only the Docker Hub push fails. To publish under your own namespace, also update the `tags:` block in `release.yml` and the image references in both READMEs / `docker-compose.yml`.
+
+**Version bump checklist** before tagging:
+- [ ] Root `package.json` version updated
+- [ ] `CHANGELOG.md` has a `## [x.y.z] - YYYY-MM-DD` entry
+- [ ] `SECURITY.md` "Supported Versions" table covers the new minor
 
 ## 📜 Code of Conduct
 

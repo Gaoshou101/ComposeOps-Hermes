@@ -6,16 +6,18 @@ We release security updates for the following versions:
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+| 1.2.x   | :white_check_mark: |
+| < 1.2   | :x:                |
 
 ## Reporting a Vulnerability
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-Instead, please report them via email to: **security@composeops.example.com** (replace with actual email)
+Instead, please use **GitHub's private vulnerability reporting**:
 
-You should receive a response within 48 hours. If for some reason you do not, please follow up via email to ensure we received your original message.
+**https://github.com/StanlySGY/ComposeOps/security/advisories/new**
+
+Private advisories keep the details confidential until a fix is released. You should receive an acknowledgement within 48 hours. If for some reason you do not, please follow up on an existing advisory or via a GitHub issue (without technical details) asking to check the advisories.
 
 ### What to Include
 
@@ -52,7 +54,10 @@ This is equivalent to root access on the host system. Therefore:
 - **Never expose ComposeOps directly to the public internet**
 - **Use only on trusted networks** (localhost, VPN, or behind authenticated reverse proxy)
 - **Single-user design**: Not suitable for multi-tenant deployments
-- **Limit network exposure**: Default `docker-compose.yml` binds to `127.0.0.1` only
+- **Limit network exposure**: The shipped `docker-compose.yml` publishes `0.0.0.0:28765`
+  (LAN-wide access with application authentication). For localhost-only access change the
+  port mapping to `127.0.0.1:28765:3001`, and use Tailscale or a TLS reverse proxy for
+  remote access — never publish the port to the public internet.
 
 ### Authentication
 
@@ -204,7 +209,7 @@ Before deploying to production:
 
 1. **Single-user only**: No multi-tenant isolation
 2. **No 2FA**: Consider proxy-level authentication
-3. **No audit export to SIEM**: Planned for v1.2
+3. **No audit export to SIEM**: Planned for a future release
 4. **No IP allowlist**: Use firewall or reverse proxy
 
 ### Mitigation Strategies
@@ -233,9 +238,8 @@ We thank the security researchers who have responsibly disclosed vulnerabilities
 ## Contact
 
 For security concerns:
-- **Email**: security@composeops.example.com
-- **PGP Key**: [Link to public key] (optional)
+- **Private security advisory**: https://github.com/StanlySGY/ComposeOps/security/advisories/new
 
 For general questions:
-- **GitHub Issues**: https://github.com/YourUsername/ComposeOps/issues
-- **Discussions**: https://github.com/YourUsername/ComposeOps/discussions
+- **GitHub Issues**: https://github.com/StanlySGY/ComposeOps/issues
+- **Discussions**: https://github.com/StanlySGY/ComposeOps/discussions

@@ -10,7 +10,7 @@
     </div>
     <p v-if="store.error" class="alert-error">{{ store.error }}</p>
     <!-- AI 巡检结论卡:最新一次巡检的一句话结论,点击进入巡检中心 -->
-    <div v-if="inspection.latest" class="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+    <div v-if="inspection?.latest" class="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
       <button class="flex min-w-0 flex-1 items-start gap-3 text-left" @click="router.push('/inspection')" title="查看完整巡检报告">
         <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl border font-mono text-lg font-semibold" :class="inspectionTileClass">{{ inspection.latest.score }}</span>
         <span class="min-w-0 flex-1">

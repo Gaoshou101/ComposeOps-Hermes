@@ -1,6 +1,6 @@
 # 📌 ComposeOps - PROJECT_CONTEXT.md
-> **上次更新时间**:2026-09-15 (Asia/Shanghai)
-> **当前版本/阶段**:v1.2 - 国内网络构建修复 + 富内容渲染重写 + Agent 执行动态卡片化(暗色主题富渲染 / docker:cli 内置镜像 / 抽屉补齐工作台能力)已交付
+> **上次更新时间**:2026-09-18 (Asia/Shanghai)
+> **当前版本/阶段**:v1.2.0(首个正式 tag,与 CHANGELOG [1.2.0] 对齐)
 
 ## 1. 核心概述 (Executive Summary)
 - **项目目标**:单用户 Docker Compose 运维控制台(工作区名 `ComposeOps`,镜像/容器沿用旧名 `OpsDash`)。通过 Docker Socket 自动发现带 `com.docker.compose.project` 标签的 Compose 项目,以"先发现、后显式纳管"的权限模型提供服务启停、Compose 配置编辑、环境变量文件族管理、实时日志、容器终端、数据卷备份、GitOps 同步、应用市场、定时任务、多 Docker 节点纳管、资源监控与 AI 运维 Agent 能力。

@@ -8,18 +8,29 @@
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED.svg?logo=docker)](https://docs.docker.com/compose/)
 [![CI](https://github.com/StanlySGY/ComposeOps/actions/workflows/ci.yml/badge.svg)](https://github.com/StanlySGY/ComposeOps/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/StanlySGY/ComposeOps?include_prereleases)](https://github.com/StanlySGY/ComposeOps/releases)
 
 自动发现 Compose 项目，集成服务控制、配置编辑、实时日志、数据卷备份、GitOps、AI 运维 Agent 与资源监控于单一 Web 界面
 
 [功能特性](#功能特性) • [快速开始](#快速开始) • [AI 运维 Agent](#-ai-运维-agent) • [安全模型](#安全模型) • [English](README.en.md)
 
+<img src="docs/screenshots/dashboard.png" alt="ComposeOps 总览：AI 运维决策中心" width="900">
+<br>
+<img src="docs/screenshots/services.png" alt="服务总览：自动发现与纳管" width="49.4%" alt1="服务">
+<img src="docs/screenshots/monitor.png" alt="实时监控：容器资源与告警阈值" width="49.4%">
+<br>
+<img src="docs/screenshots/agent.png" alt="AI 运维 Agent：Tool Loop + 确认门" width="98.8%">
 </div>
+
+> **这是什么**：给自己服务器用的单用户运维面板。Docker Socket 等价 root，界面为中文（英文界面在规划中）。
+> **这不是什么**：不支持多租户与团队协作（多人请用 Portainer）；不是 PaaS，不接管构建发布流程（那请看 Coolify / Komodo）。
+> **定位**：在这类工具里，ComposeOps 的差异点是 **AI 运维 Agent**——不止能看，还能在你确认后替你动手排障。
 
 ---
 
 ## ✨ 功能特性
 
-### 🚀 核心能力
+### 🚀 核心能力（日常运维主链路）
 
 <table>
 <tr>
@@ -97,8 +108,19 @@
 - 🛒 **应用市场**：内置常用应用蓝图 + 自定义模板 + **AI 找应用**（联网检索生成可一键部署的模板草稿）
 - 🔄 **GitOps**：Compose 配置 Git 仓库自动同步（轮询 + Webhook 触发），历史可回滚
 - 🗑️ Docker 清理预览（未使用镜像/缓存/卷）
-- 💰 资源用量与成本分析
 - 📋 操作历史与审计日志
+
+### 🧩 进阶模块（按需使用，可完全忽略）
+
+以下模块面向"想把运维经验沉淀下来"的重度用户，不用它们不影响核心链路：
+
+- 🛡️ **AI 巡检**：定时对纳管项目做健康巡检，输出诊断报告
+- 📝 **变更评审 / 自动回滚**：Compose 变更先评审再生效，异常自动回退
+- 🗃️ **资产中心（CMDB）**：Host / 项目 / 容器 / 卷 / 网络统一资产模型 + 依赖关系
+- 🕸️ **知识图谱 / 拓扑**：实时数据与 CMDB 两种数据源，可视化项目依赖
+- 🔁 **工作流引擎**：trigger / condition / agent / approval / action / verify 节点编排，Agent 可作为工作流节点
+- 🎯 **事件中心**：告警 / 巡检 / 部署 / 回滚 / Agent / GitOps 统一事件流与状态流转
+- 💰 **成本分析**：基于资源用量的估算（个人服务器场景偏参考性质）
 
 ---
 
@@ -110,6 +132,19 @@
 - Docker Compose v2
 
 ### 一键部署
+
+**方式 A：拉取镜像（推荐）**
+
+```bash
+mkdir composeops && cd composeops
+# 下载官方 compose.yaml 后 docker compose up -d
+curl -fsSL https://raw.githubusercontent.com/StanlySGY/ComposeOps/main/docker-compose.yml -o docker-compose.yml
+docker compose pull && docker compose up -d
+```
+
+> 镜像发布在 Docker Hub `composeops/opsdash`（tag：`latest` / 主版本 / 完整版本号）。若你的网络访问 Docker Hub 困难，用方式 B 本地构建（已内置国内镜像源加速）。
+
+**方式 B：源码构建**
 
 ```bash
 git clone https://github.com/StanlySGY/ComposeOps.git

@@ -7,16 +7,25 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED.svg?logo=docker)](https://docs.docker.com/compose/)
+[![CI](https://github.com/StanlySGY/ComposeOps/actions/workflows/ci.yml/badge.svg)](https://github.com/StanlySGY/ComposeOps/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/StanlySGY/ComposeOps?include_prereleases)](https://github.com/StanlySGY/ComposeOps/releases)
 
 Auto-discover Compose projects, manage services, edit configs, stream logs, diagnose with AI, and monitor resources — all in a single web interface
 
 [Features](#-features) • [Quick Start](#-quick-start) • [Security Model](#-security-model) • [Contributing](CONTRIBUTING.md) • [中文文档](README.md)
 
+<img src="docs/screenshots/dashboard.png" alt="ComposeOps dashboard — AI ops decision center" width="900">
 </div>
+
+> **What it is**: a single-user ops dashboard for your own server. Docker socket access equals root; UI is currently Chinese-only (English UI is planned).
+> **What it is not**: no multi-tenant or team support (use Portainer for that); not a PaaS — it does not take over your build/release pipeline (see Coolify or Komodo).
+> **Where it stands**: among compose-panel tools, ComposeOps' differentiator is the **AI Ops Agent** — it doesn't just show state, it can investigate and act on your approval.
 
 ---
 
 ## ✨ Features
+
+### 🚀 Core Workflow (day-to-day operations)
 
 <table>
 <tr>
@@ -92,6 +101,18 @@ Single chat entry (the standalone AI diagnosis page has been merged in), powered
 - **Marketplace**: built-in blueprints + custom templates + AI-assisted app discovery
 - **Scheduled jobs**: DB dumps, safe/deep Docker cleanup, image update checks, scheduled pulls, volume backups
 
+### 🧩 Advanced Modules (optional, safe to ignore)
+
+These modules target power users who want to codify their ops experience. The core workflow above works without them:
+
+- 🛡️ **AI Inspection**: scheduled health checks across managed projects with diagnostic reports
+- 📝 **Change Review / Auto-Rollback**: review Compose changes before they take effect; automatic rollback on anomalies
+- 🗃️ **Asset Center (CMDB)**: unified host/project/container/volume/network asset model with dependency relations
+- 🕸️ **Knowledge Graph / Topology**: realtime or CMDB-backed visualization of project dependencies
+- 🔁 **Workflow Engine**: trigger / condition / agent / approval / action / verify node orchestration; the Agent can act as a workflow node
+- 🎯 **Event Center**: alerts, inspections, deployments, rollbacks, Agent and GitOps unified into one event stream
+- 💰 **Cost Analysis**: resource-based estimation (informative for personal servers)
+
 ---
 
 ## 🚀 Quick Start
@@ -104,8 +125,20 @@ Single chat entry (the standalone AI diagnosis page has been merged in), powered
 
 ### Installation
 
+**Option A: Pull the image (recommended)**
+
 ```bash
-git clone https://github.com/YourUsername/ComposeOps.git
+mkdir composeops && cd composeops
+curl -fsSL https://raw.githubusercontent.com/StanlySGY/ComposeOps/main/docker-compose.yml -o docker-compose.yml
+docker compose pull && docker compose up -d
+```
+
+> Images are published on Docker Hub as `composeops/opsdash` (tags: `latest`, major, full version). Behind a proxy or prefer building yourself? Use Option B — the Dockerfile ships with mirror defaults so `docker compose up -d --build` works out of the box.
+
+**Option B: Build from source**
+
+```bash
+git clone https://github.com/StanlySGY/ComposeOps.git
 cd ComposeOps
 docker compose up -d --build
 ```
@@ -168,8 +201,7 @@ TRUST_PROXY=1
 - ✅ Session hijacking (HttpOnly + SameSite cookies)
 
 **Design boundaries (out of scope):**
-- ❌ Multi-user RBAC (planned for v1.2)
-- ❌ Audit logging (planned for v1.2)
+- ❌ Multi-user RBAC (single admin by design)
 - ❌ Protection against compromised Docker daemon
 - ❌ Network segmentation between containers
 
@@ -270,16 +302,17 @@ cd frontend && npm run build  # Vite build includes type checking
 
 ## 💾 Data Storage
 
-All persistent data is stored in SQLite databases under `./data/`:
+All persistent data lives in a single SQLite database with file permission 0600:
 
 ```
-data/
-├── composeops.db         # Main database (users, sessions, projects)
-├── ai_sessions.db        # AI chat history and diagnostics
-└── backups/              # Compose config backups (last 20 per project)
+backend/data/
+├── opsdash.db            # Main database (auth, sessions, AI config & history, audit, backups)
+└── volume-backups/       # Volume backup archives (overridable via backup.volume_dir)
 ```
 
-**Backup recommendation**: Regularly backup the `./data/` directory to prevent data loss.
+Compose config backups (last 20 per project) are stored in the database and restorable from the UI.
+
+**Backup recommendation**: regularly back up `backend/data/` (or the `opsdash-data` Docker volume in production) to prevent data loss.
 
 ---
 

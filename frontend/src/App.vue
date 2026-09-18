@@ -86,6 +86,7 @@ function onOperationStarted(event) { const detail = event?.detail || {}; toast.s
 const ACTION_LABELS = { up: '启动', stop: '停止', restart: '重启', pull: '拉取' };
 function reloadApp() { window.location.reload(); }
 onErrorCaptured((error) => {
+  console.error('[ComposeOps] captured component error:', error?.stack || error?.message || error);
   runtimeError.value = `页面组件异常:${error?.message || error}`;
   return false; // 不阻止向上传播,但避免整页白屏
 });

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0] - 2026-09-18
 
 ### Added
 - **统一资产模型 (CMDB)**: Host/Project/Container/Volume/Network 收敛为统一 `assets` 实体
@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 侧边栏新增「资产中心」「事件中心」「工作流」入口
 
 ### Fixed
+- **首次运行(空巡检数据)时服务总览页崩溃**: `ServicesView` 模板在 `inspection` 为 null 时直接读取 `.latest`,触发全局错误横幅;现改为可选链守卫,并在错误边界输出堆栈便于排查
 - Agent streaming corruption from per-chunk text sanitization (protocol stripping now stateful at the emission layer with prefix hold-back)
 - Missing `stripAgentProtocol` import crashing the page-agent drawer on first token
 - Flaky backend tests caused by concurrent SQLite access (tests now serialized)
@@ -143,5 +144,6 @@ See [README.en.md](./README.en.md) for installation and [CONTRIBUTING.md](./CONT
 
 ---
 
-[Unreleased]: https://github.com/YourUsername/ComposeOps/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/YourUsername/ComposeOps/releases/tag/v1.0.0
+[Unreleased]: https://github.com/StanlySGY/ComposeOps/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/StanlySGY/ComposeOps/releases/tag/v1.2.0
+[1.0.0]: https://github.com/StanlySGY/ComposeOps/releases/tag/v1.0.0
