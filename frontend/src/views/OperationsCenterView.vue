@@ -95,15 +95,10 @@
     <section class="section-panel">
       <div class="mb-4 flex items-center justify-between">
         <div class="flex items-center gap-2"><h2 class="section-title">AI 主动巡检</h2><Bot class="h-4 w-4 text-emerald-400" /></div>
-        <div class="flex items-center gap-3">
-          <label class="toggle-label"><input v-model="inspectionEnabled" type="checkbox" @change="saveInspectionSchedule" />自动巡检</label>
-          <select v-model="inspectionInterval" class="input sm:w-40" aria-label="巡检间隔" @change="saveInspectionSchedule">
-            <option :value="6">每 6 小时</option>
-            <option :value="12">每 12 小时</option>
-            <option :value="24">每天</option>
-            <option :value="168">每周</option>
-          </select>
-          <button class="btn-secondary" :disabled="runningInspection" @click="runInspectionNow"><Sparkles class="w-4 h-4" :class="{ 'animate-spin': runningInspection }" />立即巡检</button>
+        <!-- 巡检开关/间隔的唯一入口在 AI 巡检页,这里只展示当前状态,避免两处控件互相打架 -->
+        <div class="text-xs text-surface-400">
+          自动巡检{{ inspectionEnabled ? `已开启 · ${inspectionScheduleLabel}` : '已关闭' }},在
+          <router-link to="/inspection" class="text-accent hover:underline">AI 巡检页</router-link>调整
         </div>
       </div>
       <div v-if="latestInspection" class="rounded-xl border border-surface-800 bg-surface-950/40 p-4">
@@ -117,7 +112,7 @@
           <router-link to="/inspection" class="btn-secondary !px-2.5 !py-1.5 text-xs">查看报告</router-link>
         </div>
       </div>
-      <div v-else class="rounded-xl border border-surface-800 bg-surface-950/40 p-4 text-sm text-surface-400">暂无巡检报告。点击「立即巡检」生成第一份报告。</div>
+      <div v-else class="rounded-xl border border-surface-800 bg-surface-950/40 p-4 text-sm text-surface-400">暂无巡检报告。前往 <router-link to="/inspection" class="text-accent hover:underline">AI 巡检页</router-link> 生成第一份报告。</div>
     </section>
   </div>
 </template>
@@ -132,7 +127,6 @@ const store = useServicesStore();
 const loading = ref(false);
 const generating = ref(false);
 const creating = ref(false);
-const runningInspection = ref(false);
 const error = ref('');
 const targetProjectId = ref('');
 const scheduleCron = ref('0 3 * * *');
@@ -166,6 +160,10 @@ const inspectionTileClass = computed(() => {
   if (score >= 70) return 'border-amber-500/40 bg-amber-500/10 text-amber-300';
   return 'border-rose-500/40 bg-rose-500/10 text-rose-300';
 });
+
+const inspectionScheduleLabel = computed(() => (
+  { 6: '每 6 小时', 12: '每 12 小时', 24: '每天', 168: '每周' }[inspectionInterval.value] || `每 ${inspectionInterval.value} 小时`
+));
 
 function generateFlow() {
   if (!targetProject.value) return;
@@ -209,29 +207,6 @@ async function createFlowJobs() {
   }
 }
 
-async function saveInspectionSchedule() {
-  try {
-    await api.saveInspectionSchedule({ enabled: inspectionEnabled.value, intervalHours: inspectionInterval.value });
-  } catch {}
-}
-async function runInspectionNow() {
-  if (runningInspection.value) return;
-  runningInspection.value = true;
-  try {
-    await api.runInspection();
-    await loadInspection();
-  } catch (e) {
-    error.value = `巡检失败: ${e.message}`;
-  } finally {
-    runningInspection.value = false;
-  }
-}
-async function loadInspection() {
-  try {
-    const data = await api.getInspectionOverview(1);
-    latestInspection.value = data.latest || null;
-  } catch {}
-}
 async function load() {
   if (loading.value) return;
   loading.value = true;

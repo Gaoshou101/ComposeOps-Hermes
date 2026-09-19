@@ -2,14 +2,34 @@
  * 成本分析服务
  * 提供容器资源使用、存储占用、镜像大小分析
  */
-import { getActivityDocker } from './docker-hosts.js';
+import { getActivityDocker, getActiveHostId } from './docker-hosts.js';
 import { scanProjects } from './scanner.js';
 import { getSetting, setSetting } from '../lib/db.js';
+
+// 成本扫描要逐容器拉 stats、跑 docker df,较慢;结果做 2 分钟 TTL 内存缓存(按活跃宿主分键),
+// 成本页重复进入与后台预热不再反复全量扫描
+const COST_CACHE_TTL_MS = 2 * 60 * 1000;
+const costCache = new Map();
+async function withCostCache(key, fetcher) {
+  const cacheKey = `${getActiveHostId()}:${key}`;
+  const hit = costCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < COST_CACHE_TTL_MS) return hit.value;
+  const value = await fetcher();
+  costCache.set(cacheKey, { at: Date.now(), value });
+  if (costCache.size > 32) {
+    const cutoff = Date.now() - COST_CACHE_TTL_MS;
+    for (const [k, v] of costCache) if (v.at < cutoff) costCache.delete(k);
+  }
+  return value;
+}
 
 /**
  * 获取容器资源使用统计
  */
-export async function getContainerResourceStats() {
+export function getContainerResourceStats() {
+  return withCostCache('containers', fetchContainerResourceStats);
+}
+async function fetchContainerResourceStats() {
   const docker = getActivityDocker();
   const containers = await docker.listContainers({ all: true });
   
@@ -64,7 +84,10 @@ export async function getContainerResourceStats() {
 /**
  * 获取镜像大小统计
  */
-export async function getImageSizeStats() {
+export function getImageSizeStats() {
+  return withCostCache('images', fetchImageSizeStats);
+}
+async function fetchImageSizeStats() {
   const docker = getActivityDocker();
   const images = await docker.listImages();
   
@@ -84,7 +107,10 @@ export async function getImageSizeStats() {
 /**
  * 获取存储使用统计
  */
-export async function getStorageStats() {
+export function getStorageStats() {
+  return withCostCache('storage', fetchStorageStats);
+}
+async function fetchStorageStats() {
   const docker = getActivityDocker();
   
   try {
@@ -126,7 +152,10 @@ export async function getStorageStats() {
 /**
  * 获取项目成本汇总
  */
-export async function getProjectCostSummary() {
+export function getProjectCostSummary() {
+  return withCostCache('projects', fetchProjectCostSummary);
+}
+async function fetchProjectCostSummary() {
   const projects = (await scanProjects()).filter((project) => project.managed);
   const containerStats = await getContainerResourceStats();
   
@@ -204,7 +233,10 @@ export async function recordCostSnapshot() {
 /**
  * 获取完整成本分析报告
  */
-export async function getCostAnalysisReport() {
+export function getCostAnalysisReport() {
+  return withCostCache('report', fetchCostAnalysisReport);
+}
+async function fetchCostAnalysisReport() {
   const [containers, images, storage, projects, trends] = await Promise.all([
     getContainerResourceStats(),
     getImageSizeStats(),

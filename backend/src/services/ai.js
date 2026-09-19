@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { getSetting, setSetting, addAiMessage, getAiHistory, clearAiHistory } from '../lib/db.js';
 import { scanIcallProtocols, stripAgentInternalText } from '../lib/agent-protocol-core.js';
 
-const DEFAULT_SYSTEM_PROMPT = `你是 OpsDash 的运维助手，擅长 Docker Compose 与容器排错。
+const DEFAULT_SYSTEM_PROMPT = `你是 ComposeOps 的运维助手，擅长 Docker Compose 与容器排错。
 - 当用户请求"排错"时，先给出问题根因的简短判断，再给出可执行的修复步骤。
 - 当用户请求生成/补全 docker-compose.yml 时，只输出一段合法的 YAML 代码块（用 \`\`\`yaml 包裹），不要额外解释。
 - 回答用中文，简洁专业，并始终使用标准 Markdown 排版：标题、段落、项目列表、编号列表、表格和代码分别换行；不要把多个项目或字段挤在同一行。

@@ -7,9 +7,20 @@ import { initializeBackgroundJobs } from './services/background-jobs.js';
 import { initGitOps } from './services/gitops.js';
 import { startMetricsCollection } from './services/metrics-collector.js';
 import { startDataMaintenance } from './services/maintenance.js';
+import { getCostAnalysisReport } from './services/cost-analysis.js';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST || '0.0.0.0';
+
+// 成本页首访要逐容器拉 stats、跑 docker df,较慢;后台按缓存 TTL 预热,
+// 用户打开成本页时直接命中缓存(缓存见 cost-analysis.js 的 withCostCache)
+const COST_WARMUP_MS = 2 * 60 * 1000;
+function startCostWarmup() {
+  const run = () => getCostAnalysisReport().catch(() => {});
+  run();
+  const timer = setInterval(run, COST_WARMUP_MS);
+  timer.unref?.();
+}
 
 const fastify = await buildApp();
 
@@ -25,6 +36,7 @@ const start = async () => {
     initGitOps();
     startMetricsCollection(2); // 每 2 秒采集一次容器指标（Netdata 风格高频更新）
     startDataMaintenance(); // 周期清理 ai_history / operation_history / agent_plans / compose_backups
+    startCostWarmup();
     fastify.log.info(`OpsDash backend listening on http://${HOST}:${PORT}`);
   } catch (err) {
     fastify.log.error(err);
