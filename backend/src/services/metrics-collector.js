@@ -178,9 +178,11 @@ export function startMetricsCollection(intervalSeconds = 30) {
   
   // 每小时清理一次过期数据;AI 会话/Agent 审计按天粒度顺带清理(每天最多跑一次)
   const pruneIntervalId = setInterval(() => {
-    pruneMetrics().catch(error => {
+    try {
+      pruneMetrics();
+    } catch (error) {
       console.error('清理过期指标失败:', error.message);
-    });
+    }
     pruneAiDataOnceDaily();
   }, 60 * 60 * 1000);
   
