@@ -278,7 +278,10 @@ async function performBatchRemove() {
   busy.value = false;
   batchProgress.value = { total: 0, done: 0, current: '' };
   selected.value = [];
-  
+
+  // 先刷新再写汇总:refresh 会清空 flash/error,顺序反了汇总会被立即吃掉
+  await refresh();
+
   if (errors.length > 0) {
     error.value = `成功 ${successCount} 项,失败 ${errors.length} 项:\n${errors.join('\n')}`;
     flash.value = '';
@@ -286,8 +289,6 @@ async function performBatchRemove() {
     flash.value = `已成功删除 ${successCount} 项`;
     error.value = '';
   }
-  
-  await refresh();
 }
 
 async function refresh() {
