@@ -35,9 +35,14 @@
     </aside>
   </div>
 
-  <div v-if="selectedOperation" class="modal-backdrop z-[55]" @click.self="selectedOperation = null">
-    <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-2xl"><div class="modal-header"><span>{{ actionLabel(selectedOperation.action) }} · {{ formatTime(selectedOperation.createdAt) }}</span><button class="icon-btn" @click="selectedOperation = null"><X class="h-4 w-4" /></button></div><pre class="terminal-output max-h-[65vh] min-h-48">{{ selectedOperation.detail || '该操作没有附加输出。' }}</pre></div>
-  </div>
+  <BaseModal
+    :show="!!selectedOperation"
+    :title="selectedOperation ? `${actionLabel(selectedOperation.action)} · ${formatTime(selectedOperation.createdAt)}` : ''"
+    body-class="p-0"
+    @close="selectedOperation = null"
+  >
+    <pre class="terminal-output max-h-[65vh] min-h-48">{{ selectedOperation?.detail || '该操作没有附加输出。' }}</pre>
+  </BaseModal>
   <ConfirmDialog :show="!!restoreTarget" title="恢复配置版本" :message="`恢复 ${restoreTarget ? formatTime(restoreTarget.createdAt) : ''} 的配置版本?当前配置会先自动备份。`" tone="warning" confirm-text="确认恢复" @confirm="confirmRestore" @cancel="restoreTarget = null" />
 </template>
 
@@ -48,6 +53,7 @@ import { Activity, ChevronRight, Eye, FileClock, FileCode2, History, RefreshCw, 
 import { api } from '../api/client.js';
 import EmptyState from './common/EmptyState.vue';
 import ConfirmDialog from './common/ConfirmDialog.vue';
+import BaseModal from './common/BaseModal.vue';
 
 const props = defineProps({ project: Object });
 const emit = defineEmits(['close', 'restored']);
@@ -55,7 +61,6 @@ const tab = ref('activity'); const loading = ref(false); const restoring = ref(f
 const restoreTarget = ref(null);
 
 useEscapeKey({ active: computed(() => !!props.project), onClose: () => emit('close'), layer: 'drawer', lockBody: true });
-useEscapeKey({ active: computed(() => !!selectedOperation.value), onClose: () => { selectedOperation.value = null; }, layer: 'modal' });
 
 async function load() {
   if (!props.project) return;

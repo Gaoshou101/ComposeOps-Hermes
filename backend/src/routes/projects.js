@@ -186,10 +186,10 @@ export default async function projectRoutes(fastify) {
     if (!project) return;
     const { favorite, note } = request.body || {};
     if (favorite !== undefined && typeof favorite !== 'boolean') {
-      return reply.code(400).send({ error: 'invalid_favorite' });
+      return reply.code(400).send({ error: 'invalid_favorite', message: '无效的收藏值' });
     }
     if (note !== undefined && typeof note !== 'string') {
-      return reply.code(400).send({ error: 'invalid_note' });
+      return reply.code(400).send({ error: 'invalid_note', message: '备注内容无效' });
     }
     return setProjectPreference(project.id, { favorite, note });
   });
@@ -293,7 +293,7 @@ export default async function projectRoutes(fastify) {
     if (!project) return;
     if (!requireManaged(project, reply)) return;
     const backup = getComposeBackup(project.id, Number(request.params.backupId));
-    if (!backup) return reply.code(404).send({ error: 'backup_not_found' });
+    if (!backup) return reply.code(404).send({ error: 'backup_not_found', message: '备份不存在或已被清理' });
     return backup;
   });
 
@@ -302,9 +302,9 @@ export default async function projectRoutes(fastify) {
     if (!project) return;
     if (!requireEditable(project, reply)) return;
     const backup = getComposeBackup(project.id, Number(request.params.backupId));
-    if (!backup) return reply.code(404).send({ error: 'backup_not_found' });
+    if (!backup) return reply.code(404).send({ error: 'backup_not_found', message: '备份不存在或已被清理' });
     const fileIndex = project.composeFiles.indexOf(backup.filePath);
-    if (fileIndex < 0) return reply.code(409).send({ error: 'backup_file_changed' });
+    if (fileIndex < 0) return reply.code(409).send({ error: 'backup_file_changed', message: '备份文件已变化,请刷新后重试' });
     try {
       if (project.mounted) await saveCompose(project, fileIndex, backup.content, 'restore');
       else await saveWorkspaceCompose(project, fileIndex, backup.content, 'restore');

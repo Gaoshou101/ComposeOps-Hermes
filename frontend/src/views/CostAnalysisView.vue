@@ -1,9 +1,12 @@
 <template>
   <div class="cost-analysis-view">
     <header class="page-header">
-      <h1>成本分析</h1>
-      <div class="actions">
-        <button @click="refreshData" :disabled="loading" class="btn-refresh">
+      <div>
+        <h1>成本分析</h1>
+        <p class="page-subtitle">项目/镜像/存储维度的资源与成本画像</p>
+      </div>
+      <div class="page-actions page-actions-cost">
+        <button @click="refreshData" :disabled="loading" class="btn-secondary btn-refresh">
           <span class="icon">↻</span>
           刷新
         </button>
@@ -21,7 +24,7 @@
 
     <div v-else-if="error" class="error-state">
       <p>{{ error }}</p>
-      <button @click="refreshData" class="btn-retry">重试</button>
+      <button @click="refreshData" class="btn-secondary btn-retry">重试</button>
     </div>
 
     <div v-else-if="report" class="content">
@@ -87,30 +90,30 @@
                 :y1="chartPadding + ((chartHeight - chartPadding * 2) / 4) * (i - 1)"
                 :x2="chartWidth - chartPadding"
                 :y2="chartPadding + ((chartHeight - chartPadding * 2) / 4) * (i - 1)"
-                stroke="var(--surface-3)"
+                stroke="var(--track-line-2)"
                 stroke-width="1"
               />
             </g>
             <polyline
               :points="memoryTrendPoints"
               fill="none"
-              stroke="var(--accent)"
+              stroke="var(--cost-accent)"
               stroke-width="2"
             />
             <polyline
               :points="cpuTrendPoints"
               fill="none"
-              stroke="var(--accent-muted)"
+              stroke="var(--cost-accent-2)"
               stroke-width="2"
             />
           </svg>
           <div class="legend">
             <div class="legend-item">
-              <span class="line" style="background: var(--accent)"></span>
+              <span class="line" style="background: var(--cost-accent)"></span>
               内存使用
             </div>
             <div class="legend-item">
-              <span class="line" style="background: var(--accent-muted)"></span>
+              <span class="line" style="background: var(--cost-accent-2)"></span>
               CPU 使用
             </div>
           </div>
@@ -335,103 +338,37 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 页面级配色/按钮/页眉改用全站 token(surface / accent / btn / page-header / card / data-table),
+   scoped 内只保留本页布局与局部语义类的微调。 */
 .cost-analysis-view {
-  --surface-0: #05070c;
-  --surface-1: #0a0d12;
-  --surface-2: #0f131c;
-  --surface-3: #161d2b;
-  --surface-4: #1e2636;
-  --accent: #38bdf8;
-  --accent-muted: #6ee7b7;
-  --text-primary: #e5e7eb;
-  --text-secondary: #9ca3af;
-  --border: #1e2636;
-
-  min-height: 100vh;
-  background: var(--surface-0);
-  color: var(--text-primary);
-  padding: clamp(1rem, 3vw, 2rem);
+  /* 图表用色:主折线 = 全站 accent,次折线 = emerald(与全站状态色系一致) */
+  --cost-accent: #2563eb; /* = accent DEFAULT */
+  --cost-accent-2: #34d399; /* = emerald-400 */
 }
 
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: clamp(1.5rem, 4vw, 3rem);
-}
+.page-actions-cost { @apply flex items-center gap-3; }
 
-.page-header h1 {
-  font-size: clamp(1.3rem, 2.2vw, 1.5rem);
-  font-weight: 600;
-  letter-spacing: 0;
-  margin: 0;
-}
-
-.actions {
-  display: flex;
-  gap: 0.75rem;
-}
-
-button {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text-primary);
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-button:hover:not(:disabled) {
-  background: var(--surface-3);
-  border-color: var(--accent);
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: var(--surface-0);
-  border-color: var(--accent);
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 80%, white);
-}
+/* 统计卡片:在全站 .panel-card 基础上微调内边距 */
+.stat-card { @apply panel-card !p-5; }
+.stat-card.highlight { @apply border-accent/60 bg-accent/5; }
+.stat-card .label { @apply mb-2 text-[13px] text-surface-400; }
+.stat-card .value { @apply text-3xl font-semibold tracking-tight text-surface-50; }
+.stat-card .sub { @apply mt-1 text-xs text-surface-500; }
 
 .loading-state,
-.error-state {
-  display: grid;
-  place-items: center;
-  min-height: 60vh;
-  text-align: center;
-}
+.error-state { @apply grid min-h-[60vh] place-items-center text-center text-surface-400; }
 
 .spinner {
   width: 3rem;
   height: 3rem;
-  border: 3px solid var(--surface-3);
-  border-top-color: var(--accent);
+  border: 3px solid theme('colors.surface.800');
+  border-top-color: theme('colors.accent.DEFAULT');
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.content {
-  display: grid;
-  gap: clamp(1.5rem, 3vw, 2.5rem);
-}
+.content { display: grid; gap: clamp(1.5rem, 3vw, 2.5rem); }
 
 .summary-grid {
   display: grid;
@@ -439,188 +376,42 @@ button:disabled {
   gap: 1rem;
 }
 
-.stat-card {
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  padding: 1.25rem;
-}
-
-.stat-card.highlight {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 5%, var(--surface-1));
-}
-
-.stat-card .label {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.5rem;
-}
-
-.stat-card .value {
-  font-size: 1.75rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: -0.02em;
-}
-
-.stat-card .sub {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  margin-top: 0.25rem;
-}
-
+/* 区块容器:全站 section-panel 微调 */
 .suggestions-section,
 .trends-section,
 .projects-section,
 .images-section,
-.storage-section {
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  padding: clamp(1.25rem, 3vw, 2rem);
-}
+.storage-section { @apply section-panel !p-5 sm:!p-6; }
 
-section h2 {
-  font-size: clamp(1.125rem, 2.5vw, 1.5rem);
-  font-weight: 600;
-  margin: 0 0 1.5rem 0;
-  letter-spacing: -0.01em;
-}
+section h2 { @apply section-title mb-5 !text-lg; }
 
-.suggestion-list {
-  display: grid;
-  gap: 1rem;
-}
+.suggestion-list { display: grid; gap: 1rem; }
 
-.suggestion-item {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  padding: 1rem;
-}
+.suggestion-item { @apply rounded-xl border border-surface-800 bg-surface-950/40 p-4; }
+.suggestion-item.severity-high { border-left: 3px solid theme('colors.rose.500'); }
+.suggestion-item.severity-medium { border-left: 3px solid theme('colors.amber.500'); }
+.suggestion-item.severity-low { border-left: 3px solid theme('colors.emerald.500'); }
 
-.suggestion-item.severity-high {
-  border-left: 3px solid #ef4444;
-}
+.sug-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
 
-.suggestion-item.severity-medium {
-  border-left: 3px solid #f59e0b;
-}
+.severity-badge { @apply inline-block rounded-full bg-surface-800 px-2.5 py-1 text-xs font-semibold text-surface-400; }
 
-.suggestion-item.severity-low {
-  border-left: 3px solid #10b981;
-}
+.suggestion-item h3 { @apply m-0 text-[15px] font-medium text-surface-100; }
+.suggestion-item .description { @apply my-2 text-sm text-surface-400; }
+.suggestion-item .action { @apply m-0 text-sm text-surface-200; }
 
-.sug-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
+.trend-chart { margin-top: 1rem; }
+.chart-svg { width: 100%; height: auto; max-width: 100%; }
 
-.severity-badge {
-  display: inline-block;
-  padding: 0.25rem 0.625rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  background: var(--surface-3);
-  color: var(--text-secondary);
-}
+.legend { display: flex; justify-content: center; gap: 2rem; margin-top: 1rem; }
+.legend-item { @apply flex items-center gap-2 text-sm text-surface-400; }
+.legend-item .line { width: 1.5rem; height: 2px; border-radius: 2px; }
 
-.suggestion-item h3 {
-  font-size: 0.9375rem;
-  font-weight: 500;
-  margin: 0;
-}
-
-.suggestion-item .description {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin: 0.5rem 0;
-}
-
-.suggestion-item .action {
-  font-size: 0.875rem;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.trend-chart {
-  margin-top: 1rem;
-}
-
-.chart-svg {
-  width: 100%;
-  height: auto;
-  max-width: 100%;
-}
-
-.legend {
-  display: flex;
-  justify-content: center;
-  gap: 2rem;
-  margin-top: 1rem;
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-}
-
-.legend-item .line {
-  width: 1.5rem;
-  height: 2px;
-  border-radius: 2px;
-}
-
-.table-container {
-  overflow-x: auto;
-  margin-top: 1rem;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-
-thead {
-  background: var(--surface-2);
-}
-
-th {
-  padding: 0.75rem 1rem;
-  text-align: left;
-  font-weight: 500;
-  color: var(--text-secondary);
-  border-bottom: 1px solid var(--border);
-}
-
-td {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--surface-2);
-}
-
-tbody tr:hover {
-  background: var(--surface-2);
-}
-
-.project-name,
-.image-tag {
-  font-weight: 500;
-  color: var(--accent);
-}
-
-.image-id {
-  font-family: 'Monaco', 'Consolas', monospace;
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-}
+/* 表格:直接复用全站 data-table 体系 */
+.table-container { @apply table-wrap mt-4; }
+table { @apply data-table; }
+.project-name, .image-tag { @apply font-medium text-accent; }
+.image-id { @apply font-mono text-[13px] text-surface-500; }
 
 .storage-grid {
   display: grid;
@@ -628,34 +419,10 @@ tbody tr:hover {
   gap: 1rem;
   margin-top: 1rem;
 }
+.storage-card { @apply rounded-xl border border-surface-800 bg-surface-950/40 p-4; }
+.storage-card h3 { @apply mb-4 text-[15px] font-medium text-surface-100; }
 
-.storage-card {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  padding: 1rem;
-}
-
-.storage-card h3 {
-  font-size: 0.9375rem;
-  font-weight: 500;
-  margin: 0 0 1rem 0;
-}
-
-.stat-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.5rem 0;
-  font-size: 0.875rem;
-  border-bottom: 1px solid var(--surface-3);
-}
-
-.stat-row:last-child {
-  border-bottom: none;
-}
-
-.stat-row.highlight {
-  color: var(--accent);
-  font-weight: 500;
-}
+.stat-row { @apply flex justify-between border-b border-surface-800 py-2 text-sm text-surface-300; }
+.stat-row:last-child { border-bottom: none; }
+.stat-row.highlight { @apply font-medium text-accent; }
 </style>

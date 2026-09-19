@@ -1,7 +1,7 @@
 <template>
-  <div class="h-full flex flex-col bg-[#05070C]">
+  <div class="h-full flex flex-col bg-surface-950">
     <!-- GITOPS_HEADER_MARKER -->
-    <header class="flex-none border-b border-[#1E2636] bg-[#0A0D12] px-6 py-4">
+    <header class="flex-none border-b border-surface-800 bg-surface-900 px-6 py-4">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 class="text-xl font-semibold text-slate-100">GitOps 集成</h1>
@@ -9,7 +9,7 @@
         </div>
         <button
           @click="openAddModal"
-          class="flex h-10 items-center gap-2 rounded-full bg-[#38BDF8] px-5 text-sm font-medium text-slate-950 transition hover:bg-[#38BDF8]/90"
+          class="flex h-10 items-center gap-2 rounded-full bg-sky-400 px-5 text-sm font-medium text-slate-950 transition hover:bg-sky-400/90"
         >
           <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -20,7 +20,7 @@
     </header>
 
     <!-- Drift 状态条 -->
-    <div v-if="drift && drift.repos?.length" class="flex flex-col gap-3 border-b border-[#1E2636] bg-[#0A0D12] px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <div v-if="drift && drift.repos?.length" class="flex flex-col gap-3 border-b border-surface-800 bg-surface-900 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div class="flex flex-wrap items-center gap-2 text-xs">
         <span class="font-medium text-slate-200">漂移检测</span>
         <span class="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-400">一致 {{ drift.counts?.clean || 0 }}</span>
@@ -29,7 +29,7 @@
         <span v-if="drift.counts?.detached" class="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-rose-400">游离提交 {{ drift.counts.detached }}</span>
         <span v-if="drift.scannedAt" class="text-slate-500">扫描于 {{ new Date(drift.scannedAt).toLocaleString('zh-CN') }}</span>
       </div>
-      <button @click="loadDrift" class="flex h-8 items-center gap-1.5 rounded-full border border-[#1E2636] bg-[#0F131C] px-3 text-xs text-slate-300 transition hover:border-[#38BDF8]/30">
+      <button @click="loadDrift" class="flex h-8 items-center gap-1.5 rounded-full border border-surface-700 bg-surface-800 px-3 text-xs text-slate-300 transition hover:border-sky-400/30">
         <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
         重新检测
       </button>
@@ -38,7 +38,7 @@
     <!-- Repository List -->
     <main class="flex-1 overflow-auto px-6 py-6">
       <div v-if="loading" class="flex items-center justify-center py-12">
-        <div class="h-8 w-8 animate-spin rounded-full border-2 border-[#38BDF8] border-t-transparent"></div>
+        <div class="h-8 w-8 animate-spin rounded-full border-2 border-sky-400 border-t-transparent"></div>
       </div>
 
       <div v-else-if="repos.length === 0" class="flex flex-col items-center justify-center py-16 text-center">
@@ -54,7 +54,7 @@
         <article
           v-for="repo in repos"
           :key="repo.id"
-          class="flex flex-col gap-4 rounded-3xl border border-[#1E2636] bg-[#0F131C] p-5 transition hover:border-[#38BDF8]/20"
+          class="flex flex-col gap-4 rounded-3xl border border-surface-800 bg-surface-800 p-5 transition hover:border-sky-400/20"
         >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0 flex-1">
@@ -65,7 +65,7 @@
               {{ getStatusLabel(repo.status) }}
             </span>
           </div>
-          <div v-if="driftMap[repo.id]" class="flex flex-col gap-2 rounded-2xl border border-[#1E2636] bg-[#0A0D12] p-3">
+          <div v-if="driftMap[repo.id]" class="flex flex-col gap-2 rounded-2xl border border-surface-800 bg-surface-900 p-3">
             <p class="flex items-start gap-2 text-xs leading-5 text-slate-300">
               <span :class="driftDotClass(driftMap[repo.id].status)"></span>
               <span class="min-w-0">{{ driftMap[repo.id].summary || '无漂移' }}</span>
@@ -83,7 +83,7 @@
             </div>
             <div v-if="driftMap[repo.id].repairs?.length" class="flex flex-wrap gap-1.5">
               <span v-for="(repair, index) in driftMap[repo.id].repairs" :key="index"
-                class="shrink-0 rounded-full border border-[#1E2636] bg-[#0F131C] px-2 py-0.5 text-[11px] text-slate-400">
+                class="shrink-0 rounded-full border border-surface-700 bg-surface-800 px-2 py-0.5 text-[11px] text-slate-400">
                 {{ repair.action === 'none' ? '无需处理' : repair.action }}
               </span>
             </div>
@@ -104,10 +104,10 @@
             最后同步：{{ new Date(repo.lastSync).toLocaleString('zh-CN') }}
           </div>
 
-          <div class="flex flex-wrap gap-2 border-t border-[#1E2636] pt-4">
+          <div class="flex flex-wrap gap-2 border-t border-surface-800 pt-4">
             <button
               @click="syncRepo(repo.id)"
-              class="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full border border-[#38BDF8]/30 bg-[#38BDF8]/10 text-xs font-medium text-[#38BDF8] transition hover:bg-[#38BDF8]/20"
+              class="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-400/10 text-xs font-medium text-sky-400 transition hover:bg-sky-400/20"
             >
               <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -117,7 +117,7 @@
             </button>
             <button
               @click="loadHistory(repo.id)"
-              class="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full border border-[#1E2636] bg-[#0A0D12] text-xs font-medium text-slate-300 transition hover:border-[#38BDF8]/30"
+              class="flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full border border-surface-700 bg-surface-900 text-xs font-medium text-slate-300 transition hover:border-sky-400/30"
             >
               <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -127,7 +127,7 @@
             </button>
             <button
               @click="openEditModal(repo)"
-              class="flex h-8 items-center justify-center rounded-full border border-[#1E2636] bg-[#0A0D12] px-3 text-xs font-medium text-slate-300 transition hover:border-[#38BDF8]/30"
+              class="flex h-8 items-center justify-center rounded-full border border-surface-700 bg-surface-900 px-3 text-xs font-medium text-slate-300 transition hover:border-sky-400/30"
             >
               编辑
             </button>
@@ -143,171 +143,164 @@
     </main>
 
     <!-- Add/Edit Modal -->
-    <div
-      v-if="showAddModal || showEditModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-      @click.self="showAddModal = showEditModal = false"
+    <BaseModal
+      :show="showAddModal || showEditModal"
+      :title="showAddModal ? '添加仓库' : '编辑仓库'"
+      size-class="!max-w-lg"
+      body-class="p-6"
+      @close="showAddModal = showEditModal = false"
     >
-      <div class="w-full max-w-lg rounded-3xl border border-[#1E2636] bg-[#0F131C] p-6 shadow-2xl">
-        <h2 class="text-lg font-semibold text-slate-100">{{ showAddModal ? '添加仓库' : '编辑仓库' }}</h2>
-        
-        <form @submit.prevent="showAddModal ? addRepo() : updateRepo()" class="mt-6 space-y-4">
+      <form @submit.prevent="showAddModal ? addRepo() : updateRepo()" class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-300">仓库名称</label>
+          <input
+            v-model="formData.name"
+            required
+            maxlength="200"
+            class="mt-1.5 w-full rounded-full border border-surface-700 bg-surface-900 px-4 py-2 text-sm text-slate-100 placeholder-slate-500 transition focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
+            placeholder="例：my-app"
+          />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-300">Git URL</label>
+          <input
+            v-model="formData.url"
+            required
+            maxlength="500"
+            class="mt-1.5 w-full rounded-full border border-surface-700 bg-surface-900 px-4 py-2 text-sm text-slate-100 placeholder-slate-500 transition focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
+            placeholder="git@github.com:user/repo.git"
+          />
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="block text-sm font-medium text-slate-300">仓库名称</label>
+            <label class="block text-sm font-medium text-slate-300">分支</label>
             <input
-              v-model="formData.name"
+              v-model="formData.branch"
+              maxlength="100"
+              class="mt-1.5 w-full rounded-full border border-surface-700 bg-surface-900 px-4 py-2 text-sm text-slate-100 placeholder-slate-500 transition focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
+              placeholder="main"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300">关联项目</label>
+            <select
+              v-model="formData.projectId"
               required
-              maxlength="200"
-              class="mt-1.5 w-full rounded-full border border-[#1E2636] bg-[#0A0D12] px-4 py-2 text-sm text-slate-100 placeholder-slate-500 transition focus:border-[#38BDF8] focus:outline-none focus:ring-1 focus:ring-[#38BDF8]"
-              placeholder="例：my-app"
-            />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-slate-300">Git URL</label>
-            <input
-              v-model="formData.url"
-              required
-              maxlength="500"
-              class="mt-1.5 w-full rounded-full border border-[#1E2636] bg-[#0A0D12] px-4 py-2 text-sm text-slate-100 placeholder-slate-500 transition focus:border-[#38BDF8] focus:outline-none focus:ring-1 focus:ring-[#38BDF8]"
-              placeholder="git@github.com:user/repo.git"
-            />
-          </div>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium text-slate-300">分支</label>
-              <input
-                v-model="formData.branch"
-                maxlength="100"
-                class="mt-1.5 w-full rounded-full border border-[#1E2636] bg-[#0A0D12] px-4 py-2 text-sm text-slate-100 placeholder-slate-500 transition focus:border-[#38BDF8] focus:outline-none focus:ring-1 focus:ring-[#38BDF8]"
-                placeholder="main"
-              />
-            </div>
-            <div>
-              <label class="block text-sm font-medium text-slate-300">关联项目</label>
-              <select
-                v-model="formData.projectId"
-                required
-                class="mt-1.5 w-full rounded-full border border-[#1E2636] bg-[#0A0D12] px-4 py-2 text-sm text-slate-100 transition focus:border-[#38BDF8] focus:outline-none focus:ring-1 focus:ring-[#38BDF8]"
-              >
-                <option value="">选择项目</option>
-                <option v-for="proj in projects" :key="proj.id" :value="proj.id">{{ proj.name }}</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-slate-300">本地路径</label>
-            <input
-              v-model="formData.localPath"
-              required
-              maxlength="500"
-              class="mt-1.5 w-full rounded-full border border-[#1E2636] bg-[#0A0D12] px-4 py-2 text-sm text-slate-100 placeholder-slate-500 transition focus:border-[#38BDF8] focus:outline-none focus:ring-1 focus:ring-[#38BDF8]"
-              placeholder="/path/to/local/repo"
-            />
-          </div>
-
-          <div>
-            <label class="block text-sm font-medium text-slate-300">SSH 私钥（可选）</label>
-            <textarea
-              v-model="formData.sshKey"
-              rows="4"
-              maxlength="10000"
-              class="mt-1.5 w-full rounded-2xl border border-[#1E2636] bg-[#0A0D12] px-4 py-2 text-sm text-slate-100 placeholder-slate-500 transition focus:border-[#38BDF8] focus:outline-none focus:ring-1 focus:ring-[#38BDF8]"
-              placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
-            ></textarea>
-          </div>
-
-          <div class="flex items-center gap-3">
-            <input
-              v-model="formData.autoSync"
-              type="checkbox"
-              id="autoSync"
-              class="h-4 w-4 rounded border-[#1E2636] bg-[#0A0D12] text-[#38BDF8] transition focus:ring-2 focus:ring-[#38BDF8] focus:ring-offset-2 focus:ring-offset-[#0F131C]"
-            />
-            <label for="autoSync" class="text-sm font-medium text-slate-300">启用自动同步</label>
-          </div>
-
-          <div class="flex gap-3 pt-2">
-            <button
-              type="button"
-              @click="showAddModal = showEditModal = false"
-              class="flex-1 rounded-full border border-[#1E2636] bg-[#0A0D12] px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:border-[#38BDF8]/30"
+              class="mt-1.5 w-full rounded-full border border-surface-700 bg-surface-900 px-4 py-2 text-sm text-slate-100 transition focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
             >
-              取消
-            </button>
-            <button
-              type="submit"
-              class="flex-1 rounded-full bg-[#38BDF8] px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-[#38BDF8]/90"
-            >
-              {{ showAddModal ? '添加' : '保存' }}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- History Modal -->
-    <div
-      v-if="showHistoryModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-      @click.self="showHistoryModal = false"
-    >
-      <div class="flex h-[80vh] w-full max-w-2xl flex-col rounded-3xl border border-[#1E2636] bg-[#0F131C] shadow-2xl">
-        <header class="flex-none border-b border-[#1E2636] p-6">
-          <h2 class="text-lg font-semibold text-slate-100">提交历史</h2>
-          <p class="mt-1 text-sm text-slate-400">{{ currentRepo?.name }}</p>
-        </header>
-
-        <div class="flex-1 overflow-auto p-6">
-          <div v-if="commitHistory.length === 0" class="flex flex-col items-center justify-center py-12 text-center">
-            <p class="text-slate-400">暂无提交历史</p>
-          </div>
-
-          <div v-else class="space-y-3">
-            <article
-              v-for="commit in commitHistory"
-              :key="commit.hash"
-              class="flex items-start gap-4 rounded-2xl border border-[#1E2636] bg-[#0A0D12] p-4"
-            >
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center gap-2">
-                  <code class="rounded bg-[#1E2636] px-2 py-0.5 text-xs font-mono text-[#38BDF8]">
-                    {{ commit.hash.substring(0, 7) }}
-                  </code>
-                  <span class="text-xs text-slate-500">{{ commit.date }}</span>
-                </div>
-                <p class="mt-2 text-sm text-slate-300">{{ commit.message }}</p>
-                <p class="mt-1 text-xs text-slate-500">{{ commit.author }}</p>
-              </div>
-              <button
-                v-if="commit.hash !== currentRepo?.lastCommit"
-                @click="rollback(commit.hash)"
-                class="flex-none rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-400 transition hover:bg-amber-500/20"
-              >
-                回滚
-              </button>
-              <span
-                v-else
-                class="flex-none rounded-full bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400"
-              >
-                当前
-              </span>
-            </article>
+              <option value="">选择项目</option>
+              <option v-for="proj in projects" :key="proj.id" :value="proj.id">{{ proj.name }}</option>
+            </select>
           </div>
         </div>
 
-        <footer class="flex-none border-t border-[#1E2636] p-6">
+        <div>
+          <label class="block text-sm font-medium text-slate-300">本地路径</label>
+          <input
+            v-model="formData.localPath"
+            required
+            maxlength="500"
+            class="mt-1.5 w-full rounded-full border border-surface-700 bg-surface-900 px-4 py-2 text-sm text-slate-100 placeholder-slate-500 transition focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
+            placeholder="/path/to/local/repo"
+          />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-300">SSH 私钥（可选）</label>
+          <textarea
+            v-model="formData.sshKey"
+            rows="4"
+            maxlength="10000"
+            class="mt-1.5 w-full rounded-2xl border border-surface-700 bg-surface-900 px-4 py-2 text-sm text-slate-100 placeholder-slate-500 transition focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400"
+            placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+          ></textarea>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <input
+            v-model="formData.autoSync"
+            type="checkbox"
+            id="autoSync"
+            class="h-4 w-4 rounded border-surface-700 bg-surface-900 text-sky-400 transition focus:ring-2 focus:ring-sky-400 focus:ring-offset-2 focus:ring-offset-surface-800"
+          />
+          <label for="autoSync" class="text-sm font-medium text-slate-300">启用自动同步</label>
+        </div>
+
+        <div class="flex gap-3 pt-2">
           <button
-            @click="showHistoryModal = false"
-            class="w-full rounded-full border border-[#1E2636] bg-[#0A0D12] px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:border-[#38BDF8]/30"
+            type="button"
+            @click="showAddModal = showEditModal = false"
+            class="flex-1 rounded-full border border-surface-700 bg-surface-900 px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:border-sky-400/30"
           >
-            关闭
+            取消
           </button>
-        </footer>
+          <button
+            type="submit"
+            class="flex-1 rounded-full bg-sky-400 px-4 py-2.5 text-sm font-medium text-slate-950 transition hover:bg-sky-400/90"
+          >
+            {{ showAddModal ? '添加' : '保存' }}
+          </button>
+        </div>
+      </form>
+    </BaseModal>
+
+    <!-- History Modal -->
+    <BaseModal
+      :show="showHistoryModal"
+      :title="`提交历史 · ${currentRepo?.name || ''}`"
+      size-class="!max-w-2xl"
+      body-class="flex h-[65vh] flex-col overflow-hidden p-0"
+      @close="showHistoryModal = false"
+    >
+      <div class="flex-1 overflow-auto p-6">
+        <div v-if="commitHistory.length === 0" class="flex flex-col items-center justify-center py-12 text-center">
+          <p class="text-slate-400">暂无提交历史</p>
+        </div>
+
+        <div v-else class="space-y-3">
+          <article
+            v-for="commit in commitHistory"
+            :key="commit.hash"
+            class="flex items-start gap-4 rounded-2xl border border-surface-800 bg-surface-900 p-4"
+          >
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <code class="rounded bg-surface-700 px-2 py-0.5 text-xs font-mono text-sky-400">
+                  {{ commit.hash.substring(0, 7) }}
+                </code>
+                <span class="text-xs text-slate-500">{{ commit.date }}</span>
+              </div>
+              <p class="mt-2 text-sm text-slate-300">{{ commit.message }}</p>
+              <p class="mt-1 text-xs text-slate-500">{{ commit.author }}</p>
+            </div>
+            <button
+              v-if="commit.hash !== currentRepo?.lastCommit"
+              @click="rollback(commit.hash)"
+              class="flex-none rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-400 transition hover:bg-amber-500/20"
+            >
+              回滚
+            </button>
+            <span
+              v-else
+              class="flex-none rounded-full bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400"
+            >
+              当前
+            </span>
+          </article>
+        </div>
       </div>
-    </div>
+
+      <template #footer>
+        <button
+          @click="showHistoryModal = false"
+          class="w-full rounded-full border border-surface-700 bg-surface-900 px-4 py-2.5 text-sm font-medium text-slate-300 transition hover:border-sky-400/30"
+        >
+          关闭
+        </button>
+      </template>
+    </BaseModal>
     <ConfirmDialog :show="!!deleteTarget" title="删除 GitOps 仓库" message="确认移除此 GitOps 配置?不会删除本地仓库文件。" tone="danger" confirm-text="删除仓库" @confirm="confirmDelete" @cancel="deleteTarget = null" />
     <ConfirmDialog :show="!!rollbackTarget" title="回滚 GitOps 仓库" :message="`确认回滚到提交 ${rollbackTarget?.slice(0, 7) || ''}?仓库工作区会重置到该版本。`" tone="warning" confirm-text="确认回滚" @confirm="confirmRollback" @cancel="rollbackTarget = null" />
   </div>
@@ -317,6 +310,7 @@
 import { computed, ref, onMounted } from 'vue';
 import { useToastStore } from '../stores/toast.js';
 import ConfirmDialog from '../components/common/ConfirmDialog.vue';
+import BaseModal from '../components/common/BaseModal.vue';
 
 const toast = useToastStore();
 

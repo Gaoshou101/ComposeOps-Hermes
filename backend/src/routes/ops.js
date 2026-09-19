@@ -203,7 +203,7 @@ export default async function opsRoutes(fastify) {
     },
   }, async (request, reply) => {
     const { blueprintId, values } = request.body || {};
-    if (!blueprintId) return reply.code(400).send({ error: 'missing_blueprint_id' });
+    if (!blueprintId) return reply.code(400).send({ error: 'missing_blueprint_id', message: '缺少 blueprintId 参数' });
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -290,10 +290,10 @@ export default async function opsRoutes(fastify) {
     },
   }, async (request, reply) => {
     const id = Number(request.params?.id);
-    if (!Number.isInteger(id) || id <= 0) return reply.code(400).send({ error: 'invalid_event_id' });
+    if (!Number.isInteger(id) || id <= 0) return reply.code(400).send({ error: 'invalid_event_id', message: '无效的事件 ID' });
     const { read, muted } = request.body || {};
     const event = updateAlertEvent(id, { read, muted });
-    if (!event) return reply.code(404).send({ error: 'event_not_found' });
+    if (!event) return reply.code(404).send({ error: 'event_not_found', message: '事件不存在' });
     return { event };
   });
 

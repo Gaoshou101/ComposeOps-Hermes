@@ -649,9 +649,8 @@ async function confirmRestore() {
     showBackups.value = false;
     await load();
     toast.success('配置版本已成功回滚并生效');
-    message.value = '备份已恢复';
   } catch (e) {
-    error.value = e.message;
+    toast.error(`备份恢复失败:${e.message}`);
   } finally {
     pendingBackup.value = null;
   }

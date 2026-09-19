@@ -31,11 +31,12 @@
       </div>
     </template>
     <template #footer>
-      <button v-if="data?.hasUpdate && !upgrading" class="btn-primary" @click="upgrade"><Zap class="w-4 h-4" />一键平滑升级</button>
+      <button v-if="data?.hasUpdate && !upgrading" class="btn-primary" @click="confirmUpgrade = true"><Zap class="w-4 h-4" />一键平滑升级</button>
       <span v-if="upgrading" class="text-sm text-muted">正在升级,请查看输出面板…</span>
       <button class="btn-secondary" @click="close">关闭</button>
     </template>
   </BaseModal>
+  <ConfirmDialog :show="confirmUpgrade" title="平滑升级项目" :message="`将把 ${project.projectName} 的镜像拉取到最新并平滑重建容器,升级前自动备份 compose 与 env。确认继续?`" tone="warning" confirm-text="开始升级" @confirm="upgrade" @cancel="confirmUpgrade = false" />
 </template>
 
 <script setup>
@@ -44,6 +45,7 @@ import { api } from '../../api/client.js';
 import { useToastStore } from '../../stores/toast.js';
 import { RefreshCw, Sparkles, Zap } from 'lucide-vue-next';
 import BaseModal from '../common/BaseModal.vue';
+import ConfirmDialog from '../common/ConfirmDialog.vue';
 
 const props = defineProps({
   project: { type: Object, required: true },
@@ -55,6 +57,7 @@ const data = ref(null);
 const error = ref('');
 const refreshing = ref(false);
 const upgrading = ref(false);
+const confirmUpgrade = ref(false);
 
 async function load(force = false) {
   error.value = '';
@@ -69,6 +72,7 @@ async function load(force = false) {
 }
 function refresh() { void load(true); }
 function upgrade() {
+  confirmUpgrade.value = false;
   if (upgrading.value) return;
   upgrading.value = true;
   toast.info('已开始平滑升级,请查看输出面板');

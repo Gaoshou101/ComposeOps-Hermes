@@ -251,7 +251,7 @@ export default async function aiRoutes(fastify) {
     },
   }, async (request, reply) => {
     const { projectId, containerId, sessionId } = request.body || {};
-    if (!projectId || !containerId) return reply.code(400).send({ error: 'missing projectId or containerId' });
+    if (!projectId || !containerId) return reply.code(400).send({ error: 'missing_params', message: '缺少 projectId 或 containerId 参数' });
     const cfg = getAiConfig();
     if (!cfg.apiKey) return reply.code(400).send({ error: 'ai_not_configured', message: '请先配置 API Key' });
 

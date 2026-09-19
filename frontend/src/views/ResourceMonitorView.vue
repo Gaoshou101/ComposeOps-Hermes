@@ -65,10 +65,10 @@
       </div>
 
       <!-- Chart -->
-      <div class="rounded-lg border border-zinc-800 bg-zinc-950/80 p-4">
-        <div class="mb-3 flex items-center justify-between">
-          <h2 class="font-semibold text-zinc-100">{{ metricTypes.find(m => m.key === selectedMetric)?.label }}趋势</h2>
-          <div class="flex gap-2">
+      <div class="overflow-x-auto rounded-lg border border-zinc-800 bg-zinc-950/80 p-4">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 class="font-semibold text-zinc-100 whitespace-nowrap">{{ metricTypes.find(m => m.key === selectedMetric)?.label }}趋势</h2>
+          <div class="flex flex-nowrap gap-2 overflow-x-auto">
             <button v-for="p in periods" :key="p.key"
                     @click="period = p.key; loadMetrics()"
                     :class="['px-3 py-1 text-xs rounded-md transition-colors', 
@@ -77,14 +77,16 @@
             </button>
           </div>
         </div>
-        <InteractiveChart 
-          :data="chartData"
-          :color="metricTypes.find(m => m.key === selectedMetric)?.chartColor || '#38BDF8'"
-          :unit="metricTypes.find(m => m.key === selectedMetric)?.unit || ''"
-          :anomalies="chartAnomalies"
-          :width="800"
-          :height="300"
-        />
+          <div class="min-w-[560px]">
+            <InteractiveChart
+              :data="chartData"
+              :color="metricTypes.find(m => m.key === selectedMetric)?.chartColor || '#38BDF8'"
+              :unit="metricTypes.find(m => m.key === selectedMetric)?.unit || ''"
+              :anomalies="chartAnomalies"
+              :width="800"
+              :height="300"
+            />
+          </div>
       </div>
 
       <!-- Alerts -->
@@ -176,6 +178,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 defineProps({ embedded: { type: Boolean, default: false } });
 import { Activity, AlertTriangle, Bell, Cpu, Database, HardDrive, Minus, Network, RefreshCw, TrendingDown, TrendingUp, X } from 'lucide-vue-next';
 import { api, metricsApi } from '../api/client.js';
+import { useToastStore } from '../stores/toast.js';
 import StatusBadge from '../components/common/StatusBadge.vue';
 import InteractiveChart from '../components/charts/InteractiveChart.vue';
 
@@ -346,8 +349,9 @@ async function createAlertRule() {
     });
     showAlertModal.value = false;
     await loadAlerts();
+    useToastStore().success('告警规则已创建');
   } catch (err) {
-    error.value = `创建告警规则失败: ${err.message}`;
+    useToastStore().error(`创建告警规则失败:${err.message}`);
   }
 }
 
@@ -355,8 +359,9 @@ async function deleteAlertRule(ruleId) {
   try {
     await metricsApi.deleteAlert(ruleId);
     await loadAlerts();
+    useToastStore().success('告警规则已删除');
   } catch (err) {
-    error.value = `删除告警失败: ${err.message}`;
+    useToastStore().error(`删除告警失败:${err.message}`);
   }
 }
 

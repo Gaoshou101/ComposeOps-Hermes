@@ -1,8 +1,11 @@
 <template>
   <div class="marketplace-view">
     <header class="page-header">
-      <h1>应用市场</h1>
-<div class="actions">
+      <div>
+        <h1>应用市场</h1>
+        <p class="page-subtitle">浏览、收藏并一键部署 Compose 应用模板</p>
+      </div>
+<div class="page-actions page-actions-market">
         <button @click="openAgentRecommend" class="btn-secondary"><Bot class="w-4 h-4" />让 Agent 推荐</button>
         <button @click="openAiDiscover" class="btn-secondary" :disabled="aiDiscovering"><Sparkles class="w-4 h-4" :class="{ 'animate-pulse': aiDiscovering }" />{{ aiDiscovering ? 'AI 查找中...' : 'AI 找应用' }}</button>
         <button @click="showCreateModal = true" class="btn-primary">
@@ -19,22 +22,22 @@
           v-model="searchQuery"
           type="text"
           placeholder="搜索模板..."
-          class="search-input"
+          class="input search-input"
           @input="handleSearch"
         />
       </div>
       <div class="filters">
-        <select v-model="selectedSource" @change="loadTemplates" class="filter-select">
+        <select v-model="selectedSource" @change="loadTemplates" class="input filter-select">
           <option value="all">全部来源</option>
           <option value="builtin">内置模板</option>
           <option value="community">社区模板</option>
           <option value="custom">自定义模板</option>
         </select>
-        <select v-model="selectedCategory" @change="loadTemplates" class="filter-select">
+        <select v-model="selectedCategory" @change="loadTemplates" class="input filter-select">
           <option value="all">全部分类</option>
           <option v-for="cat in stats.categories" :key="cat" :value="cat">{{ cat }}</option>
         </select>
-        <label class="favorites-toggle">
+        <label class="input favorites-toggle">
           <input type="checkbox" v-model="onlyFavorites" @change="loadTemplates" />
           <span>仅收藏</span>
         </label>
@@ -68,7 +71,7 @@
 
     <div v-else-if="error" class="error-state">
       <p>{{ error }}</p>
-      <button @click="loadTemplates" class="btn-retry">重试</button>
+      <button @click="loadTemplates" class="btn-secondary btn-retry">重试</button>
     </div>
 
     <!-- 模板列表 -->
@@ -91,8 +94,8 @@
         </div>
         <div class="card-body">
           <div class="meta">
-            <span class="category-badge">{{ template.category }}</span>
-            <span class="source-badge">{{ getSourceLabel(template.id) }}</span>
+            <span class="action-label category-badge">{{ template.category }}</span>
+            <span class="action-label source-badge">{{ getSourceLabel(template.id) }}</span>
           </div>
           <p class="description">{{ template.description || '暂无描述' }}</p>
           <div v-if="template.author" class="author">作者: {{ template.author }}</div>
@@ -102,21 +105,21 @@
           </div>
         </div>
         <div class="card-actions">
-          <button @click="viewTemplate(template)" class="btn-view">查看</button>
-          <button v-if="isDeployableTemplate(template)" @click="openDeploy(template)" class="btn-deploy">
+          <button @click="viewTemplate(template)" class="btn-secondary btn-view">查看</button>
+          <button v-if="isDeployableTemplate(template)" @click="openDeploy(template)" class="btn-secondary btn-deploy">
             <Rocket class="w-4 h-4" />部署
           </button>
           <button
             v-if="isCustomTemplate(template)"
             @click="editTemplate(template)"
-            class="btn-edit"
+            class="btn-secondary btn-edit"
           >
             编辑
           </button>
           <button
             v-if="isCustomTemplate(template)"
             @click="deleteTemplate(template.id)"
-            class="btn-delete"
+            class="btn-danger btn-delete"
           >
             删除
           </button>
@@ -125,49 +128,49 @@
     </section>
 
     <!-- 创建/编辑模态框 -->
-    <div v-if="showCreateModal || editingTemplate" class="modal-overlay" @click.self="closeModal">
-      <div class="modal-content">
+    <div v-if="showCreateModal || editingTemplate" class="modal-backdrop" @click.self="closeModal">
+      <div class="modal">
         <div class="modal-header">
           <h2>{{ editingTemplate ? '编辑模板' : '创建模板' }}</h2>
-          <button @click="closeModal" class="close-btn">×</button>
+          <button @click="closeModal" class="icon-btn close-btn">×</button>
         </div>
         <div class="modal-body">
           <div class="form-group">
             <label>模板名称</label>
-            <input v-model="formData.name" type="text" placeholder="例如: LNMP Stack" />
+            <input v-model="formData.name" type="text" class="input" placeholder="例如: LNMP Stack" />
           </div>
           <div class="form-group">
             <label>分类</label>
-            <input v-model="formData.category" type="text" placeholder="例如: Web" />
+            <input v-model="formData.category" type="text" class="input" placeholder="例如: Web" />
           </div>
           <div class="form-group">
             <label>描述</label>
-            <textarea v-model="formData.description" rows="3" placeholder="简要描述模板用途"></textarea>
+            <textarea v-model="formData.description" rows="3" class="input" placeholder="简要描述模板用途"></textarea>
           </div>
           <div class="form-group">
             <label>Compose 内容</label>
-            <textarea v-model="formData.defaultCompose" rows="10" placeholder="version: '3'..."></textarea>
+            <textarea v-model="formData.defaultCompose" rows="10" class="input" placeholder="version: '3'..."></textarea>
           </div>
         </div>
         <div class="modal-footer">
-          <button @click="closeModal" class="btn-cancel">取消</button>
-          <button @click="saveTemplate" class="btn-save">保存</button>
+          <button @click="closeModal" class="btn-secondary btn-cancel">取消</button>
+          <button @click="saveTemplate" class="btn-primary btn-save">保存</button>
         </div>
       </div>
     </div>
 
     <!-- AI 发现应用模态框 -->
-    <div v-if="showAiModal" class="modal-overlay" @click.self="showAiModal = false">
-      <div class="modal-content">
+    <div v-if="showAiModal" class="modal-backdrop" @click.self="showAiModal = false">
+      <div class="modal">
         <div class="modal-header">
           <h2>AI 找应用</h2>
-          <button @click="showAiModal = false" class="close-btn">×</button>
+          <button @click="showAiModal = false" class="icon-btn close-btn">×</button>
         </div>
         <div class="modal-body">
           <p class="text-xs text-zinc-500 mb-3">输入应用名,Agent 会联网检索官方部署方式并生成可一键部署的 Compose 模板草稿,确认后保存为自定义模板。</p>
           <div class="form-group">
             <label>应用名称</label>
-            <input v-model="aiQuery" type="text" placeholder="例如: umami / immich / gitea" @keydown.enter="runAiDiscover" />
+            <input v-model="aiQuery" type="text" class="input" placeholder="例如: umami / immich / gitea" @keydown.enter="runAiDiscover" />
           </div>
           <div v-if="aiPreview" class="form-group">
             <label>生成结果预览(确认后保存为自定义模板)</label>
@@ -180,24 +183,24 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button @click="showAiModal = false" class="btn-cancel">取消</button>
-          <button v-if="!aiPreview" @click="runAiDiscover" class="btn-save" :disabled="aiDiscovering || !aiQuery.trim()">{{ aiDiscovering ? '生成中…' : '生成模板' }}</button>
-          <button v-else @click="useAiTemplate" class="btn-save">填入创建表单</button>
+          <button @click="showAiModal = false" class="btn-secondary btn-cancel">取消</button>
+          <button v-if="!aiPreview" @click="runAiDiscover" class="btn-primary btn-save" :disabled="aiDiscovering || !aiQuery.trim()">{{ aiDiscovering ? '生成中…' : '生成模板' }}</button>
+          <button v-else @click="useAiTemplate" class="btn-primary btn-save">填入创建表单</button>
         </div>
       </div>
     </div>
 
     <!-- 查看模板模态框 -->
-    <div v-if="viewingTemplate" class="modal-overlay" @click.self="viewingTemplate = null">
-      <div class="modal-content view-modal">
+    <div v-if="viewingTemplate" class="modal-backdrop" @click.self="viewingTemplate = null">
+      <div class="modal view-modal">
         <div class="modal-header">
           <h2>{{ viewingTemplate.name }}</h2>
-          <button @click="viewingTemplate = null" class="close-btn">×</button>
+          <button @click="viewingTemplate = null" class="icon-btn close-btn">×</button>
         </div>
         <div class="modal-body">
           <div class="template-meta">
-            <span class="category-badge">{{ viewingTemplate.category }}</span>
-            <span class="source-badge">{{ getSourceLabel(viewingTemplate.id) }}</span>
+            <span class="action-label category-badge">{{ viewingTemplate.category }}</span>
+            <span class="action-label source-badge">{{ getSourceLabel(viewingTemplate.id) }}</span>
           </div>
           <p class="template-description">{{ viewingTemplate.description || '暂无描述' }}</p>
           <div v-if="viewingTemplate.author" class="template-author">作者: {{ viewingTemplate.author }}</div>
@@ -210,17 +213,17 @@
     </div>
 
     <!-- 部署模板模态框 -->
-    <div v-if="deployTarget" class="modal-overlay" @click.self="closeDeploy" :class="{ 'pointer-events-none': deploying }">
-      <div class="modal-content deploy-modal">
+    <div v-if="deployTarget" class="modal-backdrop" @click.self="closeDeploy" :class="{ 'pointer-events-none': deploying }">
+      <div class="modal deploy-modal">
         <div class="modal-header">
           <h2>部署应用: {{ deployTarget.name }}</h2>
-          <button @click="closeDeploy" class="close-btn">×</button>
+          <button @click="closeDeploy" class="icon-btn close-btn">×</button>
         </div>
         <div class="modal-body space-y-4">
           <p class="template-description">{{ deployTarget.description || '暂无描述' }}</p>
           <div class="form-group">
             <label>项目名称</label>
-            <input v-model="deployProjectName" type="text" placeholder="留空使用默认名称" />
+            <input v-model="deployProjectName" type="text" class="input" placeholder="留空使用默认名称" />
           </div>
           <div class="form-group">
             <label>部署变量</label>
@@ -228,7 +231,7 @@
             <div v-if="deployVariables.length" class="space-y-2 mt-2">
               <div v-for="field in deployVariables" :key="field.key" class="form-row">
                 <label>{{ field.label || field.key }}</label>
-                <input v-model="deployValues[field.key]" :type="field.type === 'password' ? 'password' : 'text'" :placeholder="field.default || ''" />
+                <input v-model="deployValues[field.key]" :type="field.type === 'password' ? 'password' : 'text'" class="input" :placeholder="field.default || ''" />
               </div>
             </div>
             <p v-else class="text-xs text-muted mt-2">该模板无需额外配置。</p>
@@ -236,8 +239,8 @@
           <p v-if="deployError" class="text-xs text-rose-400">{{ deployError }}</p>
         </div>
         <div class="modal-footer">
-          <button @click="closeDeploy" class="btn-cancel">取消</button>
-          <button @click="deployTemplate" class="btn-save" :disabled="deploying">
+          <button @click="closeDeploy" class="btn-secondary btn-cancel">取消</button>
+          <button @click="deployTemplate" class="btn-primary btn-save" :disabled="deploying">
             <LoaderCircle v-if="deploying" class="w-4 h-4 animate-spin" />
             {{ deploying ? '部署中…' : '部署' }}
           </button>
@@ -549,131 +552,22 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* 页面级配色/按钮/页眉改用全站 token(surface / accent / btn / page-header / input / modal),
+   scoped 内只保留市场页布局与局部语义类的微调。 */
 .marketplace-view {
-  --surface-0: #05070c;
-  --surface-1: #0a0d12;
-  --surface-2: #0f131c;
-  --surface-3: #161d2b;
-  --surface-4: #1e2636;
-  --accent: #38bdf8;
-  --accent-muted: #6ee7b7;
-  --text-primary: #e5e7eb;
-  --text-secondary: #9ca3af;
-  --border: #1e2636;
-
-  min-height: 100vh;
-  background: var(--surface-0);
-  color: var(--text-primary);
-  padding: clamp(1rem, 3vw, 2rem);
+  /* 部署按钮的强调色:沿用全站 emerald 状态色 */
+  --market-accent-2: #34d399; /* = emerald-400 */
 }
 
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: clamp(1.5rem, 4vw, 2rem);
-}
+.page-actions-market { @apply flex items-center gap-3; }
 
-.page-header h1 {
-  font-size: clamp(1.3rem, 2.2vw, 1.5rem);
-  font-weight: 600;
-  letter-spacing: 0;
-  margin: 0;
-}
-
-.actions {
-  display: flex;
-  gap: 0.75rem;
-}
-
-button {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text-primary);
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-button:hover {
-  background: var(--surface-3);
-  border-color: var(--accent);
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: var(--surface-0);
-  border-color: var(--accent);
-}
-
-.btn-primary:hover {
-  background: color-mix(in srgb, var(--accent) 80%, white);
-}
-
-.filter-bar {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.search-box {
-  flex: 1;
-  min-width: 200px;
-}
-
-.search-input {
-  width: 100%;
-  padding: 0.625rem 1rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text-primary);
-  font-size: 0.875rem;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.filters {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.filter-select {
-  padding: 0.625rem 1rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text-primary);
-  font-size: 0.875rem;
-  cursor: pointer;
-}
-
-.favorites-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  font-size: 0.875rem;
-  cursor: pointer;
-}
-
-.favorites-toggle input {
-  cursor: pointer;
-}
+.filter-bar { @apply mb-6 flex flex-wrap gap-3; }
+.search-box { @apply min-w-[200px] flex-1; }
+.search-input { @apply w-full; }
+.filters { @apply flex flex-wrap gap-3; }
+.filter-select { @apply cursor-pointer; }
+.favorites-toggle { @apply flex cursor-pointer items-center gap-2; }
+.favorites-toggle input { cursor: pointer; }
 
 .stats-grid {
   display: grid;
@@ -681,52 +575,23 @@ button:hover {
   gap: 1rem;
   margin-bottom: 2rem;
 }
-
-.stat-card {
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  padding: 1.25rem;
-}
-
-.stat-card.highlight {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 5%, var(--surface-1));
-}
-
-.stat-card .label {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.5rem;
-}
-
-.stat-card .value {
-  font-size: 1.75rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: -0.02em;
-}
+.stat-card { @apply panel-card !p-5; }
+.stat-card.highlight { @apply border-accent/60 bg-accent/5; }
+.stat-card .label { @apply mb-2 text-[13px] text-surface-400; }
+.stat-card .value { @apply text-3xl font-semibold tracking-tight text-surface-50; }
 
 .loading-state,
-.error-state {
-  display: grid;
-  place-items: center;
-  min-height: 40vh;
-  text-align: center;
-}
+.error-state { @apply grid min-h-[40vh] place-items-center text-center text-surface-400; }
 
 .spinner {
   width: 3rem;
   height: 3rem;
-  border: 3px solid var(--surface-3);
-  border-top-color: var(--accent);
+  border: 3px solid theme('colors.surface.800');
+  border-top-color: theme('colors.accent.DEFAULT');
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .templates-grid {
   display: grid;
@@ -735,309 +600,63 @@ button:hover {
 }
 
 .template-card {
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  padding: 1.25rem;
-  display: grid;
+  @apply panel-card grid !p-5;
   grid-template-rows: auto 1fr auto;
   gap: 1rem;
-  transition: all 0.2s;
+  transition: border-color 0.2s ease, transform 0.2s ease;
 }
-
-.template-card:hover {
-  border-color: var(--accent);
-  transform: translateY(-2px);
-}
+.template-card:hover { @apply border-accent/60; transform: translateY(-2px); }
 
 /* 精选模板用小徽章标注,不再整卡高亮边框(避免与收藏态混淆) */
-.template-card.featured {
-  border-color: var(--border);
-  background: var(--surface-1);
-}
-
 .featured-badge {
-  margin-left: 0.5rem;
-  padding: 0.1rem 0.45rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
-  font-size: 0.7rem;
-  font-weight: 500;
-  vertical-align: middle;
+  @apply ml-2 inline-block rounded-full border border-accent/40 bg-accent/10 px-1.5 py-px align-middle text-[11px] font-medium text-accent;
 }
 
-.card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
+.card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+.card-header h3 { @apply m-0 flex-1 text-lg font-semibold text-surface-50; }
 
-.card-header h3 {
-  font-size: 1.125rem;
-  font-weight: 600;
-  margin: 0;
-  flex: 1;
-}
+.favorite-btn { @apply px-2 py-1 text-xl text-surface-500 transition-colors hover:text-amber-400; background: transparent; border: none; cursor: pointer; }
+.favorite-btn.active { @apply text-amber-400; }
 
-.favorite-btn {
-  padding: 0.25rem 0.5rem;
-  font-size: 1.25rem;
-  color: var(--text-secondary);
-  background: transparent;
-  border: none;
-}
+.card-body { display: grid; gap: 0.75rem; }
+.meta { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
-.favorite-btn.active {
-  color: #f59e0b;
-}
+.description { @apply m-0 text-sm leading-6 text-surface-400; }
+.author, .stats-row { @apply text-[13px] text-surface-500; }
+.stats-row { display: flex; gap: 1rem; }
 
-.card-body {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.meta {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.category-badge,
-.source-badge {
-  display: inline-block;
-  padding: 0.25rem 0.625rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.category-badge {
-  background: var(--surface-3);
-  color: var(--text-secondary);
-}
-
-.source-badge {
-  background: var(--accent);
-  color: var(--surface-0);
-}
-
-.description {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin: 0;
-  line-height: 1.5;
-}
-
-.author,
-.stats-row {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-}
-
-.stats-row {
-  display: flex;
-  gap: 1rem;
-}
-
-.card-actions {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.btn-view,
-.btn-edit,
-.btn-delete,
-.btn-deploy {
-  flex: 1;
-  min-width: fit-content;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.8125rem;
-  border-radius: 0.5rem;
-}
+.card-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.card-actions .btn-secondary,
+.card-actions .btn-danger { @apply min-w-fit flex-1 !rounded-lg px-3 py-2 !text-[13px]; }
 
 .btn-deploy {
-  background: color-mix(in srgb, var(--accent-muted) 12%, var(--surface-2));
-  border-color: color-mix(in srgb, var(--accent-muted) 35%, var(--border));
-  color: var(--accent-muted);
+  border-color: color-mix(in srgb, var(--market-accent-2) 35%, transparent) !important;
+  background: color-mix(in srgb, var(--market-accent-2) 12%, transparent) !important;
+  color: var(--market-accent-2) !important;
 }
-
 .btn-deploy:hover {
-  background: color-mix(in srgb, var(--accent-muted) 20%, var(--surface-3));
-  border-color: var(--accent-muted);
+  background: color-mix(in srgb, var(--market-accent-2) 20%, transparent) !important;
+  border-color: var(--market-accent-2) !important;
 }
 
-.btn-edit {
-  background: var(--accent-muted);
-  color: var(--surface-0);
-  border-color: var(--accent-muted);
-}
+/* 模态微调:尺寸与布局,颜色全部来自全站 .modal */
+.view-modal { @apply sm:!max-w-3xl; }
+.modal-header h2 { @apply m-0 text-base font-semibold text-surface-100; }
+.modal-body { @apply overflow-y-auto p-5; }
+.modal-footer { @apply flex justify-end gap-3 border-t border-surface-800 p-4; }
 
-.btn-delete {
-  background: #ef4444;
-  color: white;
-  border-color: #ef4444;
-}
+.form-group { display: grid; gap: 0.5rem; margin-bottom: 1rem; }
+.form-group label { @apply text-sm font-medium text-surface-400; }
+.form-group textarea { resize: vertical; font-family: ui-monospace, 'SFMono-Regular', Menlo, Monaco, Consolas, monospace; }
 
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: grid;
-  place-items: center;
-  z-index: 1000;
-  padding: 1rem;
-  overflow-y: auto;
-}
+.form-row { display: grid; gap: 0.35rem; }
+.form-row label { @apply text-[13px] text-surface-400; }
 
-.modal-content {
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 1rem;
-  width: 100%;
-  max-width: 600px;
-  max-height: 90vh;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-}
+.template-meta { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+.template-description { @apply mb-4 text-[15px] leading-7 text-surface-300; }
+.template-author { @apply mb-6 text-sm text-surface-500; }
 
-.view-modal {
-  max-width: 800px;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.5rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.modal-header h2 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin: 0;
-}
-
-.close-btn {
-  padding: 0.25rem 0.5rem;
-  font-size: 1.5rem;
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  line-height: 1;
-}
-
-.modal-body {
-  padding: 1.5rem;
-  overflow-y: auto;
-}
-
-.form-group {
-  display: grid;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.form-group label {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.form-group input,
-.form-group textarea {
-  padding: 0.625rem;
-  border-radius: 0.5rem;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text-primary);
-  font-size: 0.875rem;
-  font-family: inherit;
-}
-
-.form-group textarea {
-  resize: vertical;
-  font-family: 'Monaco', 'Consolas', monospace;
-}
-
-.form-row {
-  display: grid;
-  gap: 0.35rem;
-}
-
-.form-row label {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-}
-
-.form-row input {
-  padding: 0.5rem 0.625rem;
-  border-radius: 0.5rem;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text-primary);
-  font-size: 0.875rem;
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-  padding: 1.5rem;
-  border-top: 1px solid var(--border);
-}
-
-.btn-cancel {
-  background: var(--surface-2);
-}
-
-.btn-save {
-  background: var(--accent);
-  color: var(--surface-0);
-  border-color: var(--accent);
-}
-
-.template-meta {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.template-description {
-  font-size: 0.9375rem;
-  line-height: 1.6;
-  margin-bottom: 1rem;
-}
-
-.template-author {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin-bottom: 1.5rem;
-}
-
-.compose-preview h3 {
-  font-size: 1rem;
-  font-weight: 500;
-  margin: 0 0 0.75rem 0;
-}
-
-.compose-preview pre {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  padding: 1rem;
-  overflow-x: auto;
-  margin: 0;
-}
-
-.compose-preview code {
-  font-family: 'Monaco', 'Consolas', monospace;
-  font-size: 0.8125rem;
-  line-height: 1.5;
-  color: var(--text-primary);
-}
+.compose-preview h3 { @apply mb-3 mt-0 text-sm font-medium text-surface-200; }
+.compose-preview pre { @apply m-0 overflow-x-auto rounded-lg border border-surface-800 bg-surface-950/70 p-4; }
+.compose-preview code { @apply font-mono text-[13px] leading-6 text-surface-200; }
 </style>

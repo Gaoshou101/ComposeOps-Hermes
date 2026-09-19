@@ -46,7 +46,7 @@ export default async function eventCenterRoutes(fastify) {
     },
   }, async (request, reply) => {
     const id = Number(request.params.id);
-    if (!Number.isInteger(id) || id <= 0) return reply.code(400).send({ error: 'invalid_event_id' });
+    if (!Number.isInteger(id) || id <= 0) return reply.code(400).send({ error: 'invalid_event_id', message: '无效的事件 ID' });
     const { status, read } = request.body || {};
     const event = updateEvent(id, { status, read });
     if (!event) return reply.code(404).send({ error: 'event_not_found', message: '事件不存在' });

@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <Transition name="modal-fade">
-      <div v-if="show" class="modal-backdrop z-[70]" @click.self="close">
+      <div v-if="show" class="modal-backdrop z-[60]" @click.self="close">
         <Transition name="modal-pop" appear>
           <div class="command-palette">
             <div class="command-input-wrapper">

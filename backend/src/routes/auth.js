@@ -62,7 +62,7 @@ export default async function authRoutes(fastify) {
       },
     },
   }, async (request, reply) => {
-    if (isConfigured()) return reply.code(409).send({ error: 'already_configured' });
+    if (isConfigured()) return reply.code(409).send({ error: 'already_configured', message: '系统已完成初始配置' });
     try {
       setPassword(request.body?.password);
       issueSession(reply, request.protocol === 'https');
@@ -81,7 +81,7 @@ export default async function authRoutes(fastify) {
       },
     },
   }, async (request, reply) => {
-    if (!isConfigured()) return reply.code(409).send({ error: 'setup_required' });
+    if (!isConfigured()) return reply.code(409).send({ error: 'setup_required', message: '系统尚未完成初始配置' });
     const key = request.ip;
     const entry = attempts.get(key) || { count: 0, resetAt: Date.now() + 15 * 60 * 1000 };
     if (Date.now() > entry.resetAt) { entry.count = 0; entry.resetAt = Date.now() + 15 * 60 * 1000; }

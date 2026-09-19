@@ -213,7 +213,6 @@ async function fetchAiModels() {
     modelListOpen.value = true;
     toast.success(`成功获取 ${count || models.length} 个可用模型`);
   } catch (e) {
-    fail(e);
     toast.error(`获取模型列表失败:${e.message}`);
   } finally {
     aiModelsLoading.value = false;
