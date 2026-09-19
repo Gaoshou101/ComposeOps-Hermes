@@ -11,6 +11,15 @@
     <p v-if="error" class="alert-error">{{ error }}</p>
     <p v-if="flash" class="alert-info">{{ flash }}</p>
 
+    <!-- 批量删除进度:逐项删除可能较慢,实时显示已完成数与当前目标 -->
+    <section v-if="busy && batchProgress.total > 0" class="section-panel !py-3">
+      <div class="flex items-center justify-between gap-3 text-sm">
+        <span class="text-surface-200">正在批量删除 <b class="text-sky-300 tabular-nums">{{ batchProgress.done }}</b> / {{ batchProgress.total }}</span>
+        <span class="min-w-0 flex-1 truncate text-right font-mono text-xs text-surface-500">{{ batchProgress.current }}</span>
+      </div>
+      <div class="progress mt-2"><span :style="{ width: Math.round(batchProgress.done / batchProgress.total * 100) + '%' }"></span></div>
+    </section>
+
     <div class="flex flex-wrap items-center gap-2 text-xs text-surface-400">
       <span v-if="data" class="rounded border border-surface-800 bg-surface-950/50 px-2 py-0.5">悬空镜像 <b class="text-amber-300">{{ data.counts.danglingImages }}</b></span>
       <span v-if="data" class="rounded border border-surface-800 bg-surface-950/50 px-2 py-0.5">孤儿卷 <b class="text-amber-300">{{ data.counts.orphanVolumes }}</b></span>
@@ -98,6 +107,7 @@ const activeTab = ref('images');
 const pendingKey = ref('');
 const busy = ref(false);
 const selected = ref([]);
+const batchProgress = ref({ total: 0, done: 0, current: '' });
 const searchQuery = ref('');
 const filterStatus = ref('');
 const bulkDeleteOpen = ref(false);
@@ -248,11 +258,13 @@ async function performBatchRemove() {
   const kinds = { images: 'image', volumes: 'volume', networks: 'network' };
   const errors = [];
   let successCount = 0;
-  
+  batchProgress.value = { total: selected.value.length, done: 0, current: '' };
+
   for (const key of selected.value) {
     const row = rows.value.find(r => r.key === key);
     if (!row) continue;
-    
+    batchProgress.value = { ...batchProgress.value, current: row.primary };
+
     try {
       const id = activeTab.value === 'images' ? rowRemaining(row) : row.primary;
       await api.removeStorageResource(kinds[activeTab.value], id);
@@ -260,9 +272,11 @@ async function performBatchRemove() {
     } catch (e) {
       errors.push(`${row.primary}: ${e.message}`);
     }
+    batchProgress.value = { ...batchProgress.value, done: batchProgress.value.done + 1 };
   }
-  
+
   busy.value = false;
+  batchProgress.value = { total: 0, done: 0, current: '' };
   selected.value = [];
   
   if (errors.length > 0) {
@@ -331,7 +345,10 @@ function formatBytes(value = 0) {
 }
 
 function formatTime(value) {
-  return value ? new Date(value).toLocaleString() : '—';
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 watch(activeTab, () => {

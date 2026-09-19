@@ -80,7 +80,7 @@
         :class="{ featured: template.featured }"
       >
         <div class="card-header">
-          <h3>{{ template.name }}</h3>
+          <h3>{{ template.name }}<span v-if="template.featured" class="featured-badge">精选</span></h3>
           <button
             @click="toggleFavorite(template.id)"
             class="favorite-btn"
@@ -575,9 +575,9 @@ onMounted(async () => {
 }
 
 .page-header h1 {
-  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-size: clamp(1.3rem, 2.2vw, 1.5rem);
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   margin: 0;
 }
 
@@ -750,9 +750,22 @@ button:hover {
   transform: translateY(-2px);
 }
 
+/* 精选模板用小徽章标注,不再整卡高亮边框(避免与收藏态混淆) */
 .template-card.featured {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 3%, var(--surface-1));
+  border-color: var(--border);
+  background: var(--surface-1);
+}
+
+.featured-badge {
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 500;
+  vertical-align: middle;
 }
 
 .card-header {

@@ -142,11 +142,12 @@ const edges = computed(() => {
 });
 const svgWidth = computed(() => {
   const maxLevel = Math.max(0, ...nodes.value.map((n) => n.level));
-  return 160 + maxLevel * levelGap + nodeW;
+  // 下限与容器 min-w 对齐,避免节点少时 viewBox 被拉伸放大(单节点时曾放大数倍)
+  return Math.max(160 + maxLevel * levelGap + nodeW, 720);
 });
 const svgHeight = computed(() => {
   const maxCount = Math.max(1, ...groupByLevel(nodes.value).map((g) => g.length));
-  return 120 + maxCount * nodeGap;
+  return Math.max(120 + maxCount * nodeGap, 420);
 });
 
 function groupByLevel(nodeList) {

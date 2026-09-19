@@ -13,6 +13,14 @@
         <button class="btn-secondary" :disabled="loading" @click="loadProject"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />刷新</button>
       </div>
     </div>
+    <!-- embedded 模式(变更与回滚页 tab)没有页头,单独保留选择项目的工具条,否则无法选择项目 -->
+    <div v-else class="mb-3 flex flex-wrap items-center justify-end gap-2">
+      <select v-model="selectedProjectId" class="input sm:w-56" aria-label="选择项目" @change="loadProject">
+        <option value="">选择项目</option>
+        <option v-for="p in store.projects" :key="p.id" :value="p.id">{{ p.projectName }}</option>
+      </select>
+      <button class="btn-secondary" :disabled="loading" @click="loadProject"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />刷新</button>
+    </div>
 
     <p v-if="error" class="alert-error">{{ error }}</p>
 

@@ -361,9 +361,9 @@ onMounted(() => {
 }
 
 .page-header h1 {
-  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-size: clamp(1.3rem, 2.2vw, 1.5rem);
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
   margin: 0;
 }
 
