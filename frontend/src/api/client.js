@@ -57,6 +57,11 @@ function revalidate(key, path, opts) {
     .then((data) => swrCache.set(key, { data, ts: Date.now(), inflight: false }))
     .catch(() => swrCache.set(key, { ...entry, inflight: false }));
 }
+/** SSE/流式响应的非 2xx 错误统一解析为 Error。 */
+async function streamError(res, fallback) {
+  const payload = await res.json().catch(() => ({}));
+  return new Error(payload.message || payload.error || fallback);
+}
 async function request(path, opts = {}) {
   if (!isGet(opts)) {
     const data = await doFetch(path, opts);
@@ -108,10 +113,7 @@ export const api = {
   getJob: async (id) => normalizeBackgroundJob(await request(`/jobs/${id}`)),
   streamJobUpdates: (jobId, onFrame, signal) => {
     return fetch(`${BASE}/jobs/${jobId}/stream`, { signal }).then(async (res) => {
-      if (!res.ok || !res.body) {
-        const payload = await res.json().catch(() => ({}));
-        throw new Error(payload.message || payload.error || '任务流请求失败');
-      }
+      if (!res.ok || !res.body) throw await streamError(res, '任务流请求失败');
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = '';
@@ -289,10 +291,7 @@ export async function streamComposeControl(projectId, action, onFrame, path = nu
     body: body ? JSON.stringify(body) : JSON.stringify({ action }),
     signal,
   });
-  if (!res.ok || !res.body) {
-    const payload = await res.json().catch(() => ({}));
-    throw new Error(payload.message || payload.error || '控制请求失败');
-  }
+  if (!res.ok || !res.body) throw await streamError(res, '控制请求失败');
   invalidateSwr('/projects');
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -323,10 +322,7 @@ export async function streamSse(path, body, onFrame, signal) {
     body: JSON.stringify(body),
     signal,
   });
-  if (!res.ok || !res.body) {
-    const payload = await res.json().catch(() => ({}));
-    throw new Error(payload.message || payload.error || 'AI 请求失败');
-  }
+  if (!res.ok || !res.body) throw await streamError(res, 'AI 请求失败');
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buf = '';
@@ -349,10 +345,7 @@ export async function streamSse(path, body, onFrame, signal) {
 /** 项目容器实时资源指标 SSE 流(GET)。 */
 export function streamProjectStats(projectId, onFrame, signal, interval = 2500) {
   return fetch(`${BASE}/projects/${projectId}/stats/stream?interval=${interval}`, { signal }).then(async (res) => {
-    if (!res.ok || !res.body) {
-      const payload = await res.json().catch(() => ({}));
-      throw new Error(payload.message || payload.error || '指标流请求失败');
-    }
+    if (!res.ok || !res.body) throw await streamError(res, '指标流请求失败');
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';

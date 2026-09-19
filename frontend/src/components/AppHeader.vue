@@ -1,5 +1,5 @@
 <template>
-  <header class="app-header z-[45] h-16 flex items-center justify-between gap-2 px-3 sm:px-6 shrink-0">
+  <header class="app-header h-16 flex items-center justify-between gap-2 px-3 sm:px-6 shrink-0">
     <div class="flex min-w-0 items-center gap-2 sm:gap-3">
       <div class="brand-mark shrink-0"><Boxes class="w-5 h-5" /></div>
       <div class="brand-text min-w-0">

@@ -1,33 +1,33 @@
 <template>
-  <div class="modal-backdrop z-[55]" @click.self="close">
-    <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-2xl flex max-h-[86vh] flex-col">
-      <div class="modal-header shrink-0"><span class="flex items-center gap-2"><Sparkles class="w-4 h-4 text-accent" />AI 一键诊断 · {{ title }}</span><button class="icon-btn" title="关闭" @click="close"><X class="w-4 h-4" /></button></div>
-      <div class="grid min-h-0 flex-1 md:grid-cols-[minmax(0,1fr)_11rem]">
-        <div class="min-w-0 overflow-y-auto p-4">
-          <div v-if="!streaming && !text" class="flex h-full min-h-32 items-center justify-center text-muted">等待 AI 诊断结果…</div>
-          <AgentMarkdown class="ai-diagnosis agent-rich-markdown" :content="text" />
-        </div>
-        <aside class="flex flex-col gap-2 border-t border-surface-800 p-3 md:border-l md:border-t-0">
-          <p class="text-xs text-muted">快捷操作</p>
-          <button class="btn-secondary" :disabled="!fullText" @click="copyFix"><Copy class="w-4 h-4" />复制修复命令</button>
-          <button class="btn-secondary" :disabled="!projectId" @click="goCompose"><FileCode2 class="w-4 h-4" />跳转 Compose 编辑器</button>
-          <button class="btn-secondary" :disabled="!projectId || !envEditable" @click="goEnv"><KeyRound class="w-4 h-4" />跳转 Env 编辑器</button>
-        </aside>
+  <BaseModal :show="open" :title="`AI 一键诊断 · ${title}`" size-class="max-w-[calc(100vw-2rem)] sm:max-w-2xl flex max-h-[86vh] flex-col" body-class="min-h-0 flex-1 p-0" @close="close">
+    <template #header-actions>
+      <Sparkles class="w-4 h-4 text-accent" />
+    </template>
+    <div class="grid min-h-0 flex-1 md:grid-cols-[minmax(0,1fr)_11rem]">
+      <div class="min-w-0 overflow-y-auto p-4">
+        <div v-if="!streaming && !text" class="flex h-full min-h-32 items-center justify-center text-muted">等待 AI 诊断结果…</div>
+        <AgentMarkdown class="ai-diagnosis agent-rich-markdown" :content="text" />
       </div>
-      <footer v-if="statusText" class="shrink-0 border-t border-surface-800 px-4 py-2 text-xs" :class="statusClass">{{ statusText }}</footer>
+      <aside class="flex flex-col gap-2 border-t border-surface-800 p-3 md:border-l md:border-t-0">
+        <p class="text-xs text-muted">快捷操作</p>
+        <button class="btn-secondary" :disabled="!fullText" @click="copyFix"><Copy class="w-4 h-4" />复制修复命令</button>
+        <button class="btn-secondary" :disabled="!projectId" @click="goCompose"><FileCode2 class="w-4 h-4" />跳转 Compose 编辑器</button>
+        <button class="btn-secondary" :disabled="!projectId || !envEditable" @click="goEnv"><KeyRound class="w-4 h-4" />跳转 Env 编辑器</button>
+      </aside>
     </div>
-  </div>
+    <footer v-if="statusText" class="shrink-0 border-t border-surface-800 px-4 py-2 text-xs" :class="statusClass">{{ statusText }}</footer>
+  </BaseModal>
 </template>
 
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { useEscapeKey } from '../../composables/useEscapeKey.js';
 import { streamSse } from '../../api/client.js';
 import { stripAgentProtocol } from '../../lib/agent-text.js';
 import { useToastStore } from '../../stores/toast.js';
-import { Copy, FileCode2, KeyRound, Sparkles, X } from 'lucide-vue-next';
+import { Copy, FileCode2, KeyRound, Sparkles } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
 import AgentMarkdown from '../common/AgentMarkdown.vue';
+import BaseModal from '../common/BaseModal.vue';
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -92,5 +92,4 @@ async function copyFix() {
 }
 function goCompose() { close(); router.push(`/compose?projectId=${props.projectId}`); }
 function goEnv() { close(); router.push(`/services?env=${props.projectId}`); }
-useEscapeKey({ active: computed(() => props.open), onClose: close, layer: 'modal', lockBody: true });
 </script>

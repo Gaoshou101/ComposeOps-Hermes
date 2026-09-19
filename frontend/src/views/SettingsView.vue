@@ -123,40 +123,37 @@
       </div>
     </section>
 
-    <div v-if="hostEditor" class="modal-backdrop z-[55]" @click.self="hostEditor = null">
-      <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-2xl flex max-h-[90vh] flex-col">
-        <div class="modal-header shrink-0"><span>{{ hostEditor.id ? '编辑远程主机' : '添加远程主机' }}</span><button class="icon-btn" title="关闭" @click="hostEditor = null"><X class="w-4 h-4" /></button></div>
-        <div class="overflow-y-auto p-4 space-y-3">
+    <BaseModal :show="!!hostEditor" :title="hostEditor?.id ? '编辑远程主机' : '添加远程主机'" size-class="max-w-[calc(100vw-2rem)] sm:max-w-2xl flex max-h-[90vh] flex-col" body-class="min-h-0 flex-1 overflow-y-auto p-4 space-y-3" @close="hostEditor = null">
+      <template v-if="hostEditor">
+        <div class="form-grid">
+          <label class="md:col-span-2">节点名称<input v-model="hostEditor.name" class="input" placeholder="例如 K8s Worker / 生产机" /></label>
+          <label>连接方式<select v-model="hostEditor.type" class="input"><option value="tcp">TCP (Docker API)</option><option value="ssh">SSH</option></select></label>
+          <label>端口<input v-model.number="hostEditor.port" type="number" class="input" :placeholder="hostEditor.type === 'ssh' ? '22' : '2375'" /></label>
+          <label>主机地址<input v-model="hostEditor.host" class="input" placeholder="192.168.1.10" /></label>
+          <label>用户名<input v-model="hostEditor.username" class="input" placeholder="root" /></label>
+        </div>
+        <template v-if="hostEditor.type === 'ssh'">
           <div class="form-grid">
-            <label class="md:col-span-2">节点名称<input v-model="hostEditor.name" class="input" placeholder="例如 K8s Worker / 生产机" /></label>
-            <label>连接方式<select v-model="hostEditor.type" class="input"><option value="tcp">TCP (Docker API)</option><option value="ssh">SSH</option></select></label>
-            <label>端口<input v-model.number="hostEditor.port" type="number" class="input" :placeholder="hostEditor.type === 'ssh' ? '22' : '2375'" /></label>
-            <label>主机地址<input v-model="hostEditor.host" class="input" placeholder="192.168.1.10" /></label>
-            <label>用户名<input v-model="hostEditor.username" class="input" placeholder="root" /></label>
+            <label class="md:col-span-2">SSH 密码<input v-model="hostEditor.password" type="password" class="input" :placeholder="hostEditor.hasPassword ? '已配置,留空保持不变' : '…'" /></label>
+            <label class="md:col-span-2">私钥(可选)<textarea v-model="hostEditor.privateKey" rows="4" class="input font-mono" :placeholder="hostEditor.hasPrivateKey ? '已配置,留空保持不变' : '-----BEGIN OPENSSH PRIVATE KEY-----…'"></textarea></label>
           </div>
-          <template v-if="hostEditor.type === 'ssh'">
-            <div class="form-grid">
-              <label class="md:col-span-2">SSH 密码<input v-model="hostEditor.password" type="password" class="input" :placeholder="hostEditor.hasPassword ? '已配置,留空保持不变' : '…'" /></label>
-              <label class="md:col-span-2">私钥(可选)<textarea v-model="hostEditor.privateKey" rows="4" class="input font-mono" :placeholder="hostEditor.hasPrivateKey ? '已配置,留空保持不变' : '-----BEGIN OPENSSH PRIVATE KEY-----…'"></textarea></label>
+        </template>
+        <template v-else>
+          <details class="text-sm"><summary class="cursor-pointer text-surface-300">TLS 客户端证书(可选)</summary>
+            <div class="form-grid mt-2">
+              <label class="md:col-span-2">CA 证书<textarea v-model="hostEditor.tls.ca" rows="3" class="input font-mono" :placeholder="hostEditor.tls.ca ? '已配置,留空保持不变' : '-----BEGIN CERTIFICATE-----…'"></textarea></label>
+              <label class="md:col-span-2">客户端证书<textarea v-model="hostEditor.tls.cert" rows="3" class="input font-mono" placeholder="-----BEGIN CERTIFICATE-----…"></textarea></label>
+              <label class="md:col-span-2">客户端私钥<textarea v-model="hostEditor.tls.key" rows="3" class="input font-mono" placeholder="-----BEGIN PRIVATE KEY-----…"></textarea></label>
             </div>
-          </template>
-          <template v-else>
-            <details class="text-sm"><summary class="cursor-pointer text-surface-300">TLS 客户端证书(可选)</summary>
-              <div class="form-grid mt-2">
-                <label class="md:col-span-2">CA 证书<textarea v-model="hostEditor.tls.ca" rows="3" class="input font-mono" :placeholder="hostEditor.tls.ca ? '已配置,留空保持不变' : '-----BEGIN CERTIFICATE-----…'"></textarea></label>
-                <label class="md:col-span-2">客户端证书<textarea v-model="hostEditor.tls.cert" rows="3" class="input font-mono" placeholder="-----BEGIN CERTIFICATE-----…"></textarea></label>
-                <label class="md:col-span-2">客户端私钥<textarea v-model="hostEditor.tls.key" rows="3" class="input font-mono" placeholder="-----BEGIN PRIVATE KEY-----…"></textarea></label>
-              </div>
-            </details>
-          </template>
-          <p v-if="hostEditor.pingResult" class="text-sm" :class="hostEditor.pingResult.ok ? 'text-emerald-400' : 'text-rose-400'">{{ hostEditor.pingResult.ok ? `连接成功 · ${hostEditor.pingResult.latencyMs}ms · v${hostEditor.pingResult.version} · ${hostEditor.pingResult.containerCount} 容器` : `连接失败:${hostEditor.pingResult.message}` }}</p>
-        </div>
-        <div class="flex shrink-0 items-center justify-end gap-2 border-t border-surface-800 p-3">
-          <button class="btn-secondary" :disabled="hostEditor.pinging" @click="testHostConnection"><Activity class="w-4 h-4" />{{ hostEditor.pinging ? '检测中…' : '测试连接' }}</button>
-          <button class="btn-primary" @click="saveHost"><Save class="w-4 h-4" />保存节点</button>
-        </div>
-      </div>
-    </div>
+          </details>
+        </template>
+        <p v-if="hostEditor.pingResult" class="text-sm" :class="hostEditor.pingResult.ok ? 'text-emerald-400' : 'text-rose-400'">{{ hostEditor.pingResult.ok ? `连接成功 · ${hostEditor.pingResult.latencyMs}ms · v${hostEditor.pingResult.version} · ${hostEditor.pingResult.containerCount} 容器` : `连接失败:${hostEditor.pingResult.message}` }}</p>
+      </template>
+      <template #footer>
+        <button class="btn-secondary" :disabled="hostEditor?.pinging" @click="testHostConnection"><Activity class="w-4 h-4" />{{ hostEditor?.pinging ? '检测中…' : '测试连接' }}</button>
+        <button class="btn-primary" @click="saveHost"><Save class="w-4 h-4" />保存节点</button>
+      </template>
+    </BaseModal>
     <StoragePruneModal v-if="storageModal" @close="storageModal = false" @reclaimed="loadUsage" />
     <ConfirmDialog :show="!!removeHostTarget" title="删除 Docker 节点" :message="`确认删除节点 ${removeHostTarget?.name || ''}?删除后不会影响远程主机本身。`" tone="danger" confirm-text="删除节点" @confirm="confirmRemoveHost" @cancel="removeHostTarget = null" />
     <ConfirmDialog :show="managementConfirm" title="取消项目纳管" :message="`将取消 ${removedProjectCount} 个项目的管理权限,相关控制与编辑入口会立即关闭。确认继续?`" tone="warning" confirm-text="确认应用" @confirm="confirmSaveManagement" @cancel="managementConfirm = false" />
@@ -172,6 +169,7 @@ import { api } from '../api/client.js'; import { useAiStore } from '../stores/ai
 import EmptyState from '../components/common/EmptyState.vue';
 import StoragePruneModal from '../components/settings/StoragePruneModal.vue';
 import ConfirmDialog from '../components/common/ConfirmDialog.vue';
+import BaseModal from '../components/common/BaseModal.vue';
 const tabs = [{ id: 'ai', label: 'AI', icon: markRaw(Bot) }, { id: 'personal', label: '偏好', icon: markRaw(SlidersHorizontal) }, { id: 'notifications', label: '通知', icon: markRaw(Bell) }, { id: 'maintenance', label: '维护', icon: markRaw(Wrench) }, { id: 'mounts', label: '项目纳管', icon: markRaw(FolderCog) }, { id: 'hosts', label: 'Docker 节点', icon: markRaw(Server) }, { id: 'about', label: '关于', icon: markRaw(Info) }];
 const route = useRoute();
 const initialTab = tabs.some((item) => item.id === route.query.tab) ? route.query.tab : 'ai';

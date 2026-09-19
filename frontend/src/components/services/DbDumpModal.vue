@@ -1,30 +1,28 @@
 <template>
-  <div class="modal-backdrop z-[55]" @click.self="close">
-    <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-lg flex max-h-[88vh] flex-col">
-      <div class="modal-header shrink-0"><span class="flex items-center gap-2"><Database class="w-4 h-4 text-emerald-300" />备份数据库 · {{ project.projectName }}</span><button class="icon-btn" title="关闭" @click="close"><X class="w-4 h-4" /></button></div>
-      <div class="min-h-0 flex-1 overflow-y-auto p-4 space-y-3">
-        <p v-if="error" class="alert-error">{{ error }}</p>
-        <p v-if="!containers.length && !loading && !error" class="text-muted text-sm">该项目没有运行中的数据库容器(Postgres / MySQL / MariaDB / Redis / MongoDB)。</p>
-        <div v-if="containers.length" class="space-y-3">
-          <label>目标容器<select v-model="containerId" class="input"><option value="">选择数据库容器</option><option v-for="c in containers" :key="c.containerId" :value="c.containerId">{{ c.containerName }} ({{ c.type }})</option></select></label>
-          <label v-if="selectedType && selectedType !== 'redis'">库名(留空自动从 .env 识别)<input v-model="dbName" class="input font-mono" :placeholder="autoDbHint || '例如 mydb'" /></label>
-          <p class="text-xs text-surface-400">导出方式:{{ selectedType === 'redis' ? 'redis-cli bgsave → RDB 归档' : `${selectedTypeCmd} 全量导出` }};自动 gzip 压缩,浏览器直接下载,服务器同时留存一份历史备份。</p>
-        </div>
-      </div>
-      <div class="flex shrink-0 items-center justify-end gap-2 border-t border-surface-800 p-3">
-        <button class="btn-secondary" :disabled="dumping" @click="close">取消</button>
-        <button class="btn-primary" :disabled="!containerId || dumping" @click="dump"><Database class="w-4 h-4" :class="{ 'animate-pulse': dumping }" />{{ dumping ? '导出中...' : '开始导出并下载' }}</button>
-      </div>
+  <BaseModal :show="true" :title="`备份数据库 · ${project.projectName}`" size-class="max-w-[calc(100vw-2rem)] sm:max-w-lg flex max-h-[88vh] flex-col" body-class="min-h-0 flex-1 overflow-y-auto p-4 space-y-3" @close="close">
+    <template #header-actions>
+      <Database class="w-4 h-4 text-emerald-300" />
+    </template>
+    <p v-if="error" class="alert-error">{{ error }}</p>
+    <p v-if="!containers.length && !loading && !error" class="text-muted text-sm">该项目没有运行中的数据库容器(Postgres / MySQL / MariaDB / Redis / MongoDB)。</p>
+    <div v-if="containers.length" class="space-y-3">
+      <label>目标容器<select v-model="containerId" class="input"><option value="">选择数据库容器</option><option v-for="c in containers" :key="c.containerId" :value="c.containerId">{{ c.containerName }} ({{ c.type }})</option></select></label>
+      <label v-if="selectedType && selectedType !== 'redis'">库名(留空自动从 .env 识别)<input v-model="dbName" class="input font-mono" :placeholder="autoDbHint || '例如 mydb'" /></label>
+      <p class="text-xs text-surface-400">导出方式:{{ selectedType === 'redis' ? 'redis-cli bgsave → RDB 归档' : `${selectedTypeCmd} 全量导出` }};自动 gzip 压缩,浏览器直接下载,服务器同时留存一份历史备份。</p>
     </div>
-  </div>
+    <template #footer>
+      <button class="btn-secondary" :disabled="dumping" @click="close">取消</button>
+      <button class="btn-primary" :disabled="!containerId || dumping" @click="dump"><Database class="w-4 h-4" :class="{ 'animate-pulse': dumping }" />{{ dumping ? '导出中...' : '开始导出并下载' }}</button>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { useEscapeKey } from '../../composables/useEscapeKey.js';
 import { api } from '../../api/client.js';
 import { useToastStore } from '../../stores/toast.js';
-import { Database, X } from 'lucide-vue-next';
+import { Database } from 'lucide-vue-next';
+import BaseModal from '../common/BaseModal.vue';
 
 const props = defineProps({ project: { type: Object, required: true } });
 const emit = defineEmits(['close']);
@@ -36,7 +34,6 @@ const containerId = ref('');
 const dbName = ref('');
 const error = ref('');
 
-const active = computed(() => true);
 const selectedType = computed(() => containers.value.find((c) => c.containerId === containerId.value)?.type || '');
 const autoDbHint = computed(() => '自动识别');
 const selectedTypeCmd = computed(() => ({ postgres: 'pg_dump', mysql: 'mysqldump', mariadb: 'mysqldump', mongo: 'mongodump --archive', redis: '' })[selectedType.value] || '');
@@ -82,5 +79,4 @@ async function dump() {
 }
 function close() { if (!dumping.value) emit('close'); }
 onMounted(load);
-useEscapeKey({ active, onClose: close, layer: 'modal', lockBody: true });
 </script>

@@ -1,22 +1,20 @@
 <template>
-  <div class="modal-backdrop z-[55]" @click.self="close">
-    <div class="modal flex max-h-[86vh] max-w-[calc(100vw-1.5rem)] flex-col sm:max-w-4xl">
-      <!-- 顶部工具栏 -->
-      <div class="modal-header shrink-0 flex-wrap gap-2">
-        <div class="flex min-w-0 items-center gap-2">
-          <KeyRound class="h-4 w-4 shrink-0 text-accent" />
-          <span class="truncate font-mono">{{ project.projectName }}</span>
-          <span class="hidden font-mono text-[11px] text-surface-500 sm:inline">{{ data.path || '.env' }}</span>
-        </div>
-        <div class="ml-auto flex items-center gap-2">
-          <select v-if="envFiles.length > 1 || activeFile !== '.env'" class="input !min-h-8 !w-auto !py-1 text-xs" :value="activeFile" @change="switchEnvFile($event.target.value)"><option v-for="item in envFiles" :key="item.name" :value="item.name">{{ item.name }}</option></select>
-          <button class="icon-btn" title="重置为磁盘当前内容" aria-label="重置" @click="reload"><RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" /></button>
-          <button class="icon-btn" title="关闭" aria-label="关闭" @click="close"><X class="h-4 w-4" /></button>
-        </div>
-      </div>
+  <BaseModal
+    :show="true"
+    :title="project.projectName"
+    size-class="flex max-h-[86vh] max-w-[calc(100vw-1.5rem)] flex-col sm:max-w-4xl"
+    body-class="flex min-h-0 flex-1 flex-col p-0"
+    @close="close"
+  >
+    <template #header-actions>
+      <KeyRound class="h-4 w-4 shrink-0 text-accent" />
+      <span class="hidden font-mono text-[11px] text-surface-500 sm:inline">{{ data.path || '.env' }}</span>
+      <select v-if="envFiles.length > 1 || activeFile !== '.env'" class="input !min-h-8 !w-auto !py-1 text-xs" :value="activeFile" @change="switchEnvFile($event.target.value)"><option v-for="item in envFiles" :key="item.name" :value="item.name">{{ item.name }}</option></select>
+      <button class="icon-btn" title="重置为磁盘当前内容" aria-label="重置" @click="reload"><RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" /></button>
+    </template>
 
-      <!-- 模式切换 Tab -->
-      <div class="tabs shrink-0 px-4 pt-2">
+    <!-- 模式切换 Tab -->
+    <div class="tabs shrink-0 px-4 pt-2">
         <button :class="{ active: mode === 'table' }" @click="mode = 'table'"><ListOrdered class="h-4 w-4" />键值表格</button>
         <button :class="{ active: mode === 'raw' }" @click="mode = 'raw'"><FileCode2 class="h-4 w-4" />原始文本</button>
       </div>
@@ -72,40 +70,34 @@
         </div>
       </div>
 
-      <!-- 底部操作 -->
-      <div class="shrink-0 border-t border-surface-800 px-4 py-3">
-        <div class="flex flex-wrap items-center gap-2">
-          <button class="btn-secondary" @click="addRow"><Plus class="h-4 w-4" />新增变量</button>
-          <span class="ml-auto flex flex-wrap gap-2">
-            <button class="btn-ghost" :disabled="saving" @click="saveOnly"><Save class="h-4 w-4" />仅保存文件</button>
-            <button class="btn-primary" :disabled="saving" @click="saveAndApply"><Play class="h-4 w-4" />保存并应用</button>
-          </span>
-        </div>
+    <!-- 底部操作 -->
+    <div class="shrink-0 border-t border-surface-800 px-4 py-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <button class="btn-secondary" @click="addRow"><Plus class="h-4 w-4" />新增变量</button>
+        <span class="ml-auto flex flex-wrap gap-2">
+          <button class="btn-ghost" :disabled="saving" @click="saveOnly"><Save class="h-4 w-4" />仅保存文件</button>
+          <button class="btn-primary" :disabled="saving" @click="saveAndApply"><Play class="h-4 w-4" />保存并应用</button>
+        </span>
       </div>
-
-      <!-- 保存选项确认弹窗 -->
-      <div v-if="confirm" class="modal-backdrop z-[55]" @click.self="confirm = false">
-        <div class="modal max-w-[calc(100vw-1.5rem)] sm:max-w-md">
-          <div class="modal-header"><span>保存环境变量</span><button class="icon-btn" @click="confirm = false"><X class="h-4 w-4" /></button></div>
-          <div class="space-y-2 p-4">
-            <p class="text-sm text-surface-300">请选择应用方式:</p>
-            <button class="btn-secondary w-full justify-start" @click="doSave(false)"><Save class="h-4 w-4" />仅保存文件(不重启容器)</button>
-            <button class="btn-primary w-full justify-start" @click="doSave(true)"><Play class="h-4 w-4" />保存并平滑重建容器(推荐)</button>
-          </div>
-        </div>
-      </div>
-      <ConfirmDialog :show="!!pendingConfirm" title="未保存的修改" :message="pendingConfirm?.message || ''" tone="warning" confirm-text="继续" @confirm="confirmPending" @cancel="pendingConfirm = null" />
     </div>
-  </div>
+
+    <!-- 保存选项确认弹窗 -->
+    <BaseModal :show="confirm" title="保存环境变量" size-class="max-w-[calc(100vw-1.5rem)] sm:max-w-md" body-class="space-y-2 p-4" @close="confirm = false">
+      <p class="text-sm text-surface-300">请选择应用方式:</p>
+      <button class="btn-secondary w-full justify-start" @click="doSave(false)"><Save class="h-4 w-4" />仅保存文件(不重启容器)</button>
+      <button class="btn-primary w-full justify-start" @click="doSave(true)"><Play class="h-4 w-4" />保存并平滑重建容器(推荐)</button>
+    </BaseModal>
+    <ConfirmDialog :show="!!pendingConfirm" title="未保存的修改" :message="pendingConfirm?.message || ''" tone="warning" confirm-text="继续" @confirm="confirmPending" @cancel="pendingConfirm = null" />
+  </BaseModal>
 </template>
 
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue';
-import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, FileCode2, KeyRound, ListOrdered, Play, Plus, RefreshCw, Save, Search, Trash2, X } from 'lucide-vue-next';
+import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, FileCode2, KeyRound, ListOrdered, Play, Plus, RefreshCw, Save, Search, Trash2 } from 'lucide-vue-next';
 import { api } from '../../api/client.js';
 import { parseDotenv, serializeDotenv, isSecretKey } from '../../lib/dotenv.js';
 import { useToastStore } from '../../stores/toast.js';
-import { useEscapeKey } from '../../composables/useEscapeKey.js';
+import BaseModal from '../common/BaseModal.vue';
 import ConfirmDialog from '../common/ConfirmDialog.vue';
 
 const props = defineProps({
@@ -232,9 +224,6 @@ async function doSave(apply) {
     toast.error(`保存失败:${error.message}`);
   } finally { saving.value = false; pendingApply.value = false; }
 }
-
-useEscapeKey({ active: computed(() => true), onClose: close, layer: 'modal', lockBody: true });
-useEscapeKey({ active: computed(() => confirm.value), onClose: () => { confirm.value = false; }, layer: 'modal' });
 
 watch(() => props.project.id, () => { if (props.project.id) { load(); loadEnvFiles(); } });
 load();

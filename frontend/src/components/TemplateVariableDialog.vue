@@ -1,41 +1,34 @@
 <template>
-  <div class="modal-backdrop z-[55]" @click.self="$emit('close')">
-    <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-2xl">
-      <div class="modal-header">
-        <span>配置模板变量</span>
-        <button class="icon-btn" @click="$emit('close')"><X class="w-4 h-4" /></button>
-      </div>
-      <div class="p-4 space-y-4 max-h-[70vh] overflow-auto">
-        <div v-if="template.description" class="text-sm text-surface-300 pb-3 border-b border-surface-800">
-          {{ template.description }}
-        </div>
-        <div v-for="variable in variables" :key="variable.name" class="space-y-1.5">
-          <label class="block text-sm font-medium text-surface-200">
-            {{ variable.label || variable.name }}
-            <span v-if="variable.required" class="text-rose-400">*</span>
-          </label>
-          <input
-            v-model="values[variable.name]"
-            :type="variable.type === 'password' ? 'password' : 'text'"
-            :placeholder="variable.default || variable.placeholder || `请输入 ${variable.label || variable.name}`"
-            class="input w-full"
-          />
-          <p v-if="variable.description" class="text-xs text-surface-400">{{ variable.description }}</p>
-        </div>
-      </div>
-      <footer class="flex items-center justify-end gap-2 border-t border-surface-800 px-4 py-2.5">
-        <button class="btn-ghost" @click="$emit('close')">取消</button>
-        <button class="btn-primary" :disabled="!isValid" @click="confirm">
-          <Check class="w-4 h-4" />确认
-        </button>
-      </footer>
+  <BaseModal :show="true" title="配置模板变量" size-class="max-w-[calc(100vw-2rem)] sm:max-w-2xl" body-class="p-4 space-y-4 max-h-[70vh] overflow-auto" @close="$emit('close')">
+    <div v-if="template.description" class="text-sm text-surface-300 pb-3 border-b border-surface-800">
+      {{ template.description }}
     </div>
-  </div>
+    <div v-for="variable in variables" :key="variable.name" class="space-y-1.5">
+      <label class="block text-sm font-medium text-surface-200">
+        {{ variable.label || variable.name }}
+        <span v-if="variable.required" class="text-rose-400">*</span>
+      </label>
+      <input
+        v-model="values[variable.name]"
+        :type="variable.type === 'password' ? 'password' : 'text'"
+        :placeholder="variable.default || variable.placeholder || `请输入 ${variable.label || variable.name}`"
+        class="input w-full"
+      />
+      <p v-if="variable.description" class="text-xs text-surface-400">{{ variable.description }}</p>
+    </div>
+    <template #footer>
+      <button class="btn-ghost" @click="$emit('close')">取消</button>
+      <button class="btn-primary" :disabled="!isValid" @click="confirm">
+        <Check class="w-4 h-4" />确认
+      </button>
+    </template>
+  </BaseModal>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue';
-import { Check, X } from 'lucide-vue-next';
+import { Check } from 'lucide-vue-next';
+import BaseModal from './common/BaseModal.vue';
 
 const props = defineProps({
   template: { type: Object, required: true },

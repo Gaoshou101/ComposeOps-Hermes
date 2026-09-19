@@ -68,23 +68,23 @@
       </div>
     </div>
 
-    <div v-if="editor" class="modal-backdrop z-[55]" @click.self="closeEditor">
-      <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-lg flex max-h-[88vh] flex-col">
-        <div class="modal-header shrink-0"><span>新建定时任务</span><div class="flex items-center gap-2"><button class="btn-secondary !px-2.5 !py-1.5 text-xs" title="让 Agent 根据当前表单创建任务" @click="openCronAgent"><Bot class="h-3.5 w-3.5" />让 Agent 创建</button><button class="icon-btn" title="关闭" @click="closeEditor"><X class="w-4 h-4" /></button></div></div>
-        <div class="min-h-0 flex-1 overflow-y-auto p-4 space-y-3">
-          <p v-if="editorError" class="alert-error">{{ editorError }}</p>
-          <label>任务名称<input v-model="editor.name" class="input" placeholder="例如:每天凌晨自动备份数据库" /></label>
-          <label>任务类型<select v-model="editor.type" class="input"><option v-for="(info, key) in types" :key="key" :value="key">{{ info.label }} — {{ info.description }}</option></select></label>
-          <label>周期模板<select v-model="editor.cron" class="input" @change="onCronTemplateChange"><option value="0 3 * * *">每天凌晨 3:00</option><option value="0 0 * * 0">每周日 0:00</option><option value="0 * * * *">每小时整点</option><option value="*/5 * * * *">每 5 分钟(测试用)</option><option value="custom">自定义表达式…</option></select></label>
-          <label v-if="manualCron">Cron 表达式<input v-model="editor.cron" class="input font-mono" placeholder="分 时 日 月 周,如 0 3 * * *" /><span class="text-xs text-muted">下一次执行:{{ nextPreview }}</span></label>
-          <details class="text-sm"><summary class="cursor-pointer text-surface-300">支持的预设表达式</summary><div class="mt-2 space-y-1 text-xs text-muted font-mono"><p>0 3 * * *- 每天 03:00</p><p>0 0 * * 0 - 每周日 00:00</p><p>0 * * * * - 每小时整点</p><p>*/30 * * * * - 每 30 分钟</p></div></details>
-        </div>
-        <div class="flex shrink-0 items-center justify-end gap-2 border-t border-surface-800 p-3">
-          <button class="btn-secondary" @click="closeEditor">取消</button>
-          <button class="btn-primary" :disabled="saving" @click="saveEditor"><Save class="w-4 h-4" />创建任务</button>
-        </div>
-      </div>
-    </div>
+    <BaseModal :show="!!editor" title="新建定时任务" size-class="max-w-[calc(100vw-2rem)] sm:max-w-lg flex max-h-[88vh] flex-col" body-class="min-h-0 flex-1 overflow-y-auto p-4 space-y-3" @close="closeEditor">
+      <template #header-actions>
+        <button class="btn-secondary !px-2.5 !py-1.5 text-xs" title="让 Agent 根据当前表单创建任务" @click="openCronAgent"><Bot class="h-3.5 w-3.5" />让 Agent 创建</button>
+      </template>
+      <template v-if="editor">
+        <p v-if="editorError" class="alert-error">{{ editorError }}</p>
+        <label>任务名称<input v-model="editor.name" class="input" placeholder="例如:每天凌晨自动备份数据库" /></label>
+        <label>任务类型<select v-model="editor.type" class="input"><option v-for="(info, key) in types" :key="key" :value="key">{{ info.label }} — {{ info.description }}</option></select></label>
+        <label>周期模板<select v-model="editor.cron" class="input" @change="onCronTemplateChange"><option value="0 3 * * *">每天凌晨 3:00</option><option value="0 0 * * 0">每周日 0:00</option><option value="0 * * * *">每小时整点</option><option value="*/5 * * * *">每 5 分钟(测试用)</option><option value="custom">自定义表达式…</option></select></label>
+        <label v-if="manualCron">Cron 表达式<input v-model="editor.cron" class="input font-mono" placeholder="分 时 日 月 周,如 0 3 * * *" /><span class="text-xs text-muted">下一次执行:{{ nextPreview }}</span></label>
+        <details class="text-sm"><summary class="cursor-pointer text-surface-300">支持的预设表达式</summary><div class="mt-2 space-y-1 text-xs text-muted font-mono"><p>0 3 * * *- 每天 03:00</p><p>0 0 * * 0 - 每周日 00:00</p><p>0 * * * * - 每小时整点</p><p>*/30 * * * * - 每 30 分钟</p></div></details>
+      </template>
+      <template #footer>
+        <button class="btn-secondary" @click="closeEditor">取消</button>
+        <button class="btn-primary" :disabled="saving" @click="saveEditor"><Save class="w-4 h-4" />创建任务</button>
+      </template>
+    </BaseModal>
     <ConfirmDialog
       :show="!!removeTarget"
       title="删除定时任务"
@@ -99,10 +99,11 @@
 
 <script setup>
 import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { Clock3, DatabaseBackup, Bot, Play, Plus, RefreshCw, Save, Sparkles, Trash2, X } from 'lucide-vue-next';
+import { Clock3, DatabaseBackup, Bot, Play, Plus, RefreshCw, Save, Sparkles, Trash2 } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import { useToastStore } from '../stores/toast.js';
 import { useAgentConsole } from '../composables/useAgentConsole.js';
+import BaseModal from '../components/common/BaseModal.vue';
 import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 
 const toast = useToastStore();

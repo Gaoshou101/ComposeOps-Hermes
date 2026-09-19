@@ -71,70 +71,59 @@
       </div>
     </div>
 
-    <div v-if="showServiceEditor" class="modal-backdrop z-[55]" @click.self="showServiceEditor = false">
-      <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-2xl max-h-[85vh] overflow-auto">
-        <ServiceEditor :model-value="currentService" :is-new="isNewService" @save="saveServiceFromEditor" @close="showServiceEditor = false" />
-      </div>
-    </div>
+    <BaseModal :show="showServiceEditor" title="" size-class="max-w-[calc(100vw-2rem)] sm:max-w-2xl max-h-[85vh] overflow-auto" body-class="p-0" @close="showServiceEditor = false">
+      <ServiceEditor :model-value="currentService" :is-new="isNewService" @save="saveServiceFromEditor" @close="showServiceEditor = false" />
+    </BaseModal>
 
-    <div v-if="showConverter" class="modal-backdrop z-[55]" @click.self="showConverter = false">
-      <div class="modal flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden">
-        <div class="modal-header shrink-0"><span>Docker Run 转换器</span><button class="icon-btn" title="关闭" @click="showConverter = false"><X class="h-4 w-4" /></button></div>
-        <div class="min-h-0 flex-1 overflow-y-auto p-4"><DockerRunConverter /></div>
-      </div>
-    </div>
+    <BaseModal :show="showConverter" title="Docker Run 转换器" size-class="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden" body-class="min-h-0 flex-1 overflow-y-auto p-4" @close="showConverter = false">
+      <DockerRunConverter />
+    </BaseModal>
 
-    <div v-if="showBackups" class="modal-backdrop z-[55]" @click.self="showBackups = false">
-      <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-3xl">
-        <div class="modal-header"><span>配置备份（最近 20 份）</span><button class="icon-btn" @click="showBackups = false"><X class="w-4 h-4" /></button></div>
-        <div class="p-3 space-y-2 overflow-auto max-h-[60vh]">
-          <EmptyState icon="History" compact title="暂无配置备份" description="保存一次配置后会自动产生备份" />
-          <div v-for="backup in backups" :key="backup.id" class="card p-3 flex items-center gap-3">
-            <div class="flex-1"><div class="text-sm">{{ formatTime(backup.createdAt) }}</div><div class="text-muted">{{ backup.reason }} · {{ backup.size }} 字符</div></div>
-            <button class="btn-ghost" @click="previewBackup(backup)"><Eye class="w-4 h-4" />比较</button>
-            <button class="btn-secondary" @click="restore(backup)"><Undo2 class="w-4 h-4" />恢复</button>
+    <BaseModal :show="showBackups" title="配置备份（最近 20 份）" size-class="max-w-[calc(100vw-2rem)] sm:max-w-3xl" body-class="p-3 space-y-2 overflow-auto max-h-[60vh]" @close="showBackups = false">
+      <EmptyState icon="History" compact title="暂无配置备份" description="保存一次配置后会自动产生备份" />
+      <div v-for="backup in backups" :key="backup.id" class="card p-3 flex items-center gap-3">
+        <div class="flex-1"><div class="text-sm">{{ formatTime(backup.createdAt) }}</div><div class="text-muted">{{ backup.reason }} · {{ backup.size }} 字符</div></div>
+        <button class="btn-ghost" @click="previewBackup(backup)"><Eye class="w-4 h-4" />比较</button>
+        <button class="btn-secondary" @click="restore(backup)"><Undo2 class="w-4 h-4" />恢复</button>
+      </div>
+    </BaseModal>
+
+    <BaseModal :show="showPreview && !!changePreview" title="保存前变更预览" size-class="max-w-[calc(100vw-2rem)] sm:max-w-2xl" body-class="p-3 space-y-3 max-h-[70vh] overflow-auto" @close="closePreview">
+      <template v-if="changePreview">
+        <div v-if="changePreview.added.length" class="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-2.5">
+          <div class="text-xs font-semibold text-emerald-300">新增服务 {{ changePreview.added.length }}</div>
+          <div class="mt-1 flex flex-wrap gap-1.5"><span v-for="item in changePreview.added" :key="item.service" class="count-badge text-emerald-300">{{ item.service }}</span></div>
+        </div>
+        <div v-if="changePreview.changed.length" class="rounded-lg border border-amber-900/40 bg-amber-950/20 p-2.5">
+          <div class="text-xs font-semibold text-amber-300">配置变更,容器将被重建 {{ changePreview.changed.length }}</div>
+          <div class="mt-1 space-y-1">
+            <p v-for="item in changePreview.changed" :key="item.service" class="text-xs text-surface-300">{{ item.service }} <span class="text-surface-500">· {{ item.reasons.join(', ') }} · {{ item.container }}</span></p>
           </div>
         </div>
-      </div>
-    </div>
-    <div v-if="showPreview && changePreview" class="modal-backdrop z-[55]" @click.self="closePreview">
-      <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-2xl">
-        <div class="modal-header"><span>保存前变更预览</span><button class="icon-btn" @click="closePreview"><X class="w-4 h-4" /></button></div>
-        <div class="p-3 space-y-3 max-h-[70vh] overflow-auto">
-          <div v-if="changePreview.added.length" class="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-2.5">
-            <div class="text-xs font-semibold text-emerald-300">新增服务 {{ changePreview.added.length }}</div>
-            <div class="mt-1 flex flex-wrap gap-1.5"><span v-for="item in changePreview.added" :key="item.service" class="count-badge text-emerald-300">{{ item.service }}</span></div>
-          </div>
-          <div v-if="changePreview.changed.length" class="rounded-lg border border-amber-900/40 bg-amber-950/20 p-2.5">
-            <div class="text-xs font-semibold text-amber-300">配置变更,容器将被重建 {{ changePreview.changed.length }}</div>
-            <div class="mt-1 space-y-1">
-              <p v-for="item in changePreview.changed" :key="item.service" class="text-xs text-surface-300">{{ item.service }} <span class="text-surface-500">· {{ item.reasons.join(', ') }} · {{ item.container }}</span></p>
-            </div>
-          </div>
-          <div v-if="changePreview.restarted.length" class="rounded-lg border border-sky-900/40 bg-sky-950/20 p-2.5">
-            <div class="text-xs font-semibold text-sky-300">运行中容器将重启 {{ changePreview.restarted.length }}</div>
-            <div class="mt-1 flex flex-wrap gap-1.5"><span v-for="item in changePreview.restarted" :key="item.service" class="count-badge text-sky-300">{{ item.service }}</span></div>
-          </div>
-          <div v-if="changePreview.removed.length" class="rounded-lg border border-rose-900/40 bg-rose-950/20 p-2.5">
-            <div class="text-xs font-semibold text-rose-300">将被移除的服务 {{ changePreview.removed.length }}</div>
-            <div class="mt-1 space-y-1"><p v-for="item in changePreview.removed" :key="item.service" class="text-xs text-surface-300">{{ item.service }} <span class="text-surface-500">· {{ item.container }} ({{ item.state }})</span></p></div>
-          </div>
-          <p v-if="!changePreview.added.length && !changePreview.changed.length && !changePreview.restarted.length && !changePreview.removed.length" class="text-xs text-surface-400">未检测到会影响现有容器的变更,可直接保存。</p>
+        <div v-if="changePreview.restarted.length" class="rounded-lg border border-sky-900/40 bg-sky-950/20 p-2.5">
+          <div class="text-xs font-semibold text-sky-300">运行中容器将重启 {{ changePreview.restarted.length }}</div>
+          <div class="mt-1 flex flex-wrap gap-1.5"><span v-for="item in changePreview.restarted" :key="item.service" class="count-badge text-sky-300">{{ item.service }}</span></div>
         </div>
-        <footer class="flex items-center justify-end gap-2 border-t border-surface-800 px-4 py-2.5">
-          <button class="btn-ghost" @click="closePreview">取消</button>
-          <button class="btn-primary" @click="confirmSave"><Save class="w-4 h-4" />确认保存</button>
-        </footer>
+        <div v-if="changePreview.removed.length" class="rounded-lg border border-rose-900/40 bg-rose-950/20 p-2.5">
+          <div class="text-xs font-semibold text-rose-300">将被移除的服务 {{ changePreview.removed.length }}</div>
+          <div class="mt-1 space-y-1"><p v-for="item in changePreview.removed" :key="item.service" class="text-xs text-surface-300">{{ item.service }} <span class="text-surface-500">· {{ item.container }} ({{ item.state }})</span></p></div>
+        </div>
+        <p v-if="!changePreview.added.length && !changePreview.changed.length && !changePreview.restarted.length && !changePreview.removed.length" class="text-xs text-surface-400">未检测到会影响现有容器的变更,可直接保存。</p>
+      </template>
+      <template #footer>
+        <button class="btn-ghost" @click="closePreview">取消</button>
+        <button class="btn-primary" @click="confirmSave"><Save class="w-4 h-4" />确认保存</button>
+      </template>
+    </BaseModal>
+
+    <BaseModal :show="!!comparison" title="当前配置与备份比较" size-class="max-w-[calc(100vw-2rem)] sm:max-w-6xl" body-class="p-0" @close="comparison = null">
+      <div class="grid md:grid-cols-2 gap-px bg-surface-800 max-h-[70vh] overflow-auto">
+        <pre class="diff-pane"><template v-for="(row, index) in diffOld" :key="'o' + index"><span class="diff-line" :class="row.type === 'remove' ? 'diff-remove' : 'diff-same'">{{ row.text }}</span>
+</template></pre>
+        <pre class="diff-pane"><template v-for="(row, index) in diffNew" :key="'n' + index"><span class="diff-line" :class="row.type === 'add' ? 'diff-add' : 'diff-same'">{{ row.text }}</span>
+</template></pre>
       </div>
-    </div>
-    <div v-if="comparison" class="modal-backdrop z-[55]" @click.self="comparison = null">
-      <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-6xl"><div class="modal-header"><span>当前配置与备份比较</span><button class="icon-btn" @click="comparison = null"><X class="w-4 h-4" /></button></div><div class="grid md:grid-cols-2 gap-px bg-surface-800 max-h-[70vh] overflow-auto">
-          <pre class="diff-pane"><template v-for="(row, index) in diffOld" :key="'o' + index"><span class="diff-line" :class="row.type === 'remove' ? 'diff-remove' : 'diff-same'">{{ row.text }}</span>
-</template></pre>
-          <pre class="diff-pane"><template v-for="(row, index) in diffNew" :key="'n' + index"><span class="diff-line" :class="row.type === 'add' ? 'diff-add' : 'diff-same'">{{ row.text }}</span>
-</template></pre>
-        </div></div>
-    </div>
+    </BaseModal>
 
     <ConfirmDialog
       :show="showHostChangedDialog"
@@ -170,7 +159,6 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useToastStore } from '../stores/toast.js';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import { AlignLeft, ArrowLeft, ArrowRightLeft, Eye, FileCode2, HardDrive, History, Layout, Network, Pencil, Plus, RotateCw, Save, ShieldAlert, ShieldCheck, Trash2, Undo2, Variable, X } from 'lucide-vue-next';
@@ -180,6 +168,7 @@ import { diffLines } from '../lib/diff.js';
 // 移除硬编码模板,改用模板市场 API
 import EmptyState from '../components/common/EmptyState.vue';
 import ConfirmDialog from '../components/common/ConfirmDialog.vue';
+import BaseModal from '../components/common/BaseModal.vue';
 import ServiceEditor from '../components/compose/ServiceEditor.vue';
 import * as YAML from 'yaml';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
@@ -268,11 +257,6 @@ let contentDisposable;
 const project = computed(() => projects.value.find((p) => p.id === projectId.value));
 const dirty = computed(() => content.value !== original.value);
 const toast = useToastStore();
-useEscapeKey({ active: showBackups, onClose: () => { showBackups.value = false; }, layer: 'modal', lockBody: true });
-useEscapeKey({ active: showConverter, onClose: () => { showConverter.value = false; }, layer: 'modal', lockBody: true });
-useEscapeKey({ active: computed(() => !!comparison.value), onClose: () => { comparison.value = null; }, layer: 'modal', lockBody: true });
-useEscapeKey({ active: computed(() => showPreview.value), onClose: closePreview, layer: 'modal', lockBody: true });
-useEscapeKey({ active: showServiceEditor, onClose: () => { showServiceEditor.value = false; }, layer: 'modal', lockBody: true });
 
 onMounted(async () => {
   await Promise.all([reloadProjects(), loadTemplates()]);

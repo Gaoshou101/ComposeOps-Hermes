@@ -8,15 +8,16 @@
       <div class="page-actions">
         <template v-if="tab === 'events'">
           <button class="btn-secondary" :disabled="loading" @click="load"><RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />刷新</button>
-          <button class="btn-secondary" @click="prune"><Trash2 class="w-4 h-4" />清理过期</button>
+          <button class="btn-secondary" @click="showPruneConfirm = true"><Trash2 class="w-4 h-4" />清理过期</button>
         </template>
       </div>
     </div>
+    <ConfirmDialog :show="showPruneConfirm" title="清理过期事件" message="确认清理 30 天前的历史事件?该操作不可恢复。" tone="warning" confirm-text="清理" @confirm="prune" @cancel="showPruneConfirm = false" />
 
     <div class="tabs" role="tablist" aria-label="事件中心视图">
-      <button :class="{ active: tab === 'events' }" role="tab" @click="setTab('events')"><BellRing class="h-4 w-4" />告警事件</button>
-      <button :class="{ active: tab === 'timeline' }" role="tab" @click="setTab('timeline')"><History class="h-4 w-4" />时间线</button>
-      <button :class="{ active: tab === 'operations' }" role="tab" @click="setTab('operations')"><ListChecks class="h-4 w-4" />操作与任务</button>
+      <button :class="{ active: tab === 'events' }" role="tab" :aria-selected="tab === 'events'" @click="setTab('events')"><BellRing class="h-4 w-4" />告警事件</button>
+      <button :class="{ active: tab === 'timeline' }" role="tab" :aria-selected="tab === 'timeline'" @click="setTab('timeline')"><History class="h-4 w-4" />时间线</button>
+      <button :class="{ active: tab === 'operations' }" role="tab" :aria-selected="tab === 'operations'" @click="setTab('operations')"><ListChecks class="h-4 w-4" />操作与任务</button>
     </div>
 
     <template v-if="tab === 'events'">
@@ -84,6 +85,7 @@ import { useEventStore } from '../stores/events.js';
 import { useToastStore } from '../stores/toast.js';
 import EventTimeline from '../components/events/EventTimeline.vue';
 import OperationsView from './OperationsView.vue';
+import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -143,8 +145,9 @@ async function setStatus(event, status) {
     toast.error(e.message);
   }
 }
+const showPruneConfirm = ref(false);
 async function prune() {
-  if (!confirm('确认清理 30 天前的历史事件?')) return;
+  showPruneConfirm.value = false;
   try {
     await store.prune(30);
     toast.success('历史事件已清理');

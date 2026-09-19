@@ -6,8 +6,8 @@
     </div>
 
     <div class="tabs" role="tablist" aria-label="操作中心视图">
-      <button :class="{ active: activeTab === 'operations' }" role="tab" @click="setTab('operations')"><History class="h-4 w-4" />操作记录 <span class="count-badge">{{ operations.length }}</span></button>
-      <button :class="{ active: activeTab === 'jobs' }" role="tab" @click="setTab('jobs')"><ListChecks class="h-4 w-4" />后台任务 <span class="count-badge">{{ jobs.length }}</span></button>
+      <button :class="{ active: activeTab === 'operations' }" role="tab" :aria-selected="activeTab === 'operations'" @click="setTab('operations')"><History class="h-4 w-4" />操作记录 <span class="count-badge">{{ operations.length }}</span></button>
+      <button :class="{ active: activeTab === 'jobs' }" role="tab" :aria-selected="activeTab === 'jobs'" @click="setTab('jobs')"><ListChecks class="h-4 w-4" />后台任务 <span class="count-badge">{{ jobs.length }}</span></button>
     </div>
 
     <template v-if="activeTab === 'operations'">
@@ -83,13 +83,15 @@
       </div>
     </template>
 
-    <div v-if="selectedOperation" class="modal-backdrop z-[55]" @click.self="selectedOperation = null">
-      <div class="modal"><div class="modal-header"><span>{{ actionLabel(selectedOperation.action) }}</span><button class="icon-btn" title="关闭" @click="selectedOperation = null"><X class="h-4 w-4" /></button></div><pre class="terminal-output max-h-[70vh] min-h-48">{{ selectedOperation.detail }}</pre></div>
-    </div>
+    <BaseModal :show="!!selectedOperation" :title="selectedOperation ? actionLabel(selectedOperation.action) : ''" @close="selectedOperation = null">
+      <pre v-if="selectedOperation" class="terminal-output max-h-[70vh] min-h-48">{{ selectedOperation.detail }}</pre>
+    </BaseModal>
 
-    <div v-if="selectedJob" class="modal-backdrop z-[55]" @click.self="closeJob">
-      <div class="modal flex max-h-[88vh] max-w-5xl flex-col">
-        <div class="modal-header shrink-0"><span>{{ actionLabel(selectedJob.action) }} · {{ selectedJob.total }} 个项目</span><div class="flex items-center gap-2"><StatusBadge :status="selectedJob.status === 'running' ? 'task' : selectedJob.status" /><button class="icon-btn" title="关闭" @click="closeJob"><X class="h-4 w-4" /></button></div></div>
+    <BaseModal :show="!!selectedJob" :title="selectedJob ? `${actionLabel(selectedJob.action)} · ${selectedJob.total} 个项目` : ''" size-class="flex max-h-[88vh] max-w-5xl flex-col" body-class="flex min-h-0 flex-1 flex-col p-0" @close="closeJob">
+      <template #header-actions>
+        <StatusBadge v-if="selectedJob" :status="selectedJob.status === 'running' ? 'task' : selectedJob.status" />
+      </template>
+      <template v-if="selectedJob">
         <div class="shrink-0 border-b border-surface-800 p-4">
           <div class="mb-2 flex items-center justify-between text-muted"><span>{{ formatTime(selectedJob.createdAt) }} 创建</span><span>{{ selectedJob.completed }} / {{ selectedJob.total }} 已完成</span></div>
           <div class="progress"><span :style="{ width: `${jobProgress(selectedJob)}%` }"></span></div>
@@ -103,19 +105,19 @@
           </div>
           <pre class="terminal-output min-h-52">{{ selectedJobItem?.output || '该项目尚无输出。' }}</pre>
         </div>
-      </div>
-    </div>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
 <script setup>
 import { computed, onActivated, onMounted, onUnmounted, ref, watch } from 'vue';
-import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { useRoute, useRouter } from 'vue-router';
-import { Activity, CircleCheckBig, CircleX, Eye, History, ListChecks, LoaderCircle, RefreshCw, Search, TriangleAlert, X } from 'lucide-vue-next';
+import { Activity, CircleCheckBig, CircleX, Eye, History, ListChecks, LoaderCircle, RefreshCw, Search, TriangleAlert } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import StatusBadge from '../components/common/StatusBadge.vue';
 import EmptyState from '../components/common/EmptyState.vue';
+import BaseModal from '../components/common/BaseModal.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -239,8 +241,6 @@ function closeJob() {
   delete next.job;
   router.replace({ query: next });
 }
-useEscapeKey({ active: computed(() => !!selectedOperation.value), onClose: () => { selectedOperation.value = null; }, layer: 'modal', lockBody: true });
-useEscapeKey({ active: computed(() => !!selectedJob.value), onClose: closeJob, layer: 'modal', lockBody: true });
 function formatTime(value) { return value ? new Date(`${value}Z`).toLocaleString() : '—'; }
 function jobProgress(job) { return job.total ? Math.round(job.completed / job.total * 100) : 0; }
 function statusLabel(status) { return ({ pending: '等待执行', queued: '排队中', running: '执行中', success: '执行成功', failed: '执行失败', interrupted: '意外中断' })[status] || status; }

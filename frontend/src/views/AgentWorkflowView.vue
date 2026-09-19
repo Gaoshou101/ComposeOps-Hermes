@@ -456,7 +456,7 @@ async function confirmClearSession() {
 }
 function beginRename(session) { editingSessionId.value = session.sessionId; editingTitle.value = session.title || ''; }
 function cancelRename() { editingSessionId.value = null; editingTitle.value = ''; }
-async function saveRename(session) { if (editingSessionId.value !== session.sessionId) return; const title = editingTitle.value.trim(); if (!title || title === session.title) { cancelRename(); return; } try { await api.renameAgentSession(session.sessionId, title); session.title = title; } catch (error) { window.alert(error.message); } finally { cancelRename(); } }
+async function saveRename(session) { if (editingSessionId.value !== session.sessionId) return; const title = editingTitle.value.trim(); if (!title || title === session.title) { cancelRename(); return; } try { await api.renameAgentSession(session.sessionId, title); session.title = title; } catch (error) { toast.error(error.message); } finally { cancelRename(); } }
 function selectProject(project) { projectId.value = project.id; input.value = `后续操作项目 ${project.name}`; focusInput(); }
 const containerId = ref('');
 async function submit() {

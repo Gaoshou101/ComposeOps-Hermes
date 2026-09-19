@@ -118,33 +118,32 @@
     </section>
 
     <!-- GitOps 历史弹窗 -->
-    <div v-if="showGitopsHistory" class="modal-backdrop z-[55]" @click.self="showGitopsHistory = false">
-      <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-2xl flex max-h-[80vh] flex-col">
-        <div class="modal-header shrink-0"><span>提交历史 · {{ currentGitopsRepo?.name }}</span><button class="icon-btn" @click="showGitopsHistory = false"><X class="w-4 h-4" /></button></div>
-        <div class="flex-1 overflow-auto p-4 space-y-2">
-          <div v-if="!gitopsCommits.length" class="text-sm text-surface-400">暂无提交历史</div>
-          <div v-for="commit in gitopsCommits" :key="commit.hash" class="flex items-start gap-3 rounded-xl border border-surface-800 bg-surface-950/40 p-3">
-            <code class="shrink-0 rounded bg-surface-800 px-2 py-0.5 font-mono text-xs text-sky-300">{{ commit.hash.substring(0, 7) }}</code>
-            <div class="min-w-0 flex-1">
-              <p class="text-sm text-surface-200">{{ commit.message }}</p>
-              <p class="mt-0.5 text-xs text-surface-500">{{ commit.author }} · {{ commit.date }}</p>
-            </div>
-            <button v-if="commit.hash !== currentGitopsRepo?.lastCommit" class="btn-secondary !px-2.5 !py-1.5 text-xs" :disabled="busy" @click="rollbackGitops(commit.hash)"><RotateCcw class="h-3.5 w-3.5" />回滚</button>
-            <span v-else class="count-badge text-emerald-300">当前</span>
-          </div>
+    <BaseModal :show="showGitopsHistory" :title="`提交历史 · ${currentGitopsRepo?.name || ''}`" size-class="max-w-[calc(100vw-2rem)] sm:max-w-2xl flex max-h-[80vh] flex-col" body-class="flex-1 overflow-auto p-4 space-y-2" @close="showGitopsHistory = false">
+      <div v-if="!gitopsCommits.length" class="text-sm text-surface-400">暂无提交历史</div>
+      <div v-for="commit in gitopsCommits" :key="commit.hash" class="flex items-start gap-3 rounded-xl border border-surface-800 bg-surface-950/40 p-3">
+        <code class="shrink-0 rounded bg-surface-800 px-2 py-0.5 font-mono text-xs text-sky-300">{{ commit.hash.substring(0, 7) }}</code>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm text-surface-200">{{ commit.message }}</p>
+          <p class="mt-0.5 text-xs text-surface-500">{{ commit.author }} · {{ commit.date }}</p>
         </div>
-        <div class="modal-footer shrink-0"><button class="btn-secondary" @click="showGitopsHistory = false">关闭</button></div>
+        <button v-if="commit.hash !== currentGitopsRepo?.lastCommit" class="btn-secondary !px-2.5 !py-1.5 text-xs" :disabled="busy" @click="rollbackGitops(commit.hash)"><RotateCcw class="h-3.5 w-3.5" />回滚</button>
+        <span v-else class="count-badge text-emerald-300">当前</span>
       </div>
-    </div>
+      <template #footer>
+        <button class="btn-secondary" @click="showGitopsHistory = false">关闭</button>
+      </template>
+    </BaseModal>
 
     <!-- 回滚输出抽屉 -->
-    <div v-if="output.open" class="modal-backdrop z-[55]" @click.self="output.open = false">
-      <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-2xl flex max-h-[80vh] flex-col">
-        <div class="modal-header shrink-0"><span>{{ output.title }}</span><div class="flex items-center gap-2"><span v-if="output.running" class="count-badge text-sky-300">执行中</span><button class="icon-btn" @click="output.open = false"><X class="w-4 h-4" /></button></div></div>
-        <pre class="terminal-output max-h-[70vh] min-h-48 flex-1 overflow-auto p-4">{{ output.text || '等待输出...' }}</pre>
-        <div class="modal-footer shrink-0"><button class="btn-secondary" @click="output.open = false">关闭</button></div>
-      </div>
-    </div>
+    <BaseModal :show="output.open" :title="output.title" size-class="max-w-[calc(100vw-2rem)] sm:max-w-2xl flex max-h-[80vh] flex-col" body-class="flex min-h-0 flex-1 flex-col p-0" @close="output.open = false">
+      <template #header-actions>
+        <span v-if="output.running" class="count-badge text-sky-300">执行中</span>
+      </template>
+      <pre class="terminal-output max-h-[70vh] min-h-48 flex-1 overflow-auto p-4">{{ output.text || '等待输出...' }}</pre>
+      <template #footer>
+        <button class="btn-secondary" @click="output.open = false">关闭</button>
+      </template>
+    </BaseModal>
 
     <ConfirmDialog :show="!!confirmTarget" :title="confirmTarget?.title" :message="confirmTarget?.message" :tone="confirmTarget?.tone || 'warning'" :confirm-text="confirmTarget?.confirmText || '确认'" @confirm="confirmAction" @cancel="confirmTarget = null" />
   </div>
@@ -154,10 +153,11 @@
 // embedded 模式供 ReleaseView 的 tab 复用,隐藏独立页头
 defineProps({ embedded: { type: Boolean, default: false } });
 import { computed, onMounted, ref } from 'vue';
-import { FileCode2, GitBranch, HardDrive, History, RefreshCw, RotateCcw, X } from 'lucide-vue-next';
+import { FileCode2, GitBranch, HardDrive, History, RefreshCw, RotateCcw } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import { useServicesStore } from '../stores/services.js';
 import ConfirmDialog from '../components/common/ConfirmDialog.vue';
+import BaseModal from '../components/common/BaseModal.vue';
 
 const store = useServicesStore();
 const selectedProjectId = ref('');

@@ -12,8 +12,8 @@
     </div>
 
     <div class="tabs" role="tablist" aria-label="资产中心视图">
-      <button :class="{ active: tab === 'assets' }" role="tab" @click="setTab('assets')"><Server class="h-4 w-4" />资产清单</button>
-      <button :class="{ active: tab === 'graph' }" role="tab" @click="setTab('graph')"><Waypoints class="h-4 w-4" />知识图谱</button>
+      <button :class="{ active: tab === 'assets' }" role="tab" :aria-selected="tab === 'assets'" @click="setTab('assets')"><Server class="h-4 w-4" />资产清单</button>
+      <button :class="{ active: tab === 'graph' }" role="tab" :aria-selected="tab === 'graph'" @click="setTab('graph')"><Waypoints class="h-4 w-4" />知识图谱</button>
     </div>
 
     <template v-if="tab === 'assets'">
@@ -58,7 +58,7 @@
               <td class="text-xs text-surface-400">{{ asset.environment || '—' }}</td>
               <td class="text-xs text-surface-400">{{ asset.owner || '—' }}</td>
               <td class="text-xs text-surface-500">{{ sourceLabel(asset.source) }}</td>
-              <td><button class="icon-btn" title="删除资产" @click="removeAsset(asset)"><Trash2 class="w-4 h-4" /></button></td>
+              <td><button class="icon-btn" title="删除资产" @click="deleteTarget = asset"><Trash2 class="w-4 h-4" /></button></td>
             </tr>
             <tr v-if="!filteredAssets.length"><td colspan="7" class="py-8 text-center text-sm text-surface-500">暂无资产,点击「同步资产」从 Docker 扫描重建</td></tr>
           </tbody>
@@ -67,6 +67,7 @@
     </section>
     </template>
     <KnowledgeGraphView v-else embedded />
+    <ConfirmDialog :show="!!deleteTarget" title="删除资产" :message="`确认删除资产「${deleteTarget?.displayName || deleteTarget?.name}」?`" tone="danger" confirm-text="删除" @confirm="confirmRemove" @cancel="deleteTarget = null" />
   </div>
 </template>
 
@@ -77,6 +78,7 @@ import { Boxes, Container, RefreshCw, Server, Trash2, Waypoints } from 'lucide-v
 import { useCmdbStore } from '../stores/cmdb.js';
 import { useToastStore } from '../stores/toast.js';
 import KnowledgeGraphView from './KnowledgeGraphView.vue';
+import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -145,8 +147,11 @@ async function sync() {
     toast.error(e.message);
   }
 }
-async function removeAsset(asset) {
-  if (!confirm(`确认删除资产「${asset.displayName || asset.name}」?`)) return;
+const deleteTarget = ref(null);
+async function confirmRemove() {
+  const asset = deleteTarget.value;
+  deleteTarget.value = null;
+  if (!asset) return;
   try {
     await cmdb.remove(asset.id);
     toast.success('资产已删除');

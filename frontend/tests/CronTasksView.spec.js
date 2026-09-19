@@ -28,6 +28,10 @@ vi.mock('../src/composables/useAgentConsole.js', () => ({
 
 import CronTasksView from '../src/views/CronTasksView.vue';
 
+function backdropExists() {
+  return Boolean(document.body.querySelector('.modal-backdrop'));
+}
+
 describe('CronTasksView Agent integration', () => {
   let wrapper;
 
@@ -50,9 +54,10 @@ describe('CronTasksView Agent integration', () => {
     await wrapper.find('button.btn-primary').trigger('click');
     await nextTick();
 
-    const agentButton = wrapper.find('button[title="让 Agent 根据当前表单创建任务"]');
-    expect(agentButton.exists()).toBe(true);
-    await agentButton.trigger('click');
+    const agentButton = document.body.querySelector('button[title="让 Agent 根据当前表单创建任务"]');
+    expect(agentButton).toBeTruthy();
+    agentButton.click();
+    await nextTick();
 
     expect(openAgent).toHaveBeenCalledTimes(1);
     expect(updateAgentContext).toHaveBeenCalledWith(expect.objectContaining({ mode: 'cron-editor' }));
@@ -63,12 +68,13 @@ describe('CronTasksView Agent integration', () => {
     wrapper = mount(CronTasksView);
     await nextTick();
     await wrapper.find('button.btn-primary').trigger('click');
-    expect(wrapper.find('.modal-backdrop').exists()).toBe(true);
+    await nextTick();
+    expect(backdropExists()).toBe(true);
 
     window.dispatchEvent(new CustomEvent('composeops:cron-agent-created', { detail: { name: '夜间备份' } }));
     await nextTick();
 
-    expect(wrapper.find('.modal-backdrop').exists()).toBe(false);
+    expect(backdropExists()).toBe(false);
     expect(listCronJobs).toHaveBeenCalledTimes(2);
   });
 });

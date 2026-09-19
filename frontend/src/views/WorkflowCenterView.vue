@@ -34,7 +34,7 @@
           <div class="mt-4 flex gap-2 border-t border-surface-800 pt-3">
             <button class="btn-secondary flex-1 !px-2 !py-1.5 text-xs" :disabled="!def.enabled" @click="run(def)"><Play class="w-3.5 h-3.5" />运行</button>
             <button class="btn-secondary flex-1 !px-2 !py-1.5 text-xs" @click="openEdit(def)"><Pencil class="w-3.5 h-3.5" />编辑</button>
-            <button class="btn-secondary flex-1 !px-2 !py-1.5 text-xs" @click="remove(def)"><Trash2 class="w-3.5 h-3.5" />删除</button>
+            <button class="btn-secondary flex-1 !px-2 !py-1.5 text-xs" @click="deleteTarget = def"><Trash2 class="w-3.5 h-3.5" />删除</button>
           </div>
         </div>
         <div v-if="!definitions.length" class="rounded-xl border border-dashed border-surface-700 p-8 text-center text-sm text-surface-500">暂无工作流,点击「新建工作流」创建</div>
@@ -69,13 +69,8 @@
     </section>
 
     <!-- 新建/编辑弹窗 -->
-    <div v-if="showEditor" class="fixed inset-0 z-[55] flex items-center justify-center bg-black/55 p-4" @click.self="showEditor = false">
-      <div class="w-full max-w-2xl rounded-2xl border border-surface-700 bg-surface-950 p-5 shadow-2xl">
-        <div class="mb-4 flex items-center justify-between">
-          <h2 class="text-base font-semibold text-surface-100">{{ editingId ? '编辑工作流' : '新建工作流' }}</h2>
-          <button class="icon-btn" @click="showEditor = false">×</button>
-        </div>
-        <div class="space-y-3">
+    <BaseModal :show="showEditor" :title="editingId ? '编辑工作流' : '新建工作流'" size-class="!max-w-2xl" body-class="space-y-3 p-5 pt-0" @close="showEditor = false">
+      <div class="space-y-3">
           <div>
             <label class="form-label">名称</label>
             <input v-model="form.name" class="input" placeholder="如:故障自动处理" />
@@ -112,12 +107,12 @@
             <button class="btn-secondary mt-2 !px-3 !py-1.5 text-xs" @click="addNode"><Plus class="w-3.5 h-3.5" />添加节点</button>
           </div>
         </div>
-        <div class="mt-5 flex justify-end gap-2">
+        <template #footer>
           <button class="btn-secondary" @click="showEditor = false">取消</button>
           <button class="btn-primary" @click="save">保存</button>
-        </div>
-      </div>
-    </div>
+        </template>
+    </BaseModal>
+    <ConfirmDialog :show="!!deleteTarget" title="删除工作流" :message="`确认删除工作流「${deleteTarget?.name}」?该操作不可恢复。`" tone="danger" confirm-text="删除" @confirm="confirmRemove" @cancel="deleteTarget = null" />
   </div>
 </template>
 
@@ -126,6 +121,8 @@ import { onMounted, reactive, ref } from 'vue';
 import { Pencil, Play, Plus, RefreshCw, Trash2, X } from 'lucide-vue-next';
 import { useWorkflowStore } from '../stores/workflow.js';
 import { useToastStore } from '../stores/toast.js';
+import ConfirmDialog from '../components/common/ConfirmDialog.vue';
+import BaseModal from '../components/common/BaseModal.vue';
 
 const store = useWorkflowStore();
 const toast = useToastStore();
@@ -187,8 +184,11 @@ async function save() {
     toast.error(e.message);
   }
 }
-async function remove(def) {
-  if (!confirm(`确认删除工作流「${def.name}」?`)) return;
+const deleteTarget = ref(null);
+async function confirmRemove() {
+  const def = deleteTarget.value;
+  deleteTarget.value = null;
+  if (!def) return;
   try {
     await store.remove(def.id);
     toast.success('工作流已删除');

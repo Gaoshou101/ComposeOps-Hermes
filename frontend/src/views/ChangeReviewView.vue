@@ -147,35 +147,32 @@
     </template>
 
     <!-- 部署确认门 -->
-    <div v-if="showDeployConfirm" class="modal-backdrop z-[55]" @click.self="showDeployConfirm = false">
-      <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-lg">
-        <div class="modal-header"><span>确认部署</span><button class="icon-btn" @click="showDeployConfirm = false"><X class="w-4 h-4" /></button></div>
-        <div class="p-4 space-y-3">
-          <p class="text-sm text-surface-300">将按当前配置对项目 <b class="text-surface-100">{{ project?.projectName }}</b> 执行部署。预演影响:</p>
-          <div class="grid grid-cols-2 gap-2 text-sm">
-            <div class="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-2.5"><span class="text-emerald-300">创建 {{ preview.added.length }}</span></div>
-            <div class="rounded-lg border border-amber-900/40 bg-amber-950/20 p-2.5"><span class="text-amber-300">重建 {{ preview.changed.length }}</span></div>
-            <div class="rounded-lg border border-sky-900/40 bg-sky-950/20 p-2.5"><span class="text-sky-300">重启 {{ preview.restarted.length }}</span></div>
-            <div class="rounded-lg border border-rose-900/40 bg-rose-950/20 p-2.5"><span class="text-rose-300">移除 {{ preview.removed.length }}</span></div>
-          </div>
-          <p v-if="preview.removed.length" class="text-xs text-rose-300">⚠ 有服务将被移除,部署后对应容器会停止。</p>
-          <p v-if="preview.portConflicts.length" class="text-xs text-amber-300">⚠ 存在 {{ preview.portConflicts.length }} 处端口映射,请确认宿主机端口可用。</p>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="showDeployConfirm = false">取消</button>
-          <button class="btn-primary" :disabled="deploying" @click="confirmDeploy"><Rocket class="w-4 h-4" />{{ deploying ? '部署中...' : '确认部署' }}</button>
-        </div>
+    <BaseModal :show="showDeployConfirm" title="确认部署" size-class="max-w-[calc(100vw-2rem)] sm:max-w-lg" body-class="p-4 space-y-3" @close="showDeployConfirm = false">
+      <p class="text-sm text-surface-300">将按当前配置对项目 <b class="text-surface-100">{{ project?.projectName }}</b> 执行部署。预演影响:</p>
+      <div class="grid grid-cols-2 gap-2 text-sm">
+        <div class="rounded-lg border border-emerald-900/40 bg-emerald-950/20 p-2.5"><span class="text-emerald-300">创建 {{ preview.added.length }}</span></div>
+        <div class="rounded-lg border border-amber-900/40 bg-amber-950/20 p-2.5"><span class="text-amber-300">重建 {{ preview.changed.length }}</span></div>
+        <div class="rounded-lg border border-sky-900/40 bg-sky-950/20 p-2.5"><span class="text-sky-300">重启 {{ preview.restarted.length }}</span></div>
+        <div class="rounded-lg border border-rose-900/40 bg-rose-950/20 p-2.5"><span class="text-rose-300">移除 {{ preview.removed.length }}</span></div>
       </div>
-    </div>
+      <p v-if="preview.removed.length" class="text-xs text-rose-300">⚠ 有服务将被移除,部署后对应容器会停止。</p>
+      <p v-if="preview.portConflicts.length" class="text-xs text-amber-300">⚠ 存在 {{ preview.portConflicts.length }} 处端口映射,请确认宿主机端口可用。</p>
+      <template #footer>
+        <button class="btn-secondary" @click="showDeployConfirm = false">取消</button>
+        <button class="btn-primary" :disabled="deploying" @click="confirmDeploy"><Rocket class="w-4 h-4" />{{ deploying ? '部署中...' : '确认部署' }}</button>
+      </template>
+    </BaseModal>
 
     <!-- 部署输出抽屉 -->
-    <div v-if="deployOutput.open" class="modal-backdrop z-[55]" @click.self="deployOutput.open = false">
-      <div class="modal max-w-[calc(100vw-2rem)] sm:max-w-2xl flex max-h-[80vh] flex-col">
-        <div class="modal-header shrink-0"><span>部署输出 · {{ project?.projectName }}</span><div class="flex items-center gap-2"><span v-if="deployOutput.running" class="count-badge text-sky-300">执行中</span><button class="icon-btn" @click="deployOutput.open = false"><X class="w-4 h-4" /></button></div></div>
-        <pre class="terminal-output max-h-[70vh] min-h-48 flex-1 overflow-auto p-4">{{ deployOutput.text || '等待输出...' }}</pre>
-        <div class="modal-footer shrink-0"><button class="btn-secondary" @click="deployOutput.open = false">关闭</button></div>
-      </div>
-    </div>
+    <BaseModal :show="deployOutput.open" :title="`部署输出 · ${project?.projectName || ''}`" size-class="max-w-[calc(100vw-2rem)] sm:max-w-2xl flex max-h-[80vh] flex-col" body-class="flex min-h-0 flex-1 flex-col p-0" @close="deployOutput.open = false">
+      <template #header-actions>
+        <span v-if="deployOutput.running" class="count-badge text-sky-300">执行中</span>
+      </template>
+      <pre class="terminal-output max-h-[70vh] min-h-48 flex-1 overflow-auto p-4">{{ deployOutput.text || '等待输出...' }}</pre>
+      <template #footer>
+        <button class="btn-secondary" @click="deployOutput.open = false">关闭</button>
+      </template>
+    </BaseModal>
   </div>
 </template>
 
@@ -183,10 +180,11 @@
 // embedded 模式供 ReleaseView 的 tab 复用,隐藏独立页头
 defineProps({ embedded: { type: Boolean, default: false } });
 import { computed, onMounted, ref } from 'vue';
-import { Bot, RefreshCw, Rocket, ShieldCheck, X } from 'lucide-vue-next';
+import { Bot, RefreshCw, Rocket, ShieldCheck } from 'lucide-vue-next';
 import { api, streamComposeControl } from '../api/client.js';
 import { useServicesStore } from '../stores/services.js';
 import EmptyState from '../components/common/EmptyState.vue';
+import BaseModal from '../components/common/BaseModal.vue';
 
 const store = useServicesStore();
 const selectedProjectId = ref('');
