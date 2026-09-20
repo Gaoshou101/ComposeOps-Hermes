@@ -381,6 +381,13 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    version: 10,
+    name: 'Transcript 双视图:ai_sessions 记录压缩分界点',
+    up(database) {
+      addColumn(database, 'ai_sessions', 'compacted_before_id', 'INTEGER NOT NULL DEFAULT 0');
+    },
+  },
 ];
 
 /** 幂等加列:列已存在时直接返回 false,不抛错。 */
@@ -491,6 +498,27 @@ export function listAiSessions(limit = 30, kind = '') {
 }
 
 /** 创建一个新的聊天会话 ID。空会话不写入历史,首次发送消息后才会出现在列表。 */
+/** 会话压缩分界:分界 id 之前的历史只用于渲染,不再发给模型。 */
+export function getAiSessionCompaction(sessionId) {
+  const row = db.prepare('SELECT compacted_before_id AS boundary FROM ai_sessions WHERE session_id = ?').get(Number(sessionId));
+  return row ? Number(row.boundary || 0) : 0;
+}
+
+export function setAiSessionCompaction(sessionId, boundaryId) {
+  db.prepare('UPDATE ai_sessions SET compacted_before_id = ? WHERE session_id = ?').run(Number(boundaryId) || 0, Number(sessionId));
+}
+
+/** 读取发给模型的活跃区历史(分界点之后);渲染层请继续用 getAiHistory 取全量。 */
+export function getAiActiveHistory(limit = 50, sessionId = null) {
+  const boundary = sessionId != null ? getAiSessionCompaction(sessionId) : 0;
+  if (sessionId != null) {
+    return db.prepare(
+      'SELECT id, role, content, context, session_id AS sessionId, created_at FROM ai_history WHERE session_id = ? AND id > ? ORDER BY id DESC LIMIT ?'
+    ).all(sessionId, boundary, limit).reverse();
+  }
+  return getAiHistory(limit);
+}
+
 export function createAiSession() {
   let sessionId = Date.now();
   while (db.prepare('SELECT 1 FROM ai_history WHERE session_id = ? LIMIT 1').get(sessionId)) sessionId += 1;

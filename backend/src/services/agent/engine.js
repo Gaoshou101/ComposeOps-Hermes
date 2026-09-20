@@ -6,11 +6,13 @@ import {
   recordAgentExecution,
   updateAgentExecution,
   addAiMessage,
-  getAiHistory,
+  getAiActiveHistory,
   listAiMemories,
 } from '../../lib/db.js';
 import { registerAgentTools, assessRisk, RISK_LEVELS } from '../agent-tools.js';
 import { PreconditionChecker, PostconditionValidator, expandMacro, MACRO_TOOLS } from '../agent-tool-categories.js';
+import { RunawayGuard } from './runaway-guard.js';
+import { getApprovalGate } from './approval-gate.js';
 import { resolveToolContext, assertPermission, validateParams } from './planning.js';
 import { withProjectOperationLock } from '../project-operation-lock.js';
 import { redactValue } from '../../lib/redaction.js';
@@ -71,6 +73,14 @@ function roleAllowed(role, toolName) {
 
 function safeJson(value) {
   try { return JSON.parse(value || '{}'); } catch { return {}; }
+}
+
+/** 工具结果回喂 LLM 前截断:超过阈值保留首尾,防止日志大文本撑爆上下文。 */
+const TOOL_RESULT_MAX = 24000;
+function truncateToolResult(text) {
+  if (typeof text !== 'string' || text.length <= TOOL_RESULT_MAX) return text;
+  const half = Math.floor(TOOL_RESULT_MAX / 2);
+  return `${text.slice(0, half)}\n…[已截断 ${text.length - TOOL_RESULT_MAX} 字符]…\n${text.slice(-half)}`;
 }
 
 export class OperationsAgent {
@@ -245,7 +255,7 @@ export class OperationsAgent {
           .map((item) => ({ role: item.role, content: item.content.slice(0, 12000) }))
         : [];
       const storedMessages = context.sessionId
-        ? getAiHistory(24, Number(context.sessionId))
+        ? getAiActiveHistory(24, Number(context.sessionId))
           .filter((item) => ['user', 'assistant'].includes(item.role))
           .map((item) => ({ role: item.role, content: item.content.slice(0, 12000) }))
         : [];
@@ -305,6 +315,9 @@ export class OperationsAgent {
 
       let loopCount = 0;
       const maxLoops = 20; // 防止无限循环
+      const runawayGuard = new RunawayGuard();
+      const approvalGate = getApprovalGate();
+      onEvent({ type: 'approval_mode', mode: approvalGate.getMode(context.sessionId) });
 
       while (loopCount < maxLoops) {
         if (abortController.signal.aborted) {
@@ -415,8 +428,9 @@ export class OperationsAgent {
             
             let effectiveParams = toolParams;
             let confirmationStatus = 'not_required';
-            
-            if (tool.confirmationRequired || dynamicRisk === 'high' || dynamicRisk === 'critical') {
+
+            const needsConfirm = approvalGate.needsConfirmation(context.sessionId, toolName, toolParams, dynamicRisk, tool.confirmationRequired);
+            if (needsConfirm) {
               // 需要用户确认
               onEvent({ 
                 type: 'confirmation_required', 
@@ -454,6 +468,11 @@ export class OperationsAgent {
                 approval.input && typeof approval.input === 'object' && Object.keys(approval.input).length
                   ? { ...toolParams, ...approval.input }
                   : toolParams;
+
+              // "本会话不再询问":按工具或按工具+参数指纹记忆
+              if (approval.remember === 'tool' || approval.remember === 'call') {
+                approvalGate.allowForSession(context.sessionId, toolName, toolParams, approval.remember);
+              }
             }
 
             // 执行工具
@@ -469,9 +488,20 @@ export class OperationsAgent {
               });
               const result = await this.executeTool(toolName, effectiveParams, context, trace);
               updateAgentExecution(execId, { status: result.success ? 'success' : 'failed', result: result.result, error: result.error, durationMs: result.durationMs });
-              
-              // 将工具结果回喂给 LLM
-              messages.push({ role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify(result) });
+
+              // RunawayGuard:死循环检测,命中时在结果前注入提醒(不打断 SSE 协议)
+              const runawayHint = runawayGuard.observe({
+                toolName,
+                params: effectiveParams,
+                result: result.success ? result.result : null,
+                error: result.success ? null : result.error,
+              });
+              const resultPayload = runawayHint
+                ? `<system-reminder>${runawayHint}</system-reminder>\n${JSON.stringify(result)}`
+                : JSON.stringify(result);
+
+              // 将工具结果回喂给 LLM(大结果截断,保留首尾)
+              messages.push({ role: 'tool', tool_call_id: toolCall.id, content: truncateToolResult(resultPayload) });
 
               onEvent({ type: 'tool_result', tool: toolName, result });
               publishTrace('tool_executed', `${toolName} 执行完成`, { success: result.success });
@@ -542,14 +572,15 @@ export class OperationsAgent {
   }
 
   /**
-   * 外部调用:批准工具执行。input 为确认弹窗中用户编辑后的参数(可选)。
+   * 外部调用:批准工具执行。input 为确认弹窗中用户编辑后的参数(可选);
+   * remember 为 'call'(记住该工具+参数指纹)或 'tool'(记住整个工具)时会话内不再询问。
    */
-  approveToolCall(planId, toolCallId, approved = true, input = null) {
+  approveToolCall(planId, toolCallId, approved = true, input = null, remember = null) {
     const key = `${planId}:${toolCallId}`;
     const pending = this.pendingApprovals?.get(key);
     if (pending) {
       clearTimeout(pending.timeout);
-      pending.resolve({ approved, input });
+      pending.resolve({ approved, input, remember });
       this.pendingApprovals.delete(key);
       return true;
     }

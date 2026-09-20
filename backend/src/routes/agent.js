@@ -194,16 +194,38 @@ export default async function agentRoutes(fastify) {
           toolCallId: { type: 'string', maxLength: 128 },
           approved: { type: 'boolean' },
           input: { type: 'object' },
+          remember: { type: 'string', enum: ['call', 'tool'], maxLength: 16 },
         },
       },
     },
   }, async (request, reply) => {
-    const { executionId, toolCallId, approved, input } = request.body || {};
+    const { executionId, toolCallId, approved, input, remember } = request.body || {};
     const agent = getAgent();
-    const success = agent.approveToolCall(executionId, toolCallId, approved, input);
+    const success = agent.approveToolCall(executionId, toolCallId, approved, input, remember);
     if (!success) {
       return reply.code(404).send({ error: 'execution_not_found', message: '执行会话不存在或已完成' });
     }
     return { success: true };
+  });
+
+  // POST /api/v1/ai/agent/approval-mode —— 切换会话审批模式(ask / allow_writes / full)
+  fastify.post('/agent/approval-mode', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['mode'],
+        properties: {
+          sessionId: { type: ['string', 'number'] },
+          mode: { type: 'string', enum: ['ask', 'allow_writes', 'full'] },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { sessionId, mode } = request.body || {};
+    const { getApprovalGate } = await import('../services/agent/approval-gate.js');
+    const ok = getApprovalGate().setMode(sessionId, mode);
+    if (!ok) return reply.code(400).send({ error: 'invalid_mode', message: '无效的审批模式' });
+    return { success: true, mode };
   });
 }

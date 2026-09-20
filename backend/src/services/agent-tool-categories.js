@@ -246,6 +246,21 @@ const POSTCONDITIONS = {
       errorMessage: '扩缩容后实际副本数与预期不符，请检查容器状态'
     }
   ],
+  // runGate:重启后客观验收,不让 Agent 自证"修好了"
+  'compose.restart': [
+    {
+      check: async (params, result, context) => {
+        const project = await findProject(context.projectId);
+        if (!project) return false;
+        const docker = await getActivityDocker();
+        const containers = await docker.listContainers({
+          filters: { label: [`com.docker.compose.project=${project.projectName}`] }
+        });
+        return containers.some(c => c.State === 'running');
+      },
+      errorMessage: '重启后未检测到运行中的容器,请检查日志确认是否启动失败'
+    }
+  ],
   'compose.up': [
     {
       check: async (params, result, context) => {

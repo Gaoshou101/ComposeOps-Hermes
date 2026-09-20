@@ -306,13 +306,14 @@ export function useAgentChat({ channel = WORKBENCH_CHANNEL, onEventExtra = null,
     scrollBottom();
   }
 
-  async function approve(message, inputOverride = null) {
+  async function approve(message, inputOverride = null, remember = null) {
     const confirmation = message.confirmation;
     if (!confirmation || confirmation.busy) return;
     confirmation.busy = true;
     try {
       const payload = { executionId: confirmation.executionId, toolCallId: confirmation.toolCallId, approved: true };
       if (inputOverride && typeof inputOverride === 'object' && Object.keys(inputOverride).length) payload.input = inputOverride;
+      if (remember === 'call' || remember === 'tool') payload.remember = remember;
       await api.agentApprove(payload);
       message.confirmation = null;
       for (const item of state.subscribers) { if (item.active !== false) item.onApproval?.(message, 'approved'); }

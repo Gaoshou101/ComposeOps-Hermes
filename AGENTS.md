@@ -17,6 +17,7 @@
 - 会话历史单一通道:后端从 DB 读,前端不回传 `history`;token 分片由后端发射层保证干净,前端**原样追加,禁止逐分片清洗**(会吃掉分片边界空白,导致 Markdown 表格/代码块粘连)。
 - 前端聊天逻辑在 `frontend/src/composables/useAgentChat.js`(工作台与全局抽屉共用);页面上下文采集在 `useAgentConsole.js`(抽屉关闭时不做快照)。
 - 新增能力:数据卷备份(命名卷 tar,`ops/storage/volume-*` + cron 类型 `volume-backup`,目录 `backup.volume_dir`,每卷留 20 份);GitOps webhook(`POST /gitops/webhook/:id`,token=`gitops.webhook_token`,未配置即关闭,auth 豁免);市场 AI 找应用(`POST /marketplace/templates/ai-discover`,只出草稿,入库走 custom 模板);env 文件族(`GET /projects/:id/env/files`,支持 `*.env`/`.env.example`);Agent 聊天 token 120ms 节流 + 滚动跟随(`atBottom`)。
+- Agent 引擎外围能力(借鉴 EnsoCode,全部不侵入 Tool Loop 主循环):`agent/runaway-guard.js` 死循环检测(相同动作/结果/错误族/轮询四条 streak,命中在工具结果前注入 system-reminder,每轮至多一次);`agent/approval-gate.js` 会话级审批门(模式 ask/allow_writes/full,critical 永远确认;`remember=call|tool` 记本会话,按 工具+projectId/containerId 指纹);确认门 UI 有"本会话不再询问(同参数)"按钮;`POST /ai/agent/approval-mode` 切换模式。工具结果回喂 LLM 前经 `truncateToolResult` 截断(24K 保首尾);`compose.restart` 有 runGate 后置验收(重启后必须检测到运行容器);Transcript 双视图:`ai_sessions.compacted_before_id`(迁移 v10)分界,模型只读分界后的 `getAiActiveHistory`,渲染仍读全量 `getAiHistory`。
 - 路由层:`router.js` 的 `preloadRouteChunks()` 在空闲时预取全部 chunk;App.vue 对 13 个无流式/轮询的页面做 keep-alive(**新增流式/定时轮询页面时务必排除**,否则 interval/ws 在后台保活泄漏);页面切换走 `page-fade` 过渡。
 
 ## 常用命令
