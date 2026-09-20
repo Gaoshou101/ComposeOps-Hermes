@@ -1,23 +1,3 @@
-<script setup>
-import BaseModal from './BaseModal.vue';
-
-/**
- * 容器变更预览:Compose 保存、Env 应用、镜像升级等写操作前展示将影响的服务/容器。
- * preview 形如 { added: [], changed: [{service, reasons, container}], restarted: [], removed: [{service, container, state}] },字段均可缺省。
- */
-const props = defineProps({
-  show: { type: Boolean, default: false },
-  preview: { type: Object, default: null },
-  title: { type: String, default: '保存前变更预览' },
-  confirmText: { type: String, default: '确认执行' },
-  // 变更预览不可用时的兜底说明(空则隐藏)
-  fallbackMessage: { type: String, default: '' },
-});
-const emit = defineEmits(['confirm', 'cancel']);
-
-function list(name) { return Array.isArray(props.preview?.[name]) ? props.preview[name] : []; }
-</script>
-
 <template>
   <BaseModal :show="show" :title="title" size-class="max-w-[calc(100vw-2rem)] sm:max-w-2xl" body-class="p-3 space-y-3 max-h-[70vh] overflow-auto" @close="emit('cancel')">
     <template v-if="preview">
@@ -48,3 +28,23 @@ function list(name) { return Array.isArray(props.preview?.[name]) ? props.previe
     </template>
   </BaseModal>
 </template>
+
+<script setup>
+import BaseModal from './BaseModal.vue';
+
+/**
+ * 容器变更预览:Compose 保存、Env 应用、镜像升级等写操作前展示将影响的服务/容器。
+ * preview 形如 { added: [], changed: [{service, reasons, container}], restarted: [], removed: [{service, container, state}] },字段均可缺省。
+ */
+const props = defineProps({
+  show: { type: Boolean, default: false },
+  preview: { type: Object, default: null },
+  title: { type: String, default: '保存前变更预览' },
+  confirmText: { type: String, default: '确认执行' },
+  // 变更预览不可用时的兜底说明(空则隐藏)
+  fallbackMessage: { type: String, default: '' },
+});
+const emit = defineEmits(['confirm', 'cancel']);
+
+function list(name) { return Array.isArray(props.preview?.[name]) ? props.preview[name] : []; }
+</script>

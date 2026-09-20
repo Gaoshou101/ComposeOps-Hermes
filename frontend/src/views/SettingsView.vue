@@ -164,7 +164,7 @@
 <script setup>
 import { computed, markRaw, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { Activity, Bell, Bot, Check, Download, FolderCog, HardDrive, Info, KeyRound, Pencil, RefreshCw, Save, Send, Server, ShieldCheck, SlidersHorizontal, Trash2, Upload, Wrench, X, Zap } from 'lucide-vue-next';
+import { Activity, Bell, Bot, Check, Download, FolderCog, HardDrive, Info, KeyRound, Pencil, RefreshCw, Save, Send, Server, ShieldCheck, SlidersHorizontal, Trash2, Upload, Wrench, Zap } from 'lucide-vue-next';
 import { api } from '../api/client.js'; import { useAiStore } from '../stores/ai.js'; import { useHostsStore } from '../stores/hosts.js'; import { useToastStore } from '../stores/toast.js'; import StatCard from '../components/StatCard.vue';
 import EmptyState from '../components/common/EmptyState.vue';
 import StoragePruneModal from '../components/settings/StoragePruneModal.vue';
