@@ -31,6 +31,7 @@ function createChannel() {
     sessionId: ref(null),
     pendingQueue: ref([]),
     controller: null,
+    starting: false,
     nextId: 0,
     tokenBuffer: '',
     bufferingAssistant: null,
@@ -128,12 +129,17 @@ export function useAgentChat({ channel = WORKBENCH_CHANNEL, onEventExtra = null,
 
   async function sendMessage(text, extraPayload = {}) {
     if (!text) return;
-    if (running.value) {
+    if (running.value || state.starting) {
       pendingQueue.value.push({ text, extraPayload });
       input.value = '';
       return;
     }
-    await ensureSession();
+    state.starting = true;
+    try {
+      await ensureSession();
+    } finally {
+      state.starting = false;
+    }
     const assistant = { id: ++state.nextId, role: 'assistant', content: '', streaming: true };
     const userMessage = { id: ++state.nextId, role: 'user', content: text, persistedId: 0 };
     messages.value.push(userMessage, assistant);

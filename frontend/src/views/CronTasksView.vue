@@ -98,7 +98,7 @@
 </template>
 
 <script setup>
-import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Clock3, DatabaseBackup, Bot, Play, Plus, RefreshCw, Save, Sparkles, Trash2 } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import { useToastStore } from '../stores/toast.js';
@@ -234,6 +234,4 @@ onMounted(() => {
 });
 function handleHostChanged() { void load(); }
 onBeforeUnmount(() => { window.removeEventListener('composeops:cron-agent-created', handleAgentCreated); window.removeEventListener('composeops:host-changed', handleHostChanged); });
-let cronActivatedOnce = false;
-onActivated(() => { if (cronActivatedOnce) void load(); cronActivatedOnce = true; });
 </script>

@@ -44,7 +44,7 @@ Auto-discover Compose projects, manage services, edit configs, stream logs, diag
 - ✏️ Multi-file YAML editor (Monaco Editor)
 - ✅ Real-time syntax validation (depends_on / port conflicts / missing images)
 - 💾 Auto-backup last 20 versions, diff and restore support
-- 🔍 Preview containers to be recreated/restarted before saving
+- 🔍 Pre-change container preview: Compose save, env apply and image upgrade all show added/recreated/restarted/removed containers before executing
 
 </td>
 </tr>
@@ -74,7 +74,7 @@ Auto-discover Compose projects, manage services, edit configs, stream logs, diag
 
 Single chat entry (the standalone AI diagnosis page has been merged in), powered by a native tool-loop engine:
 
-- 🛠️ **47 tools**: project discovery / lifecycle / scaling / config read-write & rollback / networks & volumes / security audit / diagnostic probes / maintenance / cron / long-term memory
+- 🛠️ **47 tools**: project discovery / lifecycle / config read-write & rollback / networks & volumes / security audit / diagnostic probes / maintenance / cron / long-term memory
 - ⚠️ **Risk levels + step-by-step confirmation**: high-risk actions require explicit approval, fully audited
 - 📎 **Log mounting**: pick container log lines as evidence attached to your message (untrusted-fence guarded)
 - 🌐 **Web search**: optional toggle with cited sources
@@ -112,6 +112,14 @@ These modules target power users who want to codify their ops experience. The co
 - 🔁 **Workflow Engine**: trigger / condition / agent / approval / action / verify node orchestration; the Agent can act as a workflow node
 - 🎯 **Event Center**: alerts, inspections, deployments, rollbacks, Agent and GitOps unified into one event stream
 - 💰 **Cost Analysis**: resource-based estimation (informative for personal servers)
+
+### 💻 Interaction Experience
+
+- ⌨️ Global shortcuts: Cmd/Ctrl+K command palette, `?` cheatsheet, Vim-style j/k navigation on the services page
+- 🌙 Single dark industrial theme: unified design tokens (surface scale + emerald/rose/amber/sky status semantics), skeleton/empty/error tiers, focus trap and layered Esc handling
+- 📱 Mobile: bottom nav + drawer sessions, horizontally scrollable tables, touch target minimums and safe-area support
+- ⚡ Performance: idle route prefetch, keep-alive whitelist, virtualized log scrolling, WebSocket fallback polling
+- 🔄 Resource pages show a "last updated" timestamp and refresh when you return to them
 
 ---
 

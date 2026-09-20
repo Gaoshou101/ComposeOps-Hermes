@@ -16,7 +16,7 @@
 
 <img src="docs/screenshots/dashboard.png" alt="ComposeOps 总览：AI 运维决策中心" width="900">
 <br>
-<img src="docs/screenshots/services.png" alt="服务总览：自动发现与纳管" width="49.4%" alt1="服务">
+<img src="docs/screenshots/services.png" alt="服务总览：自动发现与纳管" width="49.4%">
 <img src="docs/screenshots/monitor.png" alt="实时监控：容器资源与告警阈值" width="49.4%">
 <br>
 <img src="docs/screenshots/agent.png" alt="AI 运维 Agent：Tool Loop + 确认门" width="98.8%">
@@ -50,7 +50,7 @@
 - ✏️ 多文件 YAML 编辑器（Monaco Editor）
 - ✅ 实时语法校验（depends_on / 端口冲突 / 缺失镜像）
 - 💾 自动备份最近 20 份，支持 diff 和恢复
-- 🔍 保存前预览将重建/重启的容器
+- 🔍 **保存前变更预览**：Compose 保存、环境变量应用、镜像升级前均展示将新增/重建/重启/移除的容器清单
 - 🧾 环境变量文件族：`.env` / `*.env` / `.env.example` 在线编辑
 
 </td>
@@ -81,7 +81,7 @@
 
 单一对话入口（原独立 AI 诊断页已合并），原生 Tool Loop 执行引擎：
 
-- 🛠️ **47 个工具**：项目识别 / 启停 / 扩容 / 配置读写与回滚 / 网络与卷 / 安全审计 / 诊断探针 / 维护清理 / 定时任务 / 长期记忆
+- 🛠️ **47 个工具**：项目识别 / 启停 / 配置读写与回滚 / 网络与卷 / 安全审计 / 诊断探针 / 维护清理 / 定时任务 / 长期记忆
 - ⚠️ **风险分级 + 逐步确认**：高危操作必须确认后才执行，全程审计落库
 - 📎 **日志挂载**：勾选容器日志作为排障证据随消息注入（不可信定界块防护）
 - 🌐 **联网检索**：可选开关，回答附带参考来源
@@ -121,6 +121,14 @@
 - 🔁 **工作流引擎**：trigger / condition / agent / approval / action / verify 节点编排，Agent 可作为工作流节点
 - 🎯 **事件中心**：告警 / 巡检 / 部署 / 回滚 / Agent / GitOps 统一事件流与状态流转
 - 💰 **成本分析**：基于资源用量的估算（个人服务器场景偏参考性质）
+
+### 💻 交互体验
+
+- ⌨️ 全局快捷键：Cmd/Ctrl+K 命令面板、`?` 快捷键速查、服务页 Vim 风格 j/k 导航
+- 🌙 单暗色工业主题：统一设计 token（surface 色阶 + emerald/rose/amber/sky 状态语义）、骨架屏 / 空态 / 错误分级、焦点陷阱与 Esc 分层管理
+- 📱 移动端适配：底部导航 + 抽屉式会话、窄屏表格横滑、触摸目标下限与安全区适配
+- ⚡ 性能：路由空闲预取、页面 keep-alive 白名单、日志虚拟滚动、WebSocket 断线降级轮询
+- 🔄 资源页带"更新于"时间戳，离页回来自动补齐刷新
 
 ---
 

@@ -72,7 +72,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onActivated, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Boxes, Container, RefreshCw, Server, Trash2, Waypoints } from 'lucide-vue-next';
 import { useCmdbStore } from '../stores/cmdb.js';
@@ -161,4 +161,7 @@ async function confirmRemove() {
 }
 
 onMounted(load);
+let activatedOnce = false;
+onActivated(() => { if (activatedOnce) void load(); activatedOnce = true; });
+
 </script>

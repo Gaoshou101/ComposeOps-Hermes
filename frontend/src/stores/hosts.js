@@ -17,6 +17,7 @@ export const useHostsStore = defineStore('hosts', () => {
       api.getHosts(true).then((data) => {
         hosts.value = data.hosts || [];
         syncActive(data.hosts);
+        error.value = '';
       }).catch((e) => { error.value = e.message; });
       return;
     }

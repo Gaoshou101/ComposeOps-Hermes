@@ -241,7 +241,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onActivated, onMounted } from 'vue';
 import { api } from '../api/client.js';
 import { useToastStore } from '../stores/toast.js';
 
@@ -335,6 +335,9 @@ const cpuTrendPoints = computed(() => {
 onMounted(() => {
   loadReport();
 });
+let activatedOnce = false;
+onActivated(() => { if (!activatedOnce) { activatedOnce = true; return; } void loadReport(); });
+
 </script>
 
 <style scoped>

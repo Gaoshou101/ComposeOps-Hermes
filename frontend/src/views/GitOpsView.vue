@@ -307,7 +307,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref, onActivated, onMounted } from 'vue';
 import { useToastStore } from '../stores/toast.js';
 import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 import BaseModal from '../components/common/BaseModal.vue';
@@ -544,6 +544,9 @@ onMounted(() => {
   loadRepos();
   loadDrift();
 });
+let activatedOnce = false;
+onActivated(() => { if (!activatedOnce) { activatedOnce = true; return; } void loadProjects(); void loadRepos(); void loadDrift(); });
+
 </script>
 
 <style scoped>

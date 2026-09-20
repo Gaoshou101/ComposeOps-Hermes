@@ -92,7 +92,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RefreshCw, Trash2 } from 'lucide-vue-next';
 import { api } from '../api/client.js';
 import Skeleton from '../components/common/Skeleton.vue';
@@ -357,6 +357,9 @@ watch(activeTab, () => {
 });
 
 onMounted(refresh);
+let activatedOnce = false;
+onActivated(() => { if (activatedOnce) void refresh(); activatedOnce = true; });
+
 function onHostChanged() {
   data.value = null;
   selected.value = [];

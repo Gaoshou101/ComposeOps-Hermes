@@ -31,12 +31,12 @@
       </div>
     </template>
     <template #footer>
-      <button v-if="data?.hasUpdate && !upgrading" class="btn-primary" @click="confirmUpgrade = true"><Zap class="w-4 h-4" />一键平滑升级</button>
+      <button v-if="data?.hasUpdate && !upgrading" class="btn-primary" :disabled="previewLoading" @click="startUpgrade"><Zap class="w-4 h-4" />一键平滑升级<span v-if="previewLoading" class="text-xs opacity-70">正在生成变更预览…</span></button>
       <span v-if="upgrading" class="text-sm text-muted">正在升级,请查看输出面板…</span>
       <button class="btn-secondary" @click="close">关闭</button>
     </template>
   </BaseModal>
-  <ConfirmDialog :show="confirmUpgrade" title="平滑升级项目" :message="`将把 ${project.projectName} 的镜像拉取到最新并平滑重建容器,升级前自动备份 compose 与 env。确认继续?`" tone="warning" confirm-text="开始升级" @confirm="upgrade" @cancel="confirmUpgrade = false" />
+  <ChangePreviewModal :show="showPreview" :preview="changePreview" title="平滑升级 · 变更预览" confirm-text="开始升级" fallback-message="无法获取变更预览,升级将拉取最新镜像并平滑重建容器。" @confirm="upgrade" @cancel="showPreview = false" />
 </template>
 
 <script setup>
@@ -45,7 +45,7 @@ import { api } from '../../api/client.js';
 import { useToastStore } from '../../stores/toast.js';
 import { RefreshCw, Sparkles, Zap } from 'lucide-vue-next';
 import BaseModal from '../common/BaseModal.vue';
-import ConfirmDialog from '../common/ConfirmDialog.vue';
+import ChangePreviewModal from '../common/ChangePreviewModal.vue';
 
 const props = defineProps({
   project: { type: Object, required: true },
@@ -57,7 +57,9 @@ const data = ref(null);
 const error = ref('');
 const refreshing = ref(false);
 const upgrading = ref(false);
-const confirmUpgrade = ref(false);
+const showPreview = ref(false);
+const changePreview = ref(null);
+const previewLoading = ref(false);
 
 async function load(force = false) {
   error.value = '';
@@ -71,8 +73,21 @@ async function load(force = false) {
   }
 }
 function refresh() { void load(true); }
+async function startUpgrade() {
+  if (upgrading.value || previewLoading.value) return;
+  previewLoading.value = true;
+  try {
+    const compose = await api.getComposeFile(props.project.id);
+    changePreview.value = await api.previewCompose(props.project.id, compose?.content ?? '');
+  } catch {
+    changePreview.value = null;
+  } finally {
+    previewLoading.value = false;
+    showPreview.value = true;
+  }
+}
 function upgrade() {
-  confirmUpgrade.value = false;
+  showPreview.value = false;
   if (upgrading.value) return;
   upgrading.value = true;
   toast.info('已开始平滑升级,请查看输出面板');

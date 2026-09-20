@@ -80,6 +80,7 @@ export const useServicesStore = defineStore('services', () => {
       try { wsHook.close(); } catch {}
       wsHook = null;
     }
+    if (containerEventDebounce) { clearTimeout(containerEventDebounce); containerEventDebounce = null; }
     wsConnected.value = false;
   }
 

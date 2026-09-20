@@ -23,7 +23,7 @@
   </div>
 </template>
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'; import { useRoute, useRouter } from 'vue-router'; import { Activity, ChartNoAxesCombined, RefreshCw } from 'lucide-vue-next'; import { api } from '../api/client.js'; import StatCard from '../components/StatCard.vue'; import SparklineChart from '../components/common/SparklineChart.vue'; import Skeleton from '../components/common/Skeleton.vue'; import ResourceMonitorView from './ResourceMonitorView.vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'; import { useRoute, useRouter } from 'vue-router'; import { Activity, ChartNoAxesCombined, RefreshCw } from 'lucide-vue-next'; import { api } from '../api/client.js'; import StatCard from '../components/StatCard.vue'; import SparklineChart from '../components/common/SparklineChart.vue'; import Skeleton from '../components/common/Skeleton.vue'; import ResourceMonitorView from './ResourceMonitorView.vue'; import { monitorTrends, pushMonitorTrend, resetMonitorTrends } from '../lib/monitor-trends.js';
 const route = useRoute();
 const router = useRouter();
 const tab = ref(route.query.tab === 'history' ? 'history' : 'live');
@@ -34,18 +34,8 @@ function setTab(next) {
   router.replace({ query });
 }
 watch(() => route.query.tab, (value) => { tab.value = value === 'history' ? 'history' : 'live'; });
-const data = ref(null); const usage = ref(null); const capabilities = ref({}); const autoRefresh = ref(true); const error = ref(''); const loading = ref(false); const lastUpdated = ref(''); const intervalMs = ref(5000); const histories = ref({}); const trends = ref(loadTrends()); const crossedThreshold = ref(false); let timer;
+const data = ref(null); const usage = ref(null); const capabilities = ref({}); const autoRefresh = ref(true); const error = ref(''); const loading = ref(false); const lastUpdated = ref(''); const intervalMs = ref(5000); const histories = ref({}); const trends = monitorTrends; const crossedThreshold = ref(false); let timer;
 const alertThresholds = { cpu: 85, mem: 90 };
-const TRENDS_KEY = 'composeops:monitor-trends';
-function loadTrends() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(TRENDS_KEY) || '{}');
-    return { cpu: Array.isArray(saved.cpu) ? saved.cpu : [], mem: Array.isArray(saved.mem) ? saved.mem : [], net: Array.isArray(saved.net) ? saved.net : [] };
-  } catch { return { cpu: [], mem: [], net: [] }; }
-}
-function saveTrends() {
-  try { localStorage.setItem(TRENDS_KEY, JSON.stringify({ cpu: trends.value.cpu.slice(-96), mem: trends.value.mem.slice(-96), net: trends.value.net.slice(-96), ts: Date.now() })); } catch {}
-}
 const scopeLabel = computed(() => capabilities.value.hostMetricsScope === 'host' ? '宿主机与 Docker 容器实时指标' : 'ComposeOps 运行环境与 Docker 容器指标');
 async function refresh() { if (loading.value) return; loading.value = true; try { [data.value, usage.value] = await Promise.all([api.getMetrics(), api.getDockerUsage()]); accumulate(); lastUpdated.value = `更新于 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`; error.value = ''; } catch (e) { error.value = e.message; } finally { loading.value = false; } }
 function accumulate() {
@@ -58,33 +48,32 @@ function accumulate() {
   }
   histories.value = next;
   if (data.value) {
-    trends.value.cpu.push(data.value.host.cpu.percent);
-    trends.value.mem.push(data.value.host.memory.percent);
     const rx = data.value.network?.rx || 0;
-    trends.value.net.push(Math.max(1, Math.round((rx / 1024 / 1024) * 100) / 100));
-    trends.value.cpu = trends.value.cpu.slice(-96);
-    trends.value.mem = trends.value.mem.slice(-96);
-    trends.value.net = trends.value.net.slice(-96);
+    pushMonitorTrend({ cpu: data.value.host.cpu.percent, mem: data.value.host.memory.percent, net: Math.max(1, Math.round((rx / 1024 / 1024) * 100) / 100) });
     crossedThreshold.value = data.value.host.cpu.percent >= alertThresholds.cpu || data.value.host.memory.percent >= alertThresholds.mem;
-    saveTrends();
   }
 }
-function setTimer(value) { clearInterval(timer); if (value) timer = setInterval(refresh, intervalMs.value); }
+function setTimer(value) { clearInterval(timer); timer = undefined; if (value) timer = setInterval(refresh, intervalMs.value); }
 function numberValue(value) { return Number.isFinite(Number(value)) ? Number(value) : 0; } function formatBytes(value = 0) { const units = ['B','KB','MB','GB','TB']; let n = numberValue(value), i = 0; while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; } return `${n.toFixed(i ? 1 : 0)} ${units[i]}`; } function formatRate(n) { return `${formatBytes(n)}/s`; } function formatUptime(s) { const d = Math.floor(numberValue(s) / 86400), h = Math.floor((numberValue(s) % 86400) / 3600), m = Math.floor((numberValue(s) % 3600) / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`; }
-watch(autoRefresh, setTimer); function onHostChanged() { histories.value = {}; try { localStorage.removeItem(TRENDS_KEY); } catch {} trends.value = { cpu: [], mem: [], net: [] }; void refresh(); }
-function resetTrends() { try { localStorage.removeItem(TRENDS_KEY); } catch {} trends.value = { cpu: [], mem: [], net: [] }; }
-onMounted(async () => { if (tab.value !== 'live') return; const [caps, prefs] = await Promise.all([api.getCapabilities(), api.getPreferences()]); capabilities.value = caps; intervalMs.value = prefs.refreshInterval * 1000; await refresh(); setTimer(true); window.addEventListener('composeops:host-changed', onHostChanged); });
+watch(autoRefresh, setTimer); function onHostChanged() { histories.value = {}; resetMonitorTrends(); void refresh(); }
+function resetTrends() { resetMonitorTrends(); }
+onMounted(async () => {
+  window.addEventListener('composeops:host-changed', onHostChanged);
+  if (tab.value !== 'live') return;
+  const [caps, prefs] = await Promise.all([api.getCapabilities(), api.getPreferences()]);
+  capabilities.value = caps; intervalMs.value = prefs.refreshInterval * 1000;
+  await refresh(); setTimer(true);
+});
 // 切回实时 tab 时补齐初始化(历史指标 tab 挂载时跳过轮询,避免空跑)
 watch(tab, (value, previous) => {
-  if (value !== 'live' || previous === undefined) return;
-  if (timer) return;
+  if (value !== 'live') { setTimer(false); return; }
+  if (previous === undefined || timer) return;
   void (async () => {
     if (!capabilities.value.hostMetricsScope) {
       const [caps, prefs] = await Promise.all([api.getCapabilities(), api.getPreferences()]);
       capabilities.value = caps; intervalMs.value = prefs.refreshInterval * 1000;
     }
     await refresh(); setTimer(true);
-    window.addEventListener('composeops:host-changed', onHostChanged);
   })();
 });
 onUnmounted(() => { clearInterval(timer); window.removeEventListener('composeops:host-changed', onHostChanged); });

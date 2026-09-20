@@ -499,7 +499,6 @@ onMounted(async () => {
   window.addEventListener('keydown', handleKeydown);
   onBeforeUnmount(() => window.removeEventListener('keydown', handleKeydown));
 });
-onActivated(() => { mobileSessionsOpen.value = false; });
 // 订阅者始终有效。页面被 keep-alive 缓存、用户切到别的页面时,Agent 仍在跑:
 // 之前 onDeactivated 会把订阅者静音,那一轮的执行动态就整段丢了,
 // 切回来右侧空空如也 —— 这正是"切走再切回,执行动态都没了"的原因。

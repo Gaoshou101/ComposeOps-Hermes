@@ -117,7 +117,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue';
+import { onActivated, onMounted, reactive, ref } from 'vue';
 import { Pencil, Play, Plus, RefreshCw, Trash2, X } from 'lucide-vue-next';
 import { useWorkflowStore } from '../stores/workflow.js';
 import { useToastStore } from '../stores/toast.js';
@@ -227,4 +227,7 @@ async function load() {
 }
 
 onMounted(load);
+let activatedOnce = false;
+onActivated(() => { if (activatedOnce) void load(); activatedOnce = true; });
+
 </script>

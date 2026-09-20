@@ -85,8 +85,9 @@
     <BaseModal :show="confirm" title="保存环境变量" size-class="max-w-[calc(100vw-1.5rem)] sm:max-w-md" body-class="space-y-2 p-4" @close="confirm = false">
       <p class="text-sm text-surface-300">请选择应用方式:</p>
       <button class="btn-secondary w-full justify-start" @click="doSave(false)"><Save class="h-4 w-4" />仅保存文件(不重启容器)</button>
-      <button class="btn-primary w-full justify-start" @click="doSave(true)"><Play class="h-4 w-4" />保存并平滑重建容器(推荐)</button>
+      <button class="btn-primary w-full justify-start" :disabled="previewLoading" @click="applyWithPreview"><Play class="h-4 w-4" />保存并平滑重建容器(推荐)<span v-if="previewLoading" class="text-xs opacity-70">正在生成变更预览…</span></button>
     </BaseModal>
+    <ChangePreviewModal :show="showPreview" :preview="changePreview" title="应用环境变量 · 变更预览" confirm-text="保存并重建" fallback-message="无法获取变更预览,继续将保存文件并平滑重建容器。" @confirm="doSave(true)" @cancel="showPreview = false" />
     <ConfirmDialog :show="!!pendingConfirm" title="未保存的修改" :message="pendingConfirm?.message || ''" tone="warning" confirm-text="继续" @confirm="confirmPending" @cancel="pendingConfirm = null" />
   </BaseModal>
 </template>
@@ -98,6 +99,7 @@ import { api } from '../../api/client.js';
 import { parseDotenv, serializeDotenv, isSecretKey } from '../../lib/dotenv.js';
 import { useToastStore } from '../../stores/toast.js';
 import BaseModal from '../common/BaseModal.vue';
+import ChangePreviewModal from '../common/ChangePreviewModal.vue';
 import ConfirmDialog from '../common/ConfirmDialog.vue';
 
 const props = defineProps({
@@ -208,8 +210,25 @@ function confirmPending() {
 }
 async function saveOnly() { await doSave(false); }
 async function saveAndApply() { pendingApply.value = true; confirm.value = true; }
+const showPreview = ref(false);
+const changePreview = ref(null);
+const previewLoading = ref(false);
+async function applyWithPreview() {
+  confirm.value = false;
+  previewLoading.value = true;
+  try {
+    const compose = await api.getComposeFile(props.project.id);
+    changePreview.value = await api.previewCompose(props.project.id, compose?.content ?? '');
+  } catch {
+    changePreview.value = null;
+  } finally {
+    previewLoading.value = false;
+    showPreview.value = true;
+  }
+}
 async function doSave(apply) {
   confirm.value = false;
+  showPreview.value = false;
   saving.value = true;
   try {
     await api.saveProjectEnv(props.project.id, { file: activeFile.value, raw: buildRaw() });

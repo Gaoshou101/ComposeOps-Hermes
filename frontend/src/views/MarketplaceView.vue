@@ -261,7 +261,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onActivated, onMounted, ref, watch } from 'vue';
 import { useToastStore } from '../stores/toast.js';
 import { useAgentConsole } from '../composables/useAgentConsole.js';
 import { api } from '../api/client.js';
@@ -549,6 +549,9 @@ watch(deployTarget, (template) => {
 onMounted(async () => {
   await Promise.all([loadStats(), loadTemplates()]);
 });
+let activatedOnce = false;
+onActivated(() => { if (!activatedOnce) { activatedOnce = true; return; } void Promise.all([loadStats(), loadTemplates()]); });
+
 </script>
 
 <style scoped>

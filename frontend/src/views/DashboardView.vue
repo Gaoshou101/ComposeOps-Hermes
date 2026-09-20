@@ -42,11 +42,13 @@
         <div class="metric-tile">
           <span class="metric-icon" :class="cpuTone"><Cpu class="h-5 w-5" /></span>
           <span><strong class="font-mono tabular-nums" :class="cpuTone">{{ cpu }}%</strong><small>CPU</small></span>
+          <SparklineChart :cpu="monitorTrends.cpu" :mem="[]" :width="72" :height="20" />
           <span class="metric-meta">{{ cpuState }}</span>
         </div>
         <div class="metric-tile">
           <span class="metric-icon" :class="memoryTone"><MemoryStick class="h-5 w-5" /></span>
           <span><strong class="font-mono tabular-nums" :class="memoryTone">{{ memory }}%</strong><small>内存</small></span>
+          <SparklineChart :cpu="[]" :mem="monitorTrends.mem" :width="72" :height="20" />
           <span class="metric-meta">{{ memoryState }}</span>
         </div>
         <div class="metric-tile">
@@ -138,6 +140,8 @@ import { useServicesStore } from '../stores/services.js';
 import EmptyState from '../components/common/EmptyState.vue';
 import Skeleton from '../components/common/Skeleton.vue';
 import StatusBadge from '../components/common/StatusBadge.vue';
+import SparklineChart from '../components/common/SparklineChart.vue';
+import { monitorTrends, pushMonitorTrend } from '../lib/monitor-trends.js';
 
 const store = useServicesStore();
 const metrics = ref(null);
@@ -263,7 +267,12 @@ async function load() {
       api.getInspectionOverview(1),
       api.getOperations(),
     ]);
-    if (metricsRes.status === 'fulfilled') metrics.value = metricsRes.value; else errors.push(metricsRes.reason);
+    if (metricsRes.status === 'fulfilled') {
+      metrics.value = metricsRes.value;
+      const host = metricsRes.value?.host;
+      const rx = metricsRes.value?.network?.rx || 0;
+      if (host) pushMonitorTrend({ cpu: host.cpu?.percent, mem: host.memory?.percent, net: Math.max(1, Math.round((rx / 1024 / 1024) * 100) / 100) });
+    } else errors.push(metricsRes.reason);
     if (inspectionRes.status === 'fulfilled') inspection.value = inspectionRes.value; else errors.push(inspectionRes.reason);
     if (operationsRes.status === 'fulfilled') operations.value = operationsRes.value.operations || []; else errors.push(operationsRes.reason);
     await loadRecentEvents(errors);

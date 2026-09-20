@@ -10,7 +10,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
 
   async function loadDefinitions(force = false) {
     if (!force && definitions.value.length) {
-      api.getWorkflowDefinitions().then((data) => { definitions.value = data.definitions || []; }).catch((e) => { error.value = e.message; });
+      api.getWorkflowDefinitions().then((data) => { definitions.value = data.definitions || []; error.value = ''; }).catch((e) => { error.value = e.message; });
       return;
     }
     loading.value = true;
