@@ -382,11 +382,61 @@ const MIGRATIONS = [
     },
   },
   {
-    version: 10,
-    name: 'Transcript 双视图:ai_sessions 记录压缩分界点',
+{
+    version: 11,
+    name: 'OneSSH-style ops memory: scope banks, importance, veracity, recall_count, compact_summary',
     up(database) {
-      addColumn(database, 'ai_sessions', 'compacted_before_id', 'INTEGER NOT NULL DEFAULT 0');
-    },
+      // 1. 新表：带 scope/project/host 银行 + 重要度 + veracity + 召回计数
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS ai_memories_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          scope TEXT NOT NULL DEFAULT 'global',
+          scope_id TEXT NOT NULL DEFAULT '',
+          memory_key TEXT NOT NULL,
+          value TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT 'conversation',
+          confidence TEXT NOT NULL DEFAULT 'medium',
+          importance REAL NOT NULL DEFAULT 0.5,
+          veracity TEXT NOT NULL DEFAULT 'stated',
+          last_recalled_at TEXT,
+          recall_count INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(scope, scope_id, memory_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_memories_scope ON ai_memories_new(scope, scope_id);
+        CREATE INDEX IF NOT EXISTS idx_ai_memories_updated ON ai_memories_new(updated_at);
+      `);
+
+      // 2. 把旧数据迁移为 global/'' 银行
+      database.exec(`
+        INSERT INTO ai_memories_new (scope, scope_id, memory_key, value, source, confidence, importance, veracity, created_at, updated_at)
+        SELECT 'global', '', memory_key, value, source, confidence, 0.5, 'stated', created_at, updated_at
+        FROM ai_memories;
+      `);
+
+      // 3. 重命名表（幂等）
+      database.exec(`ALTER TABLE ai_memories RENAME TO ai_memories_old;`);
+      database.exec(`ALTER TABLE ai_memories_new RENAME TO ai_memories;`);
+      database.exec(`DROP TABLE ai_memories_old;`);
+
+      // 4. 添加 ai_sessions.compact_summary
+      addColumn(database, 'ai_sessions', 'compact_summary', 'TEXT');
+
+      // 5. 创建 ai_usage 表
+      database.exec(`
+        CREATE TABLE ai_usage (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id INTEGER NOT NULL,
+          model TEXT NOT NULL,
+          prompt_tokens INTEGER NOT NULL DEFAULT 0,
+          completion_tokens INTEGER NOT NULL DEFAULT 0,
+          total_tokens INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX idx_ai_usage_session ON ai_usage(session_id);
+      `);
+    }
   },
 ];
 
