@@ -56,6 +56,30 @@ test('db-migrations: runMigrations 对空库应用全部迁移并更新 user_ver
   }
 });
 
+test('db-migrations: v11 后 upsertAiMemory 走新唯一键,增删查可用', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE project_preferences(project_id TEXT PRIMARY KEY);
+    CREATE TABLE ai_history(id INTEGER PRIMARY KEY);
+    CREATE TABLE alert_events(id INTEGER PRIMARY KEY);
+    CREATE TABLE agent_plans(id INTEGER PRIMARY KEY);
+    CREATE TABLE ai_sessions(session_id INTEGER PRIMARY KEY);
+  `);
+  runMigrations(db);
+  // upsertAiMemory/listAiMemories 操作模块单例库;这里直接对内存库验证同款 SQL 的冲突目标。
+  const insert = db.prepare(`
+    INSERT INTO ai_memories(scope, scope_id, memory_key, value, source, confidence, updated_at)
+    VALUES('global', '', ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(scope, scope_id, memory_key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
+  `);
+  insert.run('k1', 'v1', 'conversation', 'medium');
+  insert.run('k1', 'v2', 'conversation', 'medium');
+  const rows = db.prepare('SELECT memory_key, value, scope FROM ai_memories WHERE memory_key = ?').all('k1');
+  assert.equal(rows.length, 1, '同 key 二次写入应命中唯一约束走 UPDATE,不产生重复行');
+  assert.equal(rows[0].value, 'v2');
+  assert.equal(rows[0].scope, 'global');
+});
+
 test('db-migrations: v6 创建 inspections 表', () => {
   const db = new Database(':memory:');
   db.exec(`

@@ -657,9 +657,9 @@ export function upsertAiMemory(memoryKey, value, source = 'conversation', confid
   const content = String(value || '').trim().slice(0, 4000);
   if (!key || !content) throw Object.assign(new Error('记忆 key 和内容不能为空'), { statusCode: 400 });
   db.prepare(`
-    INSERT INTO ai_memories(memory_key, value, source, confidence, updated_at)
-    VALUES(?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(memory_key) DO UPDATE SET value = excluded.value, source = excluded.source,
+    INSERT INTO ai_memories(scope, scope_id, memory_key, value, source, confidence, updated_at)
+    VALUES('global', '', ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(scope, scope_id, memory_key) DO UPDATE SET value = excluded.value, source = excluded.source,
       confidence = excluded.confidence, updated_at = datetime('now')
   `).run(key, content, String(source || 'conversation').slice(0, 64), String(confidence || 'medium').slice(0, 32));
   return listAiMemories(1, key)[0] || null;
