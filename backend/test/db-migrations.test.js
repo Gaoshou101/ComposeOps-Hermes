@@ -35,15 +35,25 @@ test('db-migrations: runMigrations 对空库应用全部迁移并更新 user_ver
   assert.ok(applied.includes(8));
   assert.ok(applied.includes(9));
   assert.ok(applied.includes(10));
-  assert.equal(db.pragma('user_version', { simple: true }), 10);
+  assert.ok(applied.includes(11));
+  assert.equal(db.pragma('user_version', { simple: true }), 11);
   assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'volume_backups'").get());
   assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'assets'").get());
   assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'event_records'").get());
   assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'workflow_definitions'").get());
+  assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ai_memories'").get());
+  assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ai_usage'").get());
   assert.ok(db.prepare('PRAGMA table_info(project_preferences)').all().some((c) => c.name === 'managed'));
   assert.ok(db.prepare('PRAGMA table_info(ai_history)').all().some((c) => c.name === 'session_id'));
   assert.ok(db.prepare('PRAGMA table_info(agent_plans)').all().some((c) => c.name === 'progress_stage'));
   assert.ok(db.prepare('PRAGMA table_info(agent_plans)').all().some((c) => c.name === 'project_id'));
+  // v10/v11: ai_sessions 压缩分界列 + ai_memories 升级为 scope 银行(重要度/veracity/召回计数)
+  assert.ok(db.prepare('PRAGMA table_info(ai_sessions)').all().some((c) => c.name === 'compacted_before_id'));
+  assert.ok(db.prepare('PRAGMA table_info(ai_sessions)').all().some((c) => c.name === 'compact_summary'));
+  const memoryCols = db.prepare('PRAGMA table_info(ai_memories)').all();
+  for (const col of ['scope', 'scope_id', 'importance', 'veracity', 'recall_count']) {
+    assert.ok(memoryCols.some((c) => c.name === col), `ai_memories 应有列 ${col}`);
+  }
 });
 
 test('db-migrations: v6 创建 inspections 表', () => {
@@ -57,7 +67,7 @@ test('db-migrations: v6 创建 inspections 表', () => {
   `);
   const applied = runMigrations(db);
   assert.ok(applied.includes(6));
-  assert.equal(db.pragma('user_version', { simple: true }), 10);
+  assert.equal(db.pragma('user_version', { simple: true }), 11);
   assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'inspections'").get());
   // 验证 inspections 表列结构
   const cols = db.prepare('PRAGMA table_info(inspections)').all();
@@ -78,7 +88,7 @@ test('db-migrations: v6 前创建 inspections 表后跳过(列不重复添加)',
   db.pragma('user_version = 6');
   const applied = runMigrations(db);
   assert.ok(!applied.includes(6));
-  assert.equal(db.pragma('user_version', { simple: true }), 10);
+  assert.equal(db.pragma('user_version', { simple: true }), 11);
 });
 
 test('db-migrations: 已应用版本跳过,重放返回空数组', () => {
@@ -92,8 +102,10 @@ test('db-migrations: 已应用版本跳过,重放返回空数组', () => {
   `);
   db.pragma('user_version = 9');
   const applied = runMigrations(db);
-  assert.deepEqual(applied, [10]);
-  assert.equal(db.pragma('user_version', { simple: true }), 10);
+  assert.deepEqual(applied, [10, 11]);
+  assert.equal(db.pragma('user_version', { simple: true }), 11);
+  // v10 未越界:compacted_before_id 只在 v10 加过一次
+  assert.ok(db.prepare('PRAGMA table_info(ai_sessions)').all().filter((c) => c.name === 'compacted_before_id').length === 1);
 });
 
 test('db-migrations: 真实 user_version=0 历史库(列已在)幂等升到 v4', async () => {
@@ -116,7 +128,8 @@ test('db-migrations: 真实 user_version=0 历史库(列已在)幂等升到 v4',
   assert.ok(applied.includes(2));
   assert.ok(applied.includes(3));
   assert.ok(applied.includes(4));
-  assert.equal(reopened.pragma('user_version', { simple: true }), 10);
+  assert.equal(reopened.pragma('user_version', { simple: true }), 11);
+  assert.ok(reopened.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ai_memories'").get());
   reopened.close();
   rmSync(dir, { recursive: true, force: true });
 });

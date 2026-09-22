@@ -382,11 +382,17 @@ const MIGRATIONS = [
     },
   },
   {
-{
+    version: 10,
+    name: 'Transcript 双视图:ai_sessions 记录压缩分界点',
+    up(database) {
+      addColumn(database, 'ai_sessions', 'compacted_before_id', 'INTEGER NOT NULL DEFAULT 0');
+    },
+  },
+  {
     version: 11,
     name: 'OneSSH-style ops memory: scope banks, importance, veracity, recall_count, compact_summary',
     up(database) {
-      // 1. 新表：带 scope/project/host 银行 + 重要度 + veracity + 召回计数
+      // 1. 新表:带 scope/project/host 银行 + 重要度 + veracity + 召回计数
       database.exec(`
         CREATE TABLE IF NOT EXISTS ai_memories_new (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -408,17 +414,22 @@ const MIGRATIONS = [
         CREATE INDEX IF NOT EXISTS idx_ai_memories_updated ON ai_memories_new(updated_at);
       `);
 
-      // 2. 把旧数据迁移为 global/'' 银行
-      database.exec(`
-        INSERT INTO ai_memories_new (scope, scope_id, memory_key, value, source, confidence, importance, veracity, created_at, updated_at)
-        SELECT 'global', '', memory_key, value, source, confidence, 0.5, 'stated', created_at, updated_at
-        FROM ai_memories;
-      `);
-
-      // 3. 重命名表（幂等）
-      database.exec(`ALTER TABLE ai_memories RENAME TO ai_memories_old;`);
-      database.exec(`ALTER TABLE ai_memories_new RENAME TO ai_memories;`);
-      database.exec(`DROP TABLE ai_memories_old;`);
+      // 2. 旧格式表存在时把数据迁移为 global/'' 银行;不存在(冷启动/空库)则直接跳过。
+      const hasLegacy = database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ai_memories'").get();
+      if (hasLegacy) {
+        database.exec(`
+          INSERT INTO ai_memories_new (scope, scope_id, memory_key, value, source, confidence, importance, veracity, created_at, updated_at)
+          SELECT 'global', '', memory_key, value, source, confidence, 0.5, 'stated', created_at, updated_at
+          FROM ai_memories;
+        `);
+        // 3. 重命名表(幂等):旧表让位,新表上位
+        database.exec(`ALTER TABLE ai_memories RENAME TO ai_memories_old;`);
+        database.exec(`ALTER TABLE ai_memories_new RENAME TO ai_memories;`);
+        database.exec(`DROP TABLE ai_memories_old;`);
+      } else {
+        // 空库/冷启动:ai_memories_new 直接转正。
+        database.exec(`ALTER TABLE ai_memories_new RENAME TO ai_memories;`);
+      }
 
       // 4. 添加 ai_sessions.compact_summary
       addColumn(database, 'ai_sessions', 'compact_summary', 'TEXT');
