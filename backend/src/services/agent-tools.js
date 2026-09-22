@@ -14,6 +14,7 @@ import { registerContextTools } from './tools/context-tools.js';
 import { registerMemoryTools } from './tools/memory-tools.js';
 import { registerInspectionTools } from './tools/inspection-tools.js';
 import { registerGitopsTools } from './tools/gitops-tools.js';
+import { registerTaskTools } from './tools/task-tools.js';
 
 /** 工具风险等级:低/中/高/极高,前端据此决定确认强度。单一事实来源。 */
 export const RISK_LEVELS = {
@@ -61,5 +62,6 @@ export function registerAgentTools(agent) {
   registerMemoryTools(agent);
   registerInspectionTools(agent);
   registerGitopsTools(agent);
+  registerTaskTools(agent);
   return agent;
 }

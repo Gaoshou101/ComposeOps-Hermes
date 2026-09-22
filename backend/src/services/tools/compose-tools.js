@@ -6,6 +6,7 @@ import { readContainerLogs } from '../../lib/docker-exec.js';
 import { spawnComposeCommand } from '../compose-runner.js';
 import { runWorkspaceComposeArgs } from '../compose-workspace.js';
 import { getActivityDocker } from '../docker-hosts.js';
+import { createBackgroundTask } from '../agent/background-tasks.js';
 import { prepareProjectAction } from '../project-action-runner.js';
 import { findProjectContainer, scanProjects } from '../scanner.js';
 import { redactText } from '../../lib/redaction.js';
@@ -45,9 +46,25 @@ async function runComposeArgs(project, args, onOutput = () => {}) {
 }
 
 export function registerComposeTools(agent) {
+  // background=true 的动作转后台执行:立即返回 taskId,产出经后台任务管理器
+  // 搭车注入同会话后续轮次;后置验收(PostconditionValidator)对后台结果跳过。
   const lifecycleAction = (action) => async (params, context) => {
     const project = context.project;
     const prepared = await prepareProjectAction(project, action);
+    if (params.background === true) {
+      const taskId = createBackgroundTask({
+        sessionId: context.sessionId,
+        projectId: project.id,
+        label: `compose.${action} ${project.name || project.id}`,
+        run: (onOutput, onChild) => prepared.run(onOutput, onChild),
+      });
+      return {
+        background: true,
+        taskId,
+        action,
+        note: `compose.${action} 已转后台执行,任务 ID ${taskId}。用 task.output(taskId, waitMs) 等待或读取输出;完成后同会话也会自动收到提醒。`,
+      };
+    }
     const output = collectOutput();
     const exitCode = await prepared.run((stream, chunk) => output.push(stream, chunk));
     return { mode: prepared.mode, action, exitCode, output: output.text() };
@@ -55,7 +72,7 @@ export function registerComposeTools(agent) {
 
   agent
     .registerTool('compose.up', {
-      description: '启动 Compose 项目,可指定服务(仅整个项目级启动)',
+      description: '启动 Compose 项目,可指定服务(仅整个项目级启动);构建耗时长时可 background=true 转后台',
       category: 'compose',
       requiredPermission: 'managed',
       confirmationRequired: true,
@@ -65,6 +82,7 @@ export function registerComposeTools(agent) {
         properties: {
           projectId: { type: 'string', description: '项目 ID' },
           services: { type: 'array', items: { type: 'string' }, description: '指定服务(可选)' },
+          background: { type: 'boolean', description: '转后台执行,立即返回 taskId(适合带构建/拉取的长启动)' },
         },
         required: ['projectId'],
       },
@@ -103,14 +121,17 @@ export function registerComposeTools(agent) {
       execute: lifecycleAction('restart'),
     })
     .registerTool('compose.pull', {
-      description: '拉取项目镜像(需可编辑的 Compose 目录能力)',
+      description: '拉取项目镜像(需可编辑的 Compose 目录能力);大镜像拉取可 background=true 转后台',
       category: 'compose',
       requiredPermission: 'editable',
       confirmationRequired: false,
       requiresProject: true,
       parameters: {
         type: 'object',
-        properties: { projectId: { type: 'string', description: '项目 ID' } },
+        properties: {
+          projectId: { type: 'string', description: '项目 ID' },
+          background: { type: 'boolean', description: '转后台执行,立即返回 taskId' },
+        },
         required: ['projectId'],
       },
       execute: lifecycleAction('pull'),

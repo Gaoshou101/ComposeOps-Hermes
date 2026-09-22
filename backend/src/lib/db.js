@@ -569,6 +569,16 @@ export function setAiSessionCompaction(sessionId, boundaryId) {
   db.prepare('UPDATE ai_sessions SET compacted_before_id = ? WHERE session_id = ?').run(Number(boundaryId) || 0, Number(sessionId));
 }
 
+/** 会话压缩摘要:分界前历史的交接文档,由引擎注入 system 供模型参考。 */
+export function getAiSessionSummary(sessionId) {
+  const row = db.prepare('SELECT compact_summary AS summary FROM ai_sessions WHERE session_id = ?').get(Number(sessionId));
+  return row ? String(row.summary || '') : '';
+}
+
+export function setAiSessionSummary(sessionId, summary) {
+  db.prepare('UPDATE ai_sessions SET compact_summary = ? WHERE session_id = ?').run(String(summary || '').slice(0, 20000), Number(sessionId));
+}
+
 /** 读取发给模型的活跃区历史(分界点之后);渲染层请继续用 getAiHistory 取全量。 */
 export function getAiActiveHistory(limit = 50, sessionId = null) {
   const boundary = sessionId != null ? getAiSessionCompaction(sessionId) : 0;
@@ -634,34 +644,121 @@ export function clearAiHistory() {
   db.prepare('DELETE FROM ai_sessions').run();
 }
 
-export function listAiMemories(limit = 100, query = '') {
+/**
+ * 读取长期记忆(OneSSH 式加权召回):
+ * 先按 updated_at 取 4 倍候选,再在 JS 里按
+ *   score = importance × veracityWeight × (0.7 + 0.3 × recency)
+ * 排序,recency 为 72h 半衰期(基于 updated_at,重存即续命);
+ * veracity 权重 stated=1.0 > unknown=0.8 > inferred=0.7 > tool=0.5。
+ * 老而重要的记忆不再被纯时间排序挤掉。
+ */
+const VERACITY_WEIGHT = { stated: 1.0, unknown: 0.8, inferred: 0.7, tool: 0.5 };
+const RECALL_HALF_LIFE_HOURS = 72;
+
+export function listAiMemories(limit = 100, query = '', database = db) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 200));
   const text = String(query || '').trim();
-  if (text) {
-    const like = `%${text.replace(/[\\%_]/g, '\\$&')}%`;
-    return db.prepare(`
-      SELECT id, memory_key AS memoryKey, value, source, confidence, created_at AS createdAt, updated_at AS updatedAt
-      FROM ai_memories
-      WHERE memory_key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\'
-      ORDER BY updated_at DESC, id DESC LIMIT ?
-    `).all(like, like, safeLimit);
-  }
-  return db.prepare(`
-    SELECT id, memory_key AS memoryKey, value, source, confidence, created_at AS createdAt, updated_at AS updatedAt
-    FROM ai_memories ORDER BY updated_at DESC, id DESC LIMIT ?
-  `).all(safeLimit);
+  const candidateLimit = Math.min(Math.max(safeLimit * 4, 50), 400);
+  const where = text ? `WHERE memory_key LIKE ? ESCAPE '\\' OR value LIKE ? ESCAPE '\\'` : '';
+  const like = text ? `%${text.replace(/[\\%_]/g, '\\$&')}%` : '';
+  const rows = database.prepare(`
+    SELECT id, scope, scope_id AS scopeId, memory_key AS memoryKey, value, source, confidence,
+           importance, veracity, last_recalled_at AS lastRecalledAt, recall_count AS recallCount,
+           created_at AS createdAt, updated_at AS updatedAt
+    FROM ai_memories ${where}
+    ORDER BY updated_at DESC, id DESC LIMIT ?
+  `).all(...(text ? [like, like, candidateLimit] : [candidateLimit]));
+  const now = Date.now();
+  return rows
+    .map((row) => {
+      const stamp = Date.parse(row.updatedAt || row.createdAt || '') || now;
+      const ageHours = Math.max(0, (now - stamp) / 3600000);
+      const recency = Math.exp((-Math.LN2 * ageHours) / RECALL_HALF_LIFE_HOURS);
+      const weight = VERACITY_WEIGHT[row.veracity] ?? 0.8;
+      return { ...row, score: Number((Number(row.importance || 0.5) * weight * (0.7 + 0.3 * recency)).toFixed(4)) };
+    })
+    .sort((a, b) => b.score - a.score || b.recallCount - a.recallCount || (Date.parse(b.updatedAt || 0) || 0) - (Date.parse(a.updatedAt || 0) || 0))
+    .slice(0, safeLimit);
 }
 
-export function upsertAiMemory(memoryKey, value, source = 'conversation', confidence = 'medium') {
+/** 召回即计数:recall_count+1、last_recalled_at=now,作为衰减与排序的输入。 */
+export function recordAiMemoryRecall(ids = [], database = db) {
+  const clean = [...new Set((Array.isArray(ids) ? ids : []).map(Number).filter((value) => Number.isSafeInteger(value) && value > 0))];
+  if (!clean.length) return 0;
+  const touch = database.transaction((list) => {
+    const stmt = database.prepare(`UPDATE ai_memories SET recall_count = recall_count + 1, last_recalled_at = datetime('now') WHERE id = ?`);
+    let touched = 0;
+    for (const id of list) touched += stmt.run(id).changes;
+    return touched;
+  });
+  return touch(clean);
+}
+
+/**
+ * memory_sleep 记忆维护(借鉴 OneSSH engine.Sleep,纯确定性,无 LLM):
+ *  1) 去重:同 value(同银行)保留重要度最高/最早一条,合并 recall_count;
+ *  2) 衰减:COALESCE(last_recalled_at, updated_at) 早于 decayDays 的记忆 importance×0.9(地板 0.05);
+ *  3) 清理:创建超 pruneDays、importance≤0.1 且从未被召回的记忆删除。
+ */
+export function sleepAiMemories({ decayDays = 30, pruneDays = 90, decayFactor = 0.9, importanceFloor = 0.05, database = db } = {}) {
+  const report = { deduped: 0, decayed: 0, pruned: 0 };
+  const sqliteDate = (ms) => new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+  const sleep = database.transaction(() => {
+    const rows = database.prepare('SELECT id, scope, scope_id, value, importance, recall_count FROM ai_memories ORDER BY id ASC').all();
+    const groups = new Map();
+    for (const row of rows) {
+      const groupKey = `${row.scope}\u0000${row.scopeId}\u0000${row.value}`;
+      if (!groups.has(groupKey)) groups.set(groupKey, []);
+      groups.get(groupKey).push(row);
+    }
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const keeper = group.reduce((best, item) => (Number(item.importance) > Number(best.importance) ? item : best), group[0]);
+      const totalRecalls = group.reduce((sum, item) => sum + Number(item.recall_count || 0), 0);
+      const maxImportance = Math.max(...group.map((item) => Number(item.importance || 0)));
+      database.prepare(`UPDATE ai_memories SET importance = ?, recall_count = ?, updated_at = datetime('now') WHERE id = ?`)
+        .run(maxImportance, totalRecalls, keeper.id);
+      const drop = database.prepare('DELETE FROM ai_memories WHERE id = ?');
+      for (const item of group) if (item.id !== keeper.id) report.deduped += drop.run(item.id).changes;
+    }
+    const decayCutoff = sqliteDate(Date.now() - (Number(decayDays) || 30) * 86400000);
+    report.decayed = database.prepare(
+      'UPDATE ai_memories SET importance = MAX(?, importance * ?) WHERE importance > ? AND COALESCE(last_recalled_at, updated_at) < ?'
+    ).run(importanceFloor, decayFactor, importanceFloor, decayCutoff).changes;
+    const pruneCutoff = sqliteDate(Date.now() - (Number(pruneDays) || 90) * 86400000);
+    report.pruned = database.prepare(
+      "DELETE FROM ai_memories WHERE importance <= 0.1 AND recall_count = 0 AND created_at < ?"
+    ).run(pruneCutoff).changes;
+  });
+  sleep();
+  return report;
+}
+
+const VERACITY_ENUM = ['stated', 'inferred', 'tool', 'unknown'];
+
+export function upsertAiMemory(memoryKey, value, source = 'conversation', confidence = 'medium', { importance, veracity } = {}) {
   const key = String(memoryKey || '').trim().slice(0, 160);
   const content = String(value || '').trim().slice(0, 4000);
   if (!key || !content) throw Object.assign(new Error('记忆 key 和内容不能为空'), { statusCode: 400 });
+  const importanceValue = Number.isFinite(Number(importance))
+    ? Math.min(Math.max(Number(importance), 0), 1)
+    : 0.5;
+  const veracityValue = VERACITY_ENUM.includes(String(veracity || '')) ? String(veracity) : 'stated';
   db.prepare(`
-    INSERT INTO ai_memories(scope, scope_id, memory_key, value, source, confidence, updated_at)
-    VALUES('global', '', ?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(scope, scope_id, memory_key) DO UPDATE SET value = excluded.value, source = excluded.source,
-      confidence = excluded.confidence, updated_at = datetime('now')
-  `).run(key, content, String(source || 'conversation').slice(0, 64), String(confidence || 'medium').slice(0, 32));
+    INSERT INTO ai_memories(scope, scope_id, memory_key, value, source, confidence, importance, veracity, updated_at)
+    VALUES('global', '', ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(scope, scope_id, memory_key) DO UPDATE SET
+      value = excluded.value, source = excluded.source, confidence = excluded.confidence,
+      importance = MAX(ai_memories.importance, excluded.importance),
+      veracity = excluded.veracity, updated_at = datetime('now')
+  `).run(
+    key,
+    content,
+    String(source || 'conversation').slice(0, 64),
+    String(confidence || 'medium').slice(0, 32),
+    importanceValue,
+    veracityValue,
+  );
   return listAiMemories(1, key)[0] || null;
 }
 

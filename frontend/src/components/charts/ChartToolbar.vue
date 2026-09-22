@@ -17,11 +17,11 @@
         </button>
         <div v-if="showExportMenu" class="export-menu">
           <button @click="emitExport('csv')" class="export-menu-item">
-            <span class="export-icon">📄</span>
+            <FileText class="w-4 h-4" />
             <span>导出 CSV</span>
           </button>
           <button @click="emitExport('png')" class="export-menu-item">
-            <span class="export-icon">🖼️</span>
+            <Image class="w-4 h-4" />
             <span>导出 PNG</span>
           </button>
         </div>
@@ -38,7 +38,7 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue';
-import { TrendingUp, BarChart3, Activity, Download } from 'lucide-vue-next';
+import { TrendingUp, BarChart3, Activity, Download, FileText, Image } from 'lucide-vue-next';
 
 defineProps({
   modelValue: { type: String, default: 'area' },

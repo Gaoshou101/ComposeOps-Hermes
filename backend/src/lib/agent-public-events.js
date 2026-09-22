@@ -98,6 +98,8 @@ export function toPublicAgentEvent(event) {
   }
   if (event.type === 'tool_rejected') return { type: 'tool_rejected', tool: String(event.tool || '') };
   if (event.type === 'tool_error') return { type: 'tool_error', tool: String(event.tool || ''), error: cleanError(event.error) };
+  // 后台任务搭车通知:一行式任务摘要,已脱敏(drainTaskNotifications 只给状态与尾部预览)
+  if (event.type === 'task_notice') return { type: 'task_notice', content: cleanText(String(event.content || '')).slice(0, 1000) };
   if (event.type === 'error') return { type: 'error', content: cleanError(event.error || event.content) || 'Agent 执行失败' };
   if (event.type === 'interrupted') return { type: 'interrupted', reason: cleanText(event.reason || event.content) || '执行已中断' };
   return null;

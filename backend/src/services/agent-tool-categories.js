@@ -25,7 +25,7 @@ export const TOOL_CATEGORIES = {
     description: '读取、保存和删除用户明确授权的偏好与环境事实',
     icon: 'brain',
     risk: 'low',
-    tools: ['memory.search', 'memory.save', 'memory.delete']
+    tools: ['memory.search', 'memory.save', 'memory.delete', 'memory.sleep']
   },
   lifecycle: {
     label: '生命周期管理',
@@ -33,6 +33,13 @@ export const TOOL_CATEGORIES = {
     icon: 'power',
     risk: 'medium',
     tools: ['compose.up', 'compose.stop', 'compose.restart', 'compose.pull', 'compose.scale']
+  },
+  task: {
+    label: '后台任务',
+    description: '查看、等待与终止转入后台的长操作(compose 构建拉取等)',
+    icon: 'timer',
+    risk: 'low',
+    tools: ['task.list', 'task.output', 'task.stop']
   },
   config: {
     label: '配置管理',
@@ -132,6 +139,9 @@ export class PostconditionValidator {
    * @returns {Promise<{valid: boolean, reason?: string}>}
    */
   static async validate(toolName, params, result, context) {
+    // 后台任务(compose.up/pull background=true)尚未产生最终效果,
+    // 此刻的容器状态不代表动作结果,客观验收改由任务完成后的通知环节承担。
+    if (result && typeof result === 'object' && result.background === true) return { valid: true };
     const checks = POSTCONDITIONS[toolName];
     if (!checks) return { valid: true };
 

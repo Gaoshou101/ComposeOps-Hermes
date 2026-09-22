@@ -11,7 +11,6 @@
           刷新
         </button>
         <button @click="recordSnapshot" :disabled="loading" class="btn-primary">
-          <span class="icon">📸</span>
           记录快照
         </button>
       </div>

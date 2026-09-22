@@ -155,8 +155,8 @@
         <div class="rounded-lg border border-sky-900/40 bg-sky-950/20 p-2.5"><span class="text-sky-300">重启 {{ preview.restarted.length }}</span></div>
         <div class="rounded-lg border border-rose-900/40 bg-rose-950/20 p-2.5"><span class="text-rose-300">移除 {{ preview.removed.length }}</span></div>
       </div>
-      <p v-if="preview.removed.length" class="text-xs text-rose-300">⚠ 有服务将被移除,部署后对应容器会停止。</p>
-      <p v-if="preview.portConflicts.length" class="text-xs text-amber-300">⚠ 存在 {{ preview.portConflicts.length }} 处端口映射,请确认宿主机端口可用。</p>
+      <p v-if="preview.removed.length" class="text-xs text-rose-300">有服务将被移除,部署后对应容器会停止。</p>
+      <p v-if="preview.portConflicts.length" class="text-xs text-amber-300">存在 {{ preview.portConflicts.length }} 处端口映射,请确认宿主机端口可用。</p>
       <template #footer>
         <button class="btn-secondary" @click="showDeployConfirm = false">取消</button>
         <button class="btn-primary" :disabled="deploying" @click="confirmDeploy"><Rocket class="w-4 h-4" />{{ deploying ? '部署中...' : '确认部署' }}</button>

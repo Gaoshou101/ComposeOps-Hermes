@@ -13,7 +13,7 @@
           <option value="">插入模板...</option>
           <option v-for="template in templates" :key="template.id" :value="template.id">{{ template.label }} · {{ template.description }}</option>
           <option value="" disabled>──────────</option>
-          <option value="__goto_marketplace__">📦 前往模板市场</option>
+          <option value="__goto_marketplace__">前往模板市场</option>
         </select>
         <button class="btn-secondary" :disabled="!content" @click="formatYaml"><AlignLeft class="w-4 h-4" />格式化</button>
         <button class="btn-secondary" title="把 docker run 命令转换为 Compose 片段" @click="showConverter = true"><ArrowRightLeft class="w-4 h-4" />转换</button>

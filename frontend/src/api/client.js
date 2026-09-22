@@ -211,6 +211,8 @@ export const api = {
   createAgentSession: () => request('/ai/agent/sessions', { method: 'POST' }),
   renameAgentSession: (sessionId, title) => request(`/ai/agent/sessions/${encodeURIComponent(sessionId)}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
   getAiMemories: (limit = 20, query = '') => request(`/ai/agent/memories?limit=${limit}${query ? `&query=${encodeURIComponent(query)}` : ''}`),
+  compactAgentSession: (sessionId, keepRecent = 6) => request('/ai/agent/compact', { method: 'POST', body: JSON.stringify({ sessionId, keepRecent }) }),
+  getAgentCompaction: (sessionId) => request(`/ai/agent/sessions/${encodeURIComponent(sessionId)}/compaction`),
   clearAiHistory: (sessionId) => request(`/ai/history${sessionId ? `?sessionId=${sessionId}` : ''}`, { method: 'DELETE' }),
   clearAiSessions: (sessionIds) => request('/ai/history/batch-delete', { method: 'POST', body: JSON.stringify({ sessionIds }) }),
   truncateAiHistory: (sessionId, fromMessageId) => request('/ai/history/truncate', { method: 'POST', body: JSON.stringify({ sessionId, fromMessageId }) }),

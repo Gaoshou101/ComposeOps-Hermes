@@ -16,11 +16,17 @@ import {
   renameAiSession,
   listAiMemories,
   recordAgentFeedback,
+  setAiSessionCompaction,
+  setAiSessionSummary,
+  getAiSessionCompaction,
+  getAiSessionSummary,
+  getAiHistory,
 } from '../lib/db.js';
 import { getAgent } from '../services/agent.js';
 import { idField, limitField, numericId } from '../lib/schemas.js';
 import { redactRows, redactValue } from '../lib/redaction.js';
 import { toPublicAgentEvent } from '../lib/agent-public-events.js';
+import { buildCompactSummary } from '../services/agent/compaction.js';
 
 export default async function agentRoutes(fastify) {
   // POST /api/v1/ai/agent/sessions —— 创建聊天会话
@@ -227,5 +233,61 @@ export default async function agentRoutes(fastify) {
     const ok = getApprovalGate().setMode(sessionId, mode);
     if (!ok) return reply.code(400).send({ error: 'invalid_mode', message: '无效的审批模式' });
     return { success: true, mode };
+  });
+
+  // POST /api/v1/ai/agent/compact —— 会话压缩:为分界前历史生成交接摘要并推进分界点。
+  // 摘要失败(未配 Key/网络异常)自动回退确定性事实拼接,响应里以 fallback 标记。
+  fastify.post('/agent/compact', {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['sessionId'],
+        properties: {
+          sessionId: numericId,
+          keepRecent: { type: 'number', description: '活跃区至少保留的最近消息数(默认 6)' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const sessionId = Number(request.body?.sessionId);
+    const keepRecent = Math.max(Number(request.body?.keepRecent) || 6, 2);
+    const boundary = getAiSessionCompaction(sessionId);
+    // 可压缩行 = 分界点之后、去掉最近 keepRecent 条的活跃区
+    const evictable = getAiHistory(200, sessionId).filter((item) => Number(item.id) > boundary);
+    const candidates = evictable.slice(0, Math.max(evictable.length - keepRecent, 0));
+    if (candidates.length < 2) {
+      return reply.code(400).send({ error: 'nothing_to_compact', message: '活跃区历史太少,无需压缩' });
+    }
+    const { callOpenAI, getAiConfig } = await import('../services/ai.js');
+    const cfg = getAiConfig();
+    const callModel = cfg.apiKey
+      ? ({ messages, signal }) => callOpenAI({ ...cfg, messages, stream: false, signal }).then((res) => res.content)
+      : null;
+    const { summary, facts, fallback } = await buildCompactSummary(candidates, { callModel });
+    const newBoundary = Number(candidates[candidates.length - 1].id);
+    setAiSessionCompaction(sessionId, Math.max(newBoundary, boundary));
+    setAiSessionSummary(sessionId, summary);
+    return {
+      ok: true,
+      sessionId,
+      boundary: Math.max(newBoundary, boundary),
+      compactedMessages: candidates.length,
+      fallback,
+      summaryPreview: summary.slice(0, 400),
+      facts: { userGoal: facts.userGoal, projects: facts.projects, containers: facts.containers, errorCount: facts.errorLines.length },
+    };
+  });
+
+  // GET /api/v1/ai/agent/sessions/:sessionId/compaction —— 查看会话压缩状态(摘要+分界)
+  fastify.get('/agent/sessions/:sessionId/compaction', {
+    schema: { params: { type: 'object', required: ['sessionId'], properties: { sessionId: numericId } } },
+  }, async (request) => {
+    const sessionId = Number(request.params.sessionId);
+    return {
+      sessionId,
+      boundary: getAiSessionCompaction(sessionId),
+      summary: getAiSessionSummary(sessionId),
+    };
   });
 }
