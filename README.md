@@ -26,7 +26,50 @@
 > **这不是什么**：不支持多租户与团队协作（多人请用 Portainer）；不是 PaaS，不接管构建发布流程（那请看 Coolify / Komodo）。
 > **定位**：在这类工具里，ComposeOps 的差异点是 **AI 运维 Agent**——不止能看，还能在你确认后替你动手排障。
 
+## 🚀 为什么选择 ComposeOps
+
+### AI 驱动，而不只是管理面板
+
+传统 Docker 面板解决的是“看见问题”。
+
+ComposeOps 解决的是：
+
+**发现问题 → 分析原因 → 请求确认 → 执行操作 → 验证结果**
+
+### 30 秒理解价值
+
+| 你想做什么 | ComposeOps |
+|-----------|------------|
+| 查看服务状态 | ✅ |
+| 查看日志 | ✅ |
+| 修改 Compose | ✅ |
+| AI 分析故障 | ✅ |
+| AI 执行修复 | ✅ |
+| 高危操作审批 | ✅ |
+| 长期记忆运维偏好 | ✅ |
+| 运维工作流编排 | ✅ |
+
+### 与同类产品的区别
+
+- Dockge：更专注 Compose 管理
+- Portainer：更偏向通用容器平台
+- ComposeOps：聚焦 AI 运维工作台
+
+👉 详细对比见：`docs/public/WHY_COMPOSEOPS.md`
+
+### 📚 公开文档
+
+- WHY_COMPOSEOPS：`docs/public/WHY_COMPOSEOPS.md`
+- FAQ：`docs/public/FAQ.md`
+- ROADMAP：`docs/public/ROADMAP.md`
+- RELEASE_CHECKLIST：`docs/public/RELEASE_CHECKLIST.md`
+- DEMO_SCRIPT：`docs/public/DEMO_SCRIPT.md`
+- Redis 升级案例：`docs/public/USE_CASE_REDIS.md`
+- PostgreSQL 故障恢复案例：`docs/public/USE_CASE_POSTGRESQL.md`
+
 ---
+
+
 
 ## ✨ 功能特性
 
