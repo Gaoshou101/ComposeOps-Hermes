@@ -175,8 +175,9 @@ async function poll() {
         const cache = (data.BuildCache || []).reduce((total, item) => total + (Number(item.Size) || 0), 0);
         return images + cache;
       }).catch(() => null);
+      const previousDockerStorageHigh = dockerStorageHigh;
       const storageHigh = usage != null && usage >= config.dockerStorageThresholdGb * 1024 ** 3;
-      if (storageHigh && !dockerStorageHigh) {
+      if (storageHigh && !previousDockerStorageHigh) {
         recordAlertEventAndNotify({
           key: 'docker-storage',
           title: 'ComposeOps:Docker 空间告警',
@@ -187,6 +188,7 @@ async function poll() {
         await sendNotification('ComposeOps：Docker 空间告警', `镜像与构建缓存占用 ${(usage / 1024 ** 3).toFixed(1)} GB`)
           .catch(() => {});
       }
+      // eslint-disable-next-line require-atomic-updates -- 单线程事件循环下的边沿状态标志
       if (usage != null) dockerStorageHigh = storageHigh;
     } else {
       // 通知渠道未启用时,仍评估带自动处置的 Agent 规则(auto_restart / scale)。
