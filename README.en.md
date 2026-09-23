@@ -349,6 +349,12 @@ Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
 
 ---
 
+## 🔗 Friendly Links
+
+- [LINUX DO](https://linux.do/) — A community of sincere sharing and friendly discussion. Project announcements and feedback are also posted there.
+
+---
+
 ## 🔗 Related Links
 
 - [English Documentation](README.en.md)

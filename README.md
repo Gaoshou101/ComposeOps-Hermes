@@ -374,6 +374,12 @@ npm run build
 
 ---
 
+## 🔗 友情链接
+
+- [LINUX DO](https://linux.do/) —— 真诚分享、友好讨论的技术社区，本项目的交流与反馈也发布于此
+
+---
+
 ## 🔗 相关链接
 
 - [English Documentation](README.en.md)
