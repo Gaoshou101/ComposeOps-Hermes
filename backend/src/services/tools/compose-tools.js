@@ -48,6 +48,8 @@ async function runComposeArgs(project, args, onOutput = () => {}) {
 export function registerComposeTools(agent) {
   // background=true 的动作转后台执行:立即返回 taskId,产出经后台任务管理器
   // 搭车注入同会话后续轮次;后置验收(PostconditionValidator)对后台结果跳过。
+  // 后台路径放宽超时到 15 分钟——转后台的意义就是容纳长构建/大拉取。
+  const BACKGROUND_TIMEOUT_MS = 15 * 60 * 1000;
   const lifecycleAction = (action) => async (params, context) => {
     const project = context.project;
     const prepared = await prepareProjectAction(project, action);
@@ -56,13 +58,13 @@ export function registerComposeTools(agent) {
         sessionId: context.sessionId,
         projectId: project.id,
         label: `compose.${action} ${project.name || project.id}`,
-        run: (onOutput, onChild) => prepared.run(onOutput, onChild),
+        run: (onOutput, onChild) => prepared.run(onOutput, onChild, { timeoutMs: BACKGROUND_TIMEOUT_MS }),
       });
       return {
         background: true,
         taskId,
         action,
-        note: `compose.${action} 已转后台执行,任务 ID ${taskId}。用 task.output(taskId, waitMs) 等待或读取输出;完成后同会话也会自动收到提醒。`,
+        note: `compose.${action} 已转后台执行(超时上限 15 分钟),任务 ID ${taskId}。用 task.output(taskId, waitMs) 等待或读取输出;完成后同会话也会自动收到提醒。`,
       };
     }
     const output = collectOutput();

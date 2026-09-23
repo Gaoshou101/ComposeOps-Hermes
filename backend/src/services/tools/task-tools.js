@@ -47,7 +47,10 @@ export function registerTaskTools(agent) {
         properties: { taskId: { type: 'string', description: '后台任务 ID' } },
         required: ['taskId'],
       },
-      execute: async (params) => ({ stopped: stopBackgroundTask(params.taskId), taskId: params.taskId }),
+      execute: async (params) => {
+        const result = stopBackgroundTask(params.taskId);
+        return { ...result, taskId: params.taskId };
+      },
     });
   return agent;
 }

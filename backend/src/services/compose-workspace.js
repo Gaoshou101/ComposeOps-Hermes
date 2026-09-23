@@ -205,7 +205,7 @@ export function workspaceRunnerStats() {
   };
 }
 
-async function execInRunner(container, cmd, { input, onOutput = () => {} } = {}) {
+async function execInRunner(container, cmd, { input, onOutput = () => {}, onExec = null, timeoutMs = 300000 } = {}) {
   const instance = await container.exec({
     Cmd: cmd,
     AttachStdin: input !== undefined,
@@ -217,6 +217,9 @@ async function execInRunner(container, cmd, { input, onOutput = () => {} } = {})
   const stream = await instance.start({ hijack: input !== undefined, stdin: input !== undefined });
   const demux = demuxStream();
   stream.pipe(demux);
+  // onExec:把 exec 流句柄交给调用方(后台任务管理器据此实现"伪停止"——断流即止损,
+  // runner 容器内的 compose 进程通常随管道关闭退出;无法保证强杀)。
+  if (typeof onExec === 'function') onExec({ kill: () => { try { stream.destroy?.(); demux.destroy?.(); } catch { /* 尽力而为 */ } } });
   const stdout = [];
   const stderr = [];
   let stdoutBytes = 0;
@@ -244,7 +247,7 @@ async function execInRunner(container, cmd, { input, onOutput = () => {} } = {})
     new Promise((resolve, reject) => demux.stdout.on('end', resolve).on('error', reject)),
     new Promise((resolve, reject) => demux.stderr.on('end', resolve).on('error', reject)),
     ]), new Promise((_, reject) => {
-      const timer = setTimeout(() => reject(Object.assign(new Error('Compose 工作命令执行超时'), { statusCode: 504 })), 300000);
+      const timer = setTimeout(() => reject(Object.assign(new Error('Compose 工作命令执行超时'), { statusCode: 504 })), timeoutMs);
       timer.unref?.();
     })]);
   } catch (error) {
@@ -346,21 +349,21 @@ export async function saveWorkspaceCompose(project, fileIndex, content, reason =
   });
 }
 
-export async function runWorkspaceComposeArgs(project, args, onOutput = () => {}) {
+export async function runWorkspaceComposeArgs(project, args, onOutput = () => {}, options = {}) {
   const { files } = projectPaths(project);
   if (!Array.isArray(args) || !args.length) throw Object.assign(new Error('无效的 Compose 参数'), { statusCode: 400 });
   return withRunner(project, async (container) => {
-    const result = await execInRunner(container, ['docker', 'compose', ...files.flatMap((file) => ['-f', file]), ...args], { onOutput });
+    const result = await execInRunner(container, ['docker', 'compose', ...files.flatMap((file) => ['-f', file]), ...args], { onOutput, onExec: options.onExec, timeoutMs: options.timeoutMs });
     return result.code;
   });
 }
 
-export async function runWorkspaceCompose(project, action, onOutput = () => {}) {
+export async function runWorkspaceCompose(project, action, onOutput = () => {}, options = {}) {
   const { files } = projectPaths(project);
   const actionArgs = ACTIONS[action];
   if (!actionArgs) throw Object.assign(new Error('不支持的 Compose 操作'), { statusCode: 400 });
   return withRunner(project, async (container) => {
-    const result = await execInRunner(container, ['docker', 'compose', ...files.flatMap((file) => ['-f', file]), ...actionArgs], { onOutput });
+    const result = await execInRunner(container, ['docker', 'compose', ...files.flatMap((file) => ['-f', file]), ...actionArgs], { onOutput, onExec: options.onExec, timeoutMs: options.timeoutMs });
     return result.code;
   });
 }

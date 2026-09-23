@@ -22,7 +22,8 @@ export async function prepareProjectAction(project, action) {
     const safeFiles = await Promise.all(project.composeFiles.map((_, index) => resolveProjectFile(project, index)));
     return {
       mode: 'compose',
-      run(onOutput = () => {}, onChild = () => {}) {
+      // options.timeoutMs:后台任务(compose background=true)需要放宽超时,前台保持 5 分钟默认。
+      run(onOutput = () => {}, onChild = () => {}, options = {}) {
         return withProjectOperationLock(project.id, () => new Promise((resolve, reject) => {
           const child = spawnCompose({ ...project, composeFiles: safeFiles }, action);
           onChild(child);
@@ -31,7 +32,7 @@ export async function prepareProjectAction(project, action) {
           const timer = setTimeout(() => {
             child.kill('SIGTERM');
             setTimeout(() => child.kill('SIGKILL'), 5000).unref?.();
-          }, 300000);
+          }, options.timeoutMs || 300000);
           child.on('error', (error) => { clearTimeout(timer); reject(error); });
           child.on('close', (code, signal) => {
             clearTimeout(timer);
@@ -42,7 +43,18 @@ export async function prepareProjectAction(project, action) {
     };
   }
   if (project.editable) {
-    return { mode: 'workspace', run: (onOutput = () => {}) => withProjectOperationLock(project.id, () => runWorkspaceCompose(project, action, onOutput)) };
+    // workspace 模式跑在 runner 容器的 docker exec 里,没有本地子进程;
+    // onExec 把断流式伪停止句柄包成 child.kill 形态交给后台任务管理器。
+    return {
+      mode: 'workspace',
+      run(onOutput = () => {}, onChild = () => {}, options = {}) {
+        return withProjectOperationLock(project.id, () => runWorkspaceCompose(project, action, onOutput, {
+          timeoutMs: options.timeoutMs,
+          onExec: (handle) => onChild(handle),
+        }));
+      },
+    };
   }
+  // containers 模式走 dockerode API(无子进程),task.stop 只能标记终止,动作会自然结束。
   return { mode: 'containers', run: (onOutput = () => {}) => withProjectOperationLock(project.id, () => runContainerAction(project, action, onOutput)) };
 }

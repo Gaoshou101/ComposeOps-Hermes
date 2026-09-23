@@ -84,12 +84,29 @@ test('background-tasks: stop 终止运行中的子进程(SIGNAL 路径)', async 
     }),
   });
   await new Promise((r) => setTimeout(r, 100));
-  assert.equal(stopBackgroundTask(id), true, '运行中的任务应可终止');
-  assert.equal(stopBackgroundTask(id), false, '已终止的任务再次 stop 返回 false');
+  const first = stopBackgroundTask(id);
+  assert.equal(first.stopped, true, '运行中的任务应可终止');
+  assert.equal(first.killed, true, '有句柄的子进程应真正收到终止信号');
+  const second = stopBackgroundTask(id);
+  assert.equal(second.stopped, false, '已终止的任务再次 stop 返回 stopped:false');
   const task = getBackgroundTask(id);
   assert.equal(task.status, 'stopped');
   await new Promise((r) => setTimeout(r, 200));
   assert.ok(child.killed || child.exitCode !== null, '子进程应收到终止信号');
+});
+
+test('background-tasks: 无句柄任务(containers 模式)可标记终止但 killed=false', async () => {
+  resetBackgroundTasks();
+  const id = createBackgroundTask({
+    sessionId: 8,
+    run: () => new Promise((resolve) => setTimeout(() => resolve({ exitCode: 0 }), 3000)),
+  });
+  await new Promise((r) => setTimeout(r, 100));
+  const result = stopBackgroundTask(id);
+  assert.equal(result.stopped, true);
+  assert.equal(result.killed, false, '无句柄时不能谎称已杀进程');
+  assert.ok(result.note, '应说明该执行方式的终止语义');
+  assert.equal(getBackgroundTask(id).status, 'stopped');
 });
 
 test('background-tasks: listBackgroundTasks 按会话过滤', async () => {

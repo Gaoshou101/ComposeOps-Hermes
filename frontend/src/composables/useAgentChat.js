@@ -265,6 +265,10 @@ export function useAgentChat({ channel = WORKBENCH_CHANNEL, onEventExtra = null,
     } else if (event.type === 'context_data' && event.kind === 'projects') assistant.projects = event.projects;
     else if (event.type === 'context_data' && event.kind === 'search_sources') assistant.searchSources = event.sources;
     else if (event.type === 'action_completed' && event.kind === 'cron_created') window.dispatchEvent(new CustomEvent('composeops:cron-agent-created', { detail: event.result || {} }));
+    else if (event.type === 'task_notice') {
+      // 后台任务完成通知:模型侧已搭车注入,界面侧以提示条同步展示,用户不必翻思考过程。
+      assistant.taskNotices = [...(assistant.taskNotices || []), event.content || ''];
+    }
     else if (event.type.startsWith('tool_')) { trackTool(assistant, event); }
     else if (event.type === 'interrupted') {
       flushTokens();

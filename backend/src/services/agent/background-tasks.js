@@ -123,11 +123,16 @@ export async function waitForTaskOutput(taskId, waitMs = 0) {
   return { ...summarize(task), output: task.output.slice(-OUTPUT_TAIL), stillRunning };
 }
 
-/** 终止任务:SIGTERM → 5s → SIGKILL。已结束的任务返回 false。 */
+/**
+ * 终止任务:SIGTERM → 5s → SIGKILL(compose 模式为真子进程);
+ * workspace 模式的句柄是"断流伪停止"(kill 即断开 exec 流);
+ * containers 模式无句柄(dockerode API 调用),killed=false,动作自然结束。
+ * 返回 { stopped, killed },而非布尔值。
+ */
 export function stopBackgroundTask(taskId) {
   const task = getBackgroundTask(taskId);
   if (!task) throw Object.assign(new Error(`后台任务不存在:${taskId}`), { statusCode: 404 });
-  if (task.status !== 'running') return false;
+  if (task.status !== 'running') return { stopped: false, killed: false, note: '任务已结束,无需终止' };
   task.status = 'stopped';
   task.finishedAt = new Date().toISOString();
   const child = task.child;
@@ -137,8 +142,13 @@ export function stopBackgroundTask(taskId) {
     setTimeout(() => {
       try { if (child.exitCode === null) child.kill('SIGKILL'); } catch {}
     }, 5000).unref?.();
+    return { stopped: true, killed: true };
   }
-  return true;
+  return {
+    stopped: true,
+    killed: false,
+    note: '已标记终止;该执行方式不提供进程句柄,正在进行的系统调用会自然结束,不会再有输出。',
+  };
 }
 
 /**
