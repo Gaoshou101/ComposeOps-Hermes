@@ -109,6 +109,21 @@ test('background-tasks: 无句柄任务(containers 模式)可标记终止但 kil
   assert.equal(getBackgroundTask(id).status, 'stopped');
 });
 
+test('background-tasks: stop 之后 run 结算不得把状态改回 completed', async () => {
+  resetBackgroundTasks();
+  let release;
+  const id = createBackgroundTask({
+    sessionId: 3,
+    run: () => new Promise((resolve) => { release = resolve; }),
+  });
+  await new Promise((r) => setTimeout(r, 20));
+  stopBackgroundTask(id);
+  release({ exitCode: 0, output: 'late' });
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(getBackgroundTask(id).status, 'stopped');
+  assert.equal(getBackgroundTask(id).exitCode, 0);
+});
+
 test('background-tasks: listBackgroundTasks 按会话过滤', async () => {
   resetBackgroundTasks();
   createBackgroundTask({ sessionId: 1, run: async () => ({ exitCode: 0 }) });

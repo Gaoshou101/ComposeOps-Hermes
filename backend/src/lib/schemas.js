@@ -35,6 +35,28 @@ export const notificationConfigBody = {
     emailFrom: { type: 'string', maxLength: 255 },
     emailTo: { type: 'string', maxLength: 1024 },
     events: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 32 } },
+    channels: {
+      type: 'array',
+      maxItems: 5,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          type: { type: 'string', enum: ['bark', 'telegram', 'wecom', 'email', 'webhook'] },
+          enabled: { type: 'boolean' },
+          endpoint: { type: 'string', maxLength: 2048 },
+          token: { type: 'string', maxLength: 512 },
+          chatId: { type: 'string', maxLength: 128 },
+          smtpHost: { type: 'string', maxLength: 255 },
+          smtpPort: { type: 'number' },
+          smtpSecure: { type: 'boolean' },
+          smtpUser: { type: 'string', maxLength: 255 },
+          smtpPassword: { type: 'string', maxLength: 512 },
+          emailFrom: { type: 'string', maxLength: 255 },
+          emailTo: { type: 'string', maxLength: 1024 },
+        },
+      },
+    },
   },
 };
 

@@ -4,7 +4,6 @@ import { scanProjects } from './scanner.js';
 import { recordAlertEventAndNotify } from './events.js';
 
 const DEFAULT_EVENTS = ['exit', 'oom', 'unhealthy'];
-const cooldowns = new Map(); // key -> ts
 const previousStates = new Map(); // containerId -> { status, health, exitCode, oom }
 
 /** 组装告警事件配置(默认开启 exit/oom/unhealthy)。 */
@@ -97,10 +96,6 @@ async function inspectContainer(docker, containerId) {
   }
 }
 
-function makeKey(containerId, event, projectId) {
-  return `${projectId || ''}:${containerId}:${event}`;
-}
-
 async function poll() {
   const config = getNotificationConfig(false);
   if (!config.enabled) return;
@@ -129,7 +124,6 @@ async function poll() {
 
       const events = result.events.filter((event) => configEvents(config).includes(event));
       for (const event of events) {
-        if (!canAlert(makeKey(container.id, event, project.id), 10 * 60 * 1000)) continue;
         const logs = await containerTailLogs(container.id, 8).catch(() => '');
         const title = buildTitle(project, container, event);
         const body = buildBody(project, container, event, logs);
@@ -150,13 +144,6 @@ async function poll() {
 function configEvents(config) {
   const events = config.events;
   return Array.isArray(events) && events.length ? events : DEFAULT_EVENTS;
-}
-
-function canAlert(key, cooldownMs) {
-  const last = cooldowns.get(key) || 0;
-  if (Date.now() - last < cooldownMs) return false;
-  cooldowns.set(key, Date.now());
-  return true;
 }
 
 export function buildTitle(project, container, event) {

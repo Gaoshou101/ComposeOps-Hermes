@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h1 class="page-title">运维总览</h1>
-        <p class="page-subtitle">系统健康、运营态势与 AI 决策建议</p>
+        <p class="page-subtitle">项目、容器与主机资源</p>
       </div>
       <div class="page-actions">
         <span v-if="lastUpdated" class="text-xs text-muted">更新于 {{ lastUpdated }}</span>
@@ -58,47 +58,7 @@
         </div>
       </div>
 
-      <div class="grid gap-4 xl:grid-cols-3">
-        <section class="section-panel">
-          <h3 class="mb-4 font-semibold text-surface-100">运行态势</h3>
-          <div class="space-y-3 text-sm text-surface-300">
-            <div class="flex items-center justify-between gap-3"><span>CPU 使用率</span><span class="font-mono tabular-nums" :class="cpuTone">{{ cpu }}%</span></div>
-            <div class="flex items-center justify-between gap-3"><span>内存使用率</span><span class="font-mono tabular-nums" :class="memoryTone">{{ memory }}%</span></div>
-            <div class="flex items-center justify-between gap-3"><span>网络吞吐</span><span class="text-muted">{{ networkSummary }}</span></div>
-            <div class="flex items-center justify-between gap-3"><span>Docker 存储</span><span class="text-muted">{{ dockerStorage }}</span></div>
-            <div class="flex items-center justify-between gap-3">
-              <span>系统状态</span>
-              <StatusBadge :status="healthScore >= 90 ? 'running' : 'partial'" size="sm" />
-            </div>
-          </div>
-        </section>
-
-        <section class="section-panel">
-          <h3 class="mb-4 font-semibold text-surface-100">今日运营</h3>
-          <div class="space-y-3 text-sm text-surface-300">
-            <div class="flex items-center justify-between gap-3"><span>最近操作</span><span class="truncate text-muted">{{ recentOperation }}</span></div>
-            <div class="flex items-center justify-between gap-3"><span>任务成功率</span><span class="font-mono tabular-nums" :class="successRateTone">{{ successRate }}%</span></div>
-            <div class="flex items-center justify-between gap-3"><span>GitOps 状态</span><span class="text-muted">{{ gitopsSummary }}</span></div>
-            <div class="flex items-center justify-between gap-3"><span>运营记录数</span><span class="font-mono tabular-nums text-muted">{{ operations.length }}</span></div>
-          </div>
-        </section>
-
-        <section class="section-panel">
-          <div class="mb-4 flex items-center justify-between gap-3">
-            <h3 class="font-semibold text-surface-100">AI 建议中心</h3>
-            <StatusBadge :status="attentionProjects ? 'partial' : 'healthy'" size="sm" />
-          </div>
-          <div class="space-y-3 text-sm text-surface-300">
-            <div class="flex items-center justify-between gap-3"><span>巡检评分</span><span class="font-mono tabular-nums" :class="inspectionTone">{{ inspectionScore }}</span></div>
-            <p class="text-muted">{{ inspectionSummary }}</p>
-            <p class="text-amber-300">{{ riskHint }}</p>
-            <p class="text-emerald-300">{{ recommendation }}</p>
-          </div>
-        </section>
-      </div>
-
-      <div class="grid gap-4 xl:grid-cols-2">
-        <section class="section-panel">
+      <section class="section-panel">
           <div class="mb-4 flex items-center justify-between">
             <h3 class="font-semibold text-surface-100">最近事件</h3>
             <router-link to="/events?tab=timeline" class="text-xs text-emerald-400 hover:text-emerald-300">查看全部 →</router-link>
@@ -113,21 +73,6 @@
           </div>
           <EmptyState v-else compact icon="History" title="暂无事件记录" />
         </section>
-
-        <section class="section-panel">
-          <h3 class="mb-4 font-semibold text-surface-100">快速入口</h3>
-          <div class="grid gap-3 md:grid-cols-4 xl:grid-cols-7">
-            <router-link
-              v-for="item in quickLinks"
-              :key="item.to"
-              :to="item.to"
-              class="card px-4 py-4 text-center text-sm text-surface-200 transition hover:border-emerald-500/60 hover:text-emerald-300"
-            >
-              {{ item.label }}
-            </router-link>
-          </div>
-        </section>
-      </div>
     </template>
   </div>
 </template>
@@ -139,36 +84,23 @@ import { api } from '../api/client.js';
 import { useServicesStore } from '../stores/services.js';
 import EmptyState from '../components/common/EmptyState.vue';
 import Skeleton from '../components/common/Skeleton.vue';
-import StatusBadge from '../components/common/StatusBadge.vue';
 import SparklineChart from '../components/common/SparklineChart.vue';
 import { monitorTrends, pushMonitorTrend } from '../lib/monitor-trends.js';
 
 const store = useServicesStore();
 const metrics = ref(null);
 const inspection = ref(null);
-const operations = ref([]);
 const recentEvents = ref([]);
 const loading = ref(false);
 const hasLoaded = ref(false);
 const loadError = ref('');
 const lastUpdated = ref('');
 
-const quickLinks = [
-  { label: '服务管理', to: '/services' },
-  { label: '实时监控', to: '/monitor' },
-  { label: 'AI巡检', to: '/inspection' },
-  { label: 'GitOps', to: '/gitops' },
-  { label: 'Agent', to: '/agent' },
-  { label: '定时任务', to: '/cron' },
-  { label: '成本分析', to: '/cost' },
-];
-
 const projectCount = computed(() => store.projects.length);
 const containerCount = computed(() => store.projects.reduce((n, p) => n + (p.containers?.length || 0), 0));
 const runningContainers = computed(() => store.projects.reduce((n, p) => n + (p.containers || []).filter(c => c.state === 'running').length, 0));
 const attentionProjects = computed(() => store.projects.filter(p => p.status !== 'running' || (p.containers || []).some(c => c.health === 'unhealthy')).length);
 const healthyProjects = computed(() => projectCount.value - attentionProjects.value);
-const healthScore = computed(() => projectCount.value ? Math.round((healthyProjects.value / projectCount.value) * 100) : 100);
 
 const cpu = computed(() => metrics.value?.host?.cpu?.percent ?? 0);
 const memory = computed(() => metrics.value?.host?.memory?.percent ?? 0);
@@ -176,9 +108,6 @@ const cpuState = computed(() => cpu.value > 80 ? '负载较高' : '运行正常'
 const memoryState = computed(() => memory.value > 80 ? '内存偏高' : '资源充足');
 const cpuTone = computed(() => cpu.value > 80 ? 'text-amber-300' : 'text-emerald-300');
 const memoryTone = computed(() => memory.value > 80 ? 'text-amber-300' : 'text-emerald-300');
-
-const networkSummary = computed(() => `RX:${metrics.value?.network?.rx ?? 0} TX:${metrics.value?.network?.tx ?? 0}`);
-const dockerStorage = computed(() => '已接入 Docker 存储统计');
 
 const inspectionScore = computed(() => inspection.value?.latest?.score ?? '--');
 const inspectionSummary = computed(() => inspection.value?.latest?.summary ?? '暂无巡检数据');
@@ -189,13 +118,6 @@ const inspectionTone = computed(() => {
   if (score >= 70) return 'text-amber-300';
   return 'text-rose-300';
 });
-
-const recentOperation = computed(() => operations.value[0]?.action || '暂无记录');
-const successRate = computed(() => operations.value.length ? Math.round((operations.value.filter(i => i.status === 'success').length / operations.value.length) * 100) : 100);
-const successRateTone = computed(() => successRate.value >= 90 ? 'text-emerald-300' : successRate.value >= 70 ? 'text-amber-300' : 'text-rose-300');
-const gitopsSummary = computed(() => `${projectCount.value} 个项目已纳管`);
-const riskHint = computed(() => attentionProjects.value ? `发现 ${attentionProjects.value} 个需要关注的项目` : '暂无高风险项');
-const recommendation = computed(() => attentionProjects.value ? '建议优先处理异常项目并执行 AI 巡检' : '建议执行容量预测与例行巡检');
 
 const SOURCE_LABELS = { operation: '操作', agent: 'Agent', alert: '告警', cron: '定时', gitops: 'GitOps' };
 function sourceLabel(s) { return SOURCE_LABELS[s] || s; }
@@ -262,10 +184,9 @@ async function load() {
   try {
     await store.refresh(false);
     if (store.error) errors.push(new Error(store.error));
-    const [metricsRes, inspectionRes, operationsRes] = await Promise.allSettled([
+    const [metricsRes, inspectionRes] = await Promise.allSettled([
       api.getMetrics(),
       api.getInspectionOverview(1),
-      api.getOperations(),
     ]);
     if (metricsRes.status === 'fulfilled') {
       metrics.value = metricsRes.value;
@@ -274,7 +195,6 @@ async function load() {
       if (host) pushMonitorTrend({ cpu: host.cpu?.percent, mem: host.memory?.percent, net: Math.max(1, Math.round((rx / 1024 / 1024) * 100) / 100) });
     } else errors.push(metricsRes.reason);
     if (inspectionRes.status === 'fulfilled') inspection.value = inspectionRes.value; else errors.push(inspectionRes.reason);
-    if (operationsRes.status === 'fulfilled') operations.value = operationsRes.value.operations || []; else errors.push(operationsRes.reason);
     await loadRecentEvents(errors);
     loadError.value = errors.length ? `部分数据加载失败:${errors[0]?.message || '未知错误'}` : '';
     if (!errors.length) {

@@ -88,7 +88,6 @@ button, a { -webkit-user-select: none; user-select: none; }
   background: rgba(26, 30, 37, 0.94);
   border-bottom: 1px solid rgba(69, 76, 91, 0.58);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.015);
-  backdrop-filter: blur(20px) saturate(1.6);
 }
 .app-header {
   box-sizing: border-box;
@@ -101,20 +100,16 @@ button, a { -webkit-user-select: none; user-select: none; }
   border-top: 1px solid rgba(69, 76, 91, 0.55);
 }
 .app-main {
-  background:
-    radial-gradient(circle at 88% 0%, rgba(37, 99, 235, 0.075), transparent 30rem),
-    linear-gradient(180deg, var(--canvas-mid-2) 0%, var(--canvas-mid) 100%);
+  background: linear-gradient(180deg, var(--canvas-mid-2) 0%, var(--canvas-mid) 100%);
 }
 .brand-mark {
   @apply grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-surface-700/60 bg-gradient-to-b from-surface-800 to-surface-950 text-accent;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 .status-pill { @apply inline-flex h-8 items-center gap-2 rounded-full border border-surface-700/50 bg-surface-900/60 px-2.5 text-xs text-surface-300; }
-.status-ping { @apply inline-block h-1.5 w-1.5 shrink-0 rounded-full; box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.4); animation: status-ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite; }
-@keyframes status-ping {
-  70% { box-shadow: 0 0 0 2px rgba(52, 211, 153, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
-}
+.agent-task-notice { margin-top: 8px; padding: 8px 10px; border: 1px solid rgba(37, 99, 235, 0.45); border-radius: 8px; color: #bfdbfe; background: rgba(37, 99, 235, 0.12); font-size: 11px; line-height: 1.5; }
+.agent-task-notice p { margin: 0; word-break: break-all; }
+.agent-task-notice p + p { margin-top: 4px; }
 .command-trigger { @apply inline-flex h-9 items-center gap-2 rounded-lg border border-surface-800 bg-surface-950/60 px-2.5 text-xs text-surface-400 transition-colors hover:border-surface-700 hover:bg-surface-800 hover:text-surface-100; }
 .command-backdrop { @apply fixed inset-0 z-[60] grid place-items-start bg-black/60 px-4 pt-[12vh] backdrop-blur-sm; }
 .command-dialog { @apply w-full max-w-xl overflow-hidden rounded-xl border border-surface-700 bg-surface-900/95 shadow-2xl backdrop-blur-md; }
@@ -421,8 +416,6 @@ body[data-density='compact'] .data-table td { @apply !py-1.5 !px-2; }
 .storage-seg { @apply h-full transition-all duration-300; }
 .blueprint-icon { @apply grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-surface-700/70 bg-surface-950/60 text-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]; }
 .update-badge { @apply inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-950/40 px-2 py-0.5 text-[10px] font-medium text-amber-300 transition-colors hover:bg-amber-900/50; }
-@keyframes update-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.35); } 50% { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0); } }
-.update-badge { animation: update-pulse 2.4s ease-in-out infinite; }
 .webui-badge { @apply inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-950/40 px-2 py-0.5 text-[10px] font-medium text-emerald-300 transition-colors hover:bg-emerald-900/50; }
 .webui-menu { @apply absolute right-0 top-full z-[60] mt-1 w-56 overflow-hidden rounded-xl border border-surface-700 bg-surface-900 py-1 shadow-lg shadow-black/40; }
 .webui-menu-item { @apply flex items-center gap-2 px-3 py-2 text-xs text-surface-200 hover:bg-surface-800; }
@@ -813,9 +806,8 @@ body {
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025);
 }
 .app-sidebar {
-  background: rgba(21, 25, 32, 0.88);
+  background: rgba(21, 25, 32, 0.96);
   border-color: rgba(148, 163, 184, 0.14);
-  backdrop-filter: blur(22px) saturate(1.25);
 }
 .app-main > div {
   padding-top: clamp(1rem, 2vw, 1.5rem);

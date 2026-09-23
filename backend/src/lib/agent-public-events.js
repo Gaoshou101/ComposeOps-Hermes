@@ -46,11 +46,16 @@ export function toPublicAgentEvent(event) {
     // 摘要放宽到 600 字符:240 字符会把列表类结果截成半截 JSON,展开后看不出所以然。
     // 结果体本身就是空对象/空数组时(工具无返回值),给一句人话兜底,避免展开是空白。
     let summary = '';
-    try {
-      const source = result === undefined ? { error: event.result?.error || '执行失败', durationMs: Number(event.result?.durationMs || 0) } : result;
-      const serialized = JSON.stringify(source);
-      if (typeof serialized === 'string') summary = serialized.slice(0, 600);
-    } catch {}
+    const human = [result?.message, result?.note, result?.summary].find((value) => typeof value === 'string' && value.trim());
+    if (human) {
+      summary = cleanText(human).slice(0, 600);
+    } else {
+      try {
+        const source = result === undefined ? { error: event.result?.error || '执行失败', durationMs: Number(event.result?.durationMs || 0) } : result;
+        const serialized = JSON.stringify(source);
+        if (typeof serialized === 'string') summary = serialized.slice(0, 600);
+      } catch {}
+    }
     if (!summary || summary === '{}' || summary === '[]' || summary === 'null') {
       summary = event.result?.success === false ? '执行失败,无返回内容' : '执行成功,该操作没有返回数据';
     }

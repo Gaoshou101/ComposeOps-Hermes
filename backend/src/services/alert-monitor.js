@@ -1,25 +1,18 @@
-import docker from './docker.js';
+import { getActivityDocker } from './docker-hosts.js';
 import { getSetting, setSetting } from '../lib/db.js';
 import { scanProjects } from './scanner.js';
 import { getNotificationConfig, sendNotification } from './notifications.js';
-import { checkImageUpdates, getDockerUsage } from './maintenance.js';
+import { checkImageUpdates } from './maintenance.js';
 import { recordAlertEventAndNotify } from './events.js';
 import { parseContainerStat } from './stats.js';
 import { spawnComposeCommand } from './compose-runner.js';
 import { runWorkspaceComposeArgs } from './compose-workspace.js';
 
 const previousStates = new Map();
-const cooldowns = new Map();
 const agentCooldowns = new Map();
+let dockerStorageHigh = false;
 let timer;
 let running = false;
-
-function canAlert(key, hours = 6) {
-  const last = cooldowns.get(key) || 0;
-  if (Date.now() - last < hours * 3600000) return false;
-  cooldowns.set(key, Date.now());
-  return true;
-}
 
 /** 读取 AI Agent 创建的告警规则(与 agent-tools.js 的存储键保持一致)。 */
 export function readAgentAlertRules() {
@@ -69,7 +62,7 @@ async function applyAgentAlertAction(rule, project, container, current) {
   await sendNotification(title, body).catch(() => {});
 
   if (rule.action === 'auto_restart') {
-    await docker.getContainer(container.id).restart().catch(() => {});
+    await getActivityDocker().getContainer(container.id).restart().catch(() => {});
   } else if (rule.action === 'scale') {
     await scaleServiceByOne(project, rule.service).catch(() => {});
   }
@@ -102,7 +95,7 @@ async function evaluateAgentRules(project, container, stats) {
   const parsed = parseContainerStat(stats);
   let restartCount = 0;
   try {
-    const inspected = await docker.getContainer(container.id).inspect();
+    const inspected = await getActivityDocker().getContainer(container.id).inspect();
     restartCount = Number(inspected?.RestartCount) || 0;
   } catch (err) {
     console.error(`[alert-monitor] Failed to inspect container ${container.id}:`, err.message);
@@ -132,10 +125,13 @@ async function poll() {
       if (!managedContainerIds.has(containerId)) previousStates.delete(containerId);
     }
     if (config.enabled) {
+      const activity = getActivityDocker();
       for (const project of managedProjects) {
         for (const item of project.containers) {
           const previous = previousStates.get(item.id);
-          if (previous === 'running' && item.state !== 'running' && canAlert(`exit:${item.id}`, 1)) {
+          const previousState = typeof previous === 'string' ? previous : previous?.state;
+          const memHigh = typeof previous === 'object' && !!previous?.memHigh;
+          if (previousState === 'running' && item.state !== 'running') {
             recordAlertEventAndNotify({
               key: `${item.id}:exit`,
               title: 'ComposeOps:容器已退出',
@@ -146,15 +142,16 @@ async function poll() {
             await sendNotification('ComposeOps：容器已退出', `${project.projectName} / ${item.name}\n${item.statusText}`)
               .catch(() => {});
           }
-          previousStates.set(item.id, item.state);
+          let nextMemHigh = false;
           if (item.state === 'running') {
             try {
-              const stats = await docker.getContainer(item.id).stats({ stream: false });
+              const stats = await activity.getContainer(item.id).stats({ stream: false });
               const usage = stats.memory_stats?.usage || 0;
               const limit = stats.memory_stats?.limit || 0;
               const percent = limit ? usage / limit * 100 : 0;
               await evaluateAgentRules(project, item, stats);
-              if (percent >= config.memoryThreshold && canAlert(`memory:${item.id}`)) {
+              nextMemHigh = percent >= config.memoryThreshold;
+              if (nextMemHigh && !memHigh) {
                 recordAlertEventAndNotify({
                   key: `${item.id}:memory`,
                   title: 'ComposeOps:容器内存告警',
@@ -166,30 +163,39 @@ async function poll() {
                   .catch(() => {});
               }
             } catch (err) {
+              nextMemHigh = memHigh;
               console.error(`[alert-monitor] Failed to check stats for ${project.projectName}/${item.name}:`, err.message);
             }
           }
+          previousStates.set(item.id, { state: item.state, memHigh: nextMemHigh });
         }
       }
-      const usage = await getDockerUsage().catch(() => null);
-      if (usage && usage.total >= config.dockerStorageThresholdGb * 1024 ** 3 && canAlert('docker-storage')) {
+      const usage = await activity.df().then((data) => {
+        const images = (data.Images || []).reduce((total, item) => total + (Number(item.Size) || 0), 0);
+        const cache = (data.BuildCache || []).reduce((total, item) => total + (Number(item.Size) || 0), 0);
+        return images + cache;
+      }).catch(() => null);
+      const storageHigh = usage != null && usage >= config.dockerStorageThresholdGb * 1024 ** 3;
+      if (storageHigh && !dockerStorageHigh) {
         recordAlertEventAndNotify({
           key: 'docker-storage',
           title: 'ComposeOps:Docker 空间告警',
-          detail: `镜像与构建缓存占用 ${(usage.total / 1024 ** 3).toFixed(1)} GB`,
+          detail: `镜像与构建缓存占用 ${(usage / 1024 ** 3).toFixed(1)} GB`,
           priority: 'warning',
           to: '/settings?tab=maintenance',
         });
-        await sendNotification('ComposeOps：Docker 空间告警', `镜像与构建缓存占用 ${(usage.total / 1024 ** 3).toFixed(1)} GB`)
+        await sendNotification('ComposeOps：Docker 空间告警', `镜像与构建缓存占用 ${(usage / 1024 ** 3).toFixed(1)} GB`)
           .catch(() => {});
       }
+      if (usage != null) dockerStorageHigh = storageHigh;
     } else {
       // 通知渠道未启用时,仍评估带自动处置的 Agent 规则(auto_restart / scale)。
+      const activity = getActivityDocker();
       for (const project of managedProjects) {
         for (const item of project.containers) {
           if (item.state !== 'running') continue;
           try {
-            const stats = await docker.getContainer(item.id).stats({ stream: false });
+            const stats = await activity.getContainer(item.id).stats({ stream: false });
             await evaluateAgentRules(project, item, stats);
           } catch (err) {
             console.error(`[alert-monitor] Failed to evaluate agent rules for ${project.projectName}/${item.name}:`, err.message);

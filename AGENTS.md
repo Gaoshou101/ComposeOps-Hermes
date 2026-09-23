@@ -30,7 +30,7 @@
 
 ## 多节点 Docker 宿主
 - `backend/src/services/docker-hosts.js` 管理 Local/TCP/SSH 节点;活跃节点通过 `setSetting('docker.active_host')` 持久化。
-- 远程节点(TCP/SSH)下 `scanner` 自动把项目降级为容器控制模式(`editable=false`),Compose/env 编辑路由会被 403 guard 拦截;`compose-runner` 通过 `DOCKER_HOST` 环境变量在子进程内切换节点。
+- SSH 节点在远端主机上读写 Compose/env(`mountState=remote_ssh`,`composeMode=workspace`,不在远端拉起本机镜像)。仅有 Docker API 的 TCP 节点仍是容器控制模式(`mountState=remote_api_only`,`editable=false`)。`compose-runner` 通过 `DOCKER_HOST` 在子进程内切换节点。
 - 切换节点后前端广播 `composeops:host-changed`,各页面监听触发刷新。
 
 ## Git 操作经验

@@ -1,20 +1,31 @@
 <template>
   <aside class="app-sidebar fixed md:static bottom-0 left-0 right-0 z-40 h-16 md:h-auto md:w-[216px] shrink-0 flex flex-col">
     <nav class="hidden md:flex md:flex-col flex-1 md:px-3 md:py-4 overflow-y-auto">
-      <template v-for="group in groups" :key="group.label">
-        <div class="hidden md:block px-2 pb-1 pt-3 first:pt-0 text-[10px] font-semibold uppercase tracking-[0.16em] text-surface-600">{{ group.label }}</div>
+      <div class="hidden md:block px-2 pb-1 pt-0 text-[10px] font-semibold uppercase tracking-[0.16em] text-surface-600">运行</div>
+      <router-link
+        v-for="item in primaryItems"
+        :key="item.to"
+        :to="item.to"
+        class="nav-link group flex-1 min-w-16 md:flex-none md:min-w-0 flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-3 px-2 md:px-3 py-1.5 md:py-2.5 text-[11px] md:text-sm text-surface-400"
+        active-class="nav-link-active"
+      >
+        <component :is="item.icon" class="w-[18px] h-[18px] shrink-0" />
+        <span class="md:flex-1">{{ item.label }}</span>
+        <span class="nav-indicator hidden md:block w-1.5 h-1.5 rounded-full bg-accent opacity-0"></span>
+      </router-link>
+      <details class="mt-3">
+        <summary class="cursor-pointer list-none px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-surface-600">更多</summary>
         <router-link
-          v-for="item in group.items"
+          v-for="item in desktopMoreItems"
           :key="item.to"
           :to="item.to"
-          class="nav-link group flex-1 min-w-16 md:flex-none md:min-w-0 flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-3 px-2 md:px-3 py-1.5 md:py-2.5 text-[11px] md:text-sm text-surface-400"
+          class="nav-link group flex md:flex-row items-center justify-start gap-3 px-3 py-2 text-sm text-surface-400"
           active-class="nav-link-active"
         >
           <component :is="item.icon" class="w-[18px] h-[18px] shrink-0" />
-          <span class="md:flex-1">{{ item.label }}</span>
-          <span class="nav-indicator hidden md:block w-1.5 h-1.5 rounded-full bg-accent opacity-0"></span>
+          <span class="flex-1">{{ item.label }}</span>
         </router-link>
-      </template>
+      </details>
     </nav>
     <nav class="flex md:hidden h-16 items-stretch justify-around px-1 pb-[env(safe-area-inset-bottom)]" aria-label="主导航">
       <router-link v-for="item in mobileItems" :key="item.to" :to="item.to" class="nav-link flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 text-[10px] text-surface-400" active-class="nav-link-active">
@@ -49,39 +60,33 @@
 import { ref } from 'vue';
 import { useEscapeKey } from '../composables/useEscapeKey.js';
 import { Boxes, Clock3, FileCode2, ScrollText, TerminalSquare, Bot, ChartNoAxesCombined, HardDrive, Settings, Store, Activity, GitBranch, DollarSign, Menu, ShieldCheck, Network, FileSearch, Workflow, ServerCog, Database, BellRing } from 'lucide-vue-next';
-const groups = [
-  { label: '运行', items: [
-    { to: '/dashboard', icon: Activity, label: '总览' },
-    { to: '/services', icon: Boxes, label: '服务' },
-    { to: '/topology', icon: Network, label: '拓扑' },
-    { to: '/node-groups', icon: ServerCog, label: '节点组' },
-    { to: '/cmdb', icon: Database, label: '资产中心' },
-    { to: '/compose', icon: FileCode2, label: '配置' },
-  ] },
-  { label: '排障', items: [
-    { to: '/logs', icon: ScrollText, label: '日志' },
-    { to: '/shell', icon: TerminalSquare, label: '终端' },
-    { to: '/agent', icon: Bot, label: 'AI 助手' },
-    { to: '/inspection', icon: ShieldCheck, label: 'AI 巡检' },
-    { to: '/review', icon: FileSearch, label: '变更与回滚' },
-    { to: '/monitor', icon: ChartNoAxesCombined, label: '实时监控' },
-  ] },
-  { label: '扩展', items: [
-    { to: '/marketplace', icon: Store, label: '应用市场' },
-    { to: '/ops-center', icon: Workflow, label: '运维任务' },
-    { to: '/workflows', icon: Workflow, label: '工作流' },
-    { to: '/events', icon: BellRing, label: '事件中心' },
-    { to: '/cron', icon: Clock3, label: '定时任务' },
-    { to: '/gitops', icon: GitBranch, label: 'GitOps' },
-  ] },
-  { label: '系统', items: [
-    { to: '/resources', icon: HardDrive, label: '存储清理' },
-    { to: '/cost', icon: DollarSign, label: '成本分析' },
-    { to: '/settings', icon: Settings, label: '设置' },
-  ] },
+const primaryItems = [
+  { to: '/dashboard', icon: Activity, label: '总览' },
+  { to: '/services', icon: Boxes, label: '服务' },
+  { to: '/compose', icon: FileCode2, label: '配置' },
+  { to: '/logs', icon: ScrollText, label: '日志' },
+  { to: '/agent', icon: Bot, label: 'AI 助手' },
+  { to: '/settings', icon: Settings, label: '设置' },
+];
+const desktopMoreItems = [
+  { to: '/topology', icon: Network, label: '拓扑' },
+  { to: '/node-groups', icon: ServerCog, label: '节点组' },
+  { to: '/cmdb', icon: Database, label: '资产中心' },
+  { to: '/shell', icon: TerminalSquare, label: '终端' },
+  { to: '/inspection', icon: ShieldCheck, label: 'AI 巡检' },
+  { to: '/review', icon: FileSearch, label: '变更与回滚' },
+  { to: '/monitor', icon: ChartNoAxesCombined, label: '实时监控' },
+  { to: '/marketplace', icon: Store, label: '应用市场' },
+  { to: '/ops-center', icon: Workflow, label: '运维任务' },
+  { to: '/workflows', icon: Workflow, label: '工作流' },
+  { to: '/events', icon: BellRing, label: '事件中心' },
+  { to: '/cron', icon: Clock3, label: '定时任务' },
+  { to: '/gitops', icon: GitBranch, label: 'GitOps' },
+  { to: '/resources', icon: HardDrive, label: '存储清理' },
+  { to: '/cost', icon: DollarSign, label: '成本分析' },
 ];
 const moreOpen = ref(false);
-const mobileItems = [groups[0].items[0], groups[0].items[1], groups[1].items[2], groups[1].items[3]];
-const moreItems = groups.flatMap((group) => group.items).filter((item) => !mobileItems.some((mobileItem) => mobileItem.to === item.to));
+const mobileItems = [primaryItems[0], primaryItems[1], primaryItems[3], primaryItems[4]];
+const moreItems = [...primaryItems, ...desktopMoreItems].filter((item) => !mobileItems.some((mobileItem) => mobileItem.to === item.to));
 useEscapeKey({ active: moreOpen, layer: 'drawer', onClose: () => { moreOpen.value = false; }, lockBody: true });
 </script>

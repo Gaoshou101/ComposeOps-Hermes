@@ -37,12 +37,21 @@
 
     <section v-if="tab === 'notifications'" class="settings-section">
       <div class="flex items-center justify-between"><h2 class="section-title">异常通知</h2><label class="toggle-label"><input v-model="notifications.enabled" type="checkbox" />启用</label></div>
-      <div class="form-grid"><label>渠道<select v-model="notifications.type" class="input"><option value="bark">Bark</option><option value="telegram">Telegram</option><option value="wecom">企业微信</option><option value="email">邮件 SMTP</option><option value="webhook">通用 Webhook</option></select></label><label>轮询间隔（秒）<input v-model.number="notifications.intervalSeconds" type="number" min="30" class="input" /></label>
-        <template v-if="['bark','wecom','webhook'].includes(notifications.type)"><label class="md:col-span-2">通知地址<input v-model="notifications.endpoint" class="input" placeholder="https://..." /></label></template>
-        <template v-if="notifications.type === 'telegram'"><label>Bot Token<input v-model="notifications.token" type="password" class="input" placeholder="已配置时显示 configured" /></label><label>Chat ID<input v-model="notifications.chatId" class="input" /></label></template>
-        <template v-if="notifications.type === 'email'"><label>SMTP 主机<input v-model="notifications.smtpHost" class="input" /></label><label>端口<input v-model.number="notifications.smtpPort" type="number" class="input" /></label><label>用户名<input v-model="notifications.smtpUser" class="input" /></label><label>密码<input v-model="notifications.smtpPassword" type="password" class="input" /></label><label>发件人<input v-model="notifications.emailFrom" class="input" /></label><label>收件人<input v-model="notifications.emailTo" class="input" /></label><label class="toggle-label"><input v-model="notifications.smtpSecure" type="checkbox" />TLS/SSL</label></template>
-        <label>内存告警阈值（%）<input v-model.number="notifications.memoryThreshold" type="number" min="1" max="100" class="input" /></label><label>Docker 空间告警（GB）<input v-model.number="notifications.dockerStorageThresholdGb" type="number" min="1" class="input" /></label>
-        <div class="md:col-span-2 border-t border-surface-800 pt-3"><p class="text-sm text-surface-300 mb-2">触发事件</p><div class="flex flex-wrap gap-4"><label class="toggle-label"><input v-model="alertEvents" type="checkbox" value="exit" />容器崩溃退出</label><label class="toggle-label"><input v-model="alertEvents" type="checkbox" value="oom" />OOM 内存溢出</label><label class="toggle-label"><input v-model="alertEvents" type="checkbox" value="unhealthy" />容器不健康</label></div></div></div><div class="flex gap-2"><button class="btn-primary" @click="saveNotifications"><Save class="w-4 h-4" />保存</button><button class="btn-secondary" @click="testNotifications"><Send class="w-4 h-4" />发送测试</button></div>
+      <div class="form-grid">
+        <label>轮询间隔（秒）<input v-model.number="notifications.intervalSeconds" type="number" min="30" class="input" /></label>
+        <label>内存告警阈值（%）<input v-model.number="notifications.memoryThreshold" type="number" min="1" max="100" class="input" /></label>
+        <label>Docker 空间告警（GB）<input v-model.number="notifications.dockerStorageThresholdGb" type="number" min="1" class="input" /></label>
+      </div>
+      <div v-for="channel in notifications.channels || []" :key="channel.type" class="space-y-3 rounded-xl border border-surface-800 p-3">
+        <label class="toggle-label"><input v-model="channel.enabled" type="checkbox" />{{ channelLabel(channel.type) }}</label>
+        <div v-if="channel.enabled" class="form-grid">
+          <template v-if="['bark','wecom','webhook'].includes(channel.type)"><label class="md:col-span-2">通知地址<input v-model="channel.endpoint" class="input" placeholder="https://..." /></label></template>
+          <template v-if="channel.type === 'telegram'"><label>Bot Token<input v-model="channel.token" type="password" class="input" placeholder="已配置时显示 configured" /></label><label>Chat ID<input v-model="channel.chatId" class="input" /></label></template>
+          <template v-if="channel.type === 'email'"><label>SMTP 主机<input v-model="channel.smtpHost" class="input" /></label><label>端口<input v-model.number="channel.smtpPort" type="number" class="input" /></label><label>用户名<input v-model="channel.smtpUser" class="input" /></label><label>密码<input v-model="channel.smtpPassword" type="password" class="input" /></label><label>发件人<input v-model="channel.emailFrom" class="input" /></label><label>收件人<input v-model="channel.emailTo" class="input" /></label><label class="toggle-label"><input v-model="channel.smtpSecure" type="checkbox" />TLS/SSL</label></template>
+        </div>
+      </div>
+      <div class="border-t border-surface-800 pt-3"><p class="mb-2 text-sm text-surface-300">触发事件</p><div class="flex flex-wrap gap-4"><label class="toggle-label"><input v-model="alertEvents" type="checkbox" value="exit" />容器崩溃退出</label><label class="toggle-label"><input v-model="alertEvents" type="checkbox" value="oom" />OOM 内存溢出</label><label class="toggle-label"><input v-model="alertEvents" type="checkbox" value="unhealthy" />容器不健康</label></div></div>
+      <div class="flex gap-2"><button class="btn-primary" @click="saveNotifications"><Save class="w-4 h-4" />保存</button><button class="btn-secondary" @click="testNotifications"><Send class="w-4 h-4" />发送测试</button></div>
     </section>
 
     <section v-if="tab === 'maintenance'" class="settings-section">
@@ -313,6 +322,9 @@ async function saveAi() { try { const payload = { ...ai.value }; if (!payload.ap
 async function savePreferences() { try { preferences.value = await api.savePreferences(preferences.value); ok('个人偏好已保存'); } catch (e) { fail(e); } }
 async function changePassword() { try { if (password.value.nextPassword.length < 10) throw new Error('新密码至少需要 10 个字符'); await api.changePassword(password.value); password.value = { currentPassword: '', nextPassword: '' }; ok('管理员密码已修改，其他会话已退出'); } catch (e) { fail(e); } }
 async function importData(event) { try { const file = event.target.files?.[0]; if (!file) return; await api.importData(JSON.parse(await file.text())); ok('设置与项目备注已导入，刷新页面后生效'); event.target.value = ''; } catch (e) { fail(e); } }
+function channelLabel(type) {
+  return { bark: 'Bark', telegram: 'Telegram', wecom: '企业微信', email: '邮件 SMTP', webhook: '通用 Webhook' }[type] || type;
+}
 async function saveNotifications() { try { notifications.value = await api.saveNotifications({ ...notifications.value, events: alertEvents.value }); await api.saveNotificationEvents(alertEvents.value); ok('通知配置已保存'); } catch (e) { fail(e); } }
 async function testNotifications() { try { await api.testNotifications(notifications.value); ok('测试通知已发送'); } catch (e) { fail(e); } }
 async function saveUpdates() { try { updates.value = await api.saveUpdateSettings(updates.value); ok('更新策略已保存'); } catch (e) { fail(e); } }

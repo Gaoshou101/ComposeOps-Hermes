@@ -15,42 +15,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * 获取社区模板列表（从远程或缓存）
  */
 export async function getCommunityTemplates() {
-  const cached = getSetting('marketplace.community.cache');
-  const cacheTime = parseInt(getSetting('marketplace.community.cacheTime') || '0', 10);
-  const now = Date.now();
-  
-  // 缓存有效期 24 小时
-  if (cached && (now - cacheTime) < 24 * 60 * 60 * 1000) {
-    try {
-      return JSON.parse(cached);
-    } catch {
-      // 缓存损坏，继续获取新数据
-    }
-  }
-  
-  // 模拟社区模板数据（实际应从远程 API 获取）
-  const templates = [
-    {
-      id: 'community-wordpress',
-      name: 'WordPress + MySQL',
-      category: 'CMS',
-      description: '经典博客建站方案，社区优化配置',
-      author: 'community',
-      downloads: 1250,
-      rating: 4.8,
-      featured: true,
-      defaultCompose: 'services:\n  db:\n    image: mysql:8\n    environment:\n      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}\n      MYSQL_DATABASE: wordpress\n  wordpress:\n    image: wordpress:latest\n    depends_on:\n      - db\n    ports:\n      - "${PORT}:80"\n    environment:\n      WORDPRESS_DB_HOST: db\n      WORDPRESS_DB_PASSWORD: ${DB_PASSWORD}',
-      envSchema: [
-        { key: 'PORT', label: '访问端口', default: '8080', type: 'port' },
-        { key: 'DB_PASSWORD', label: '数据库密码', default: '', type: 'password', secret: true }
-      ]
-    }
-  ];
-  
-  setSetting('marketplace.community.cache', JSON.stringify(templates));
-  setSetting('marketplace.community.cacheTime', String(now));
-  
-  return templates;
+  // 没有真实社区源。以前这里写死下载量和评分,并缓存 24 小时。
+  return [];
 }
 
 /**

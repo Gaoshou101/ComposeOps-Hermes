@@ -55,6 +55,9 @@ test('公开 Agent 事件保留用户需要的上下文和完成通知', () => {
   assert.deepEqual(toPublicAgentEvent({ type: 'tool_result', tool: 'compose.ps', result: { success: false, error: '容器不存在', durationMs: 12 } }), {
     type: 'tool_result', tool: 'compose.ps', success: false, durationMs: 12, summary: '{"error":"容器不存在","durationMs":12}', error: '容器不存在',
   });
+  assert.equal(toPublicAgentEvent({
+    type: 'tool_result', tool: 'task.stop', result: { success: true, result: { message: '已停止', killed: false }, durationMs: 4 },
+  }).summary, '已停止');
   // 请求工具时携带脱敏参数摘要,供工具卡片展开查看
   assert.deepEqual(toPublicAgentEvent({ type: 'tool_requested', tool: 'config.inspect', params: { password: 'x', name: 'api' } }), {
     type: 'tool_requested', tool: 'config.inspect', paramsText: '{"password":"[REDACTED]","name":"api"}',

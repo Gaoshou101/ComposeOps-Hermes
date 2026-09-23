@@ -32,8 +32,8 @@ async function isReachable(p) {
  * 项目唯一标识：com.docker.compose.project.working_dir
  * Owner 来源：myops.owner 标签，缺失归类为 Uncategorized。
  *
- * 权限：所有项目先自动发现，但只有用户显式纳管且 composeFile / workingDir
- * 在当前进程文件系统中可达时 editable=true。未纳管项目不能操作。
+ * 权限：所有项目先自动发现。本地已挂载或 SSH 节点上路径安全时 editable=true。
+ * 仅有 Docker API 的 TCP 节点不能编辑远端 Compose 文件。未纳管项目不能操作。
  *
  * @returns {Promise<{owners: string[], groupedByOwner: Object}>}
  */
@@ -142,20 +142,23 @@ export async function scanProjects() {
       .map((file) => file.path);
     project.mounted = nodeType === 'local' && project.workingDirReachable && composeReachability.length > 0 &&
       composeReachability.every((file) => file.reachable);
-    if (project.mounted) project.mountState = 'ready';
-    else if (!project.workingDir) project.mountState = 'metadata_missing';
-    else if (!project.workingDirReachable) project.mountState = 'directory_unreachable';
-    else project.mountState = 'compose_files_unreachable';
     const preference = getProjectPreference(project.id);
     project.managed = !!preference.managed;
     project.mountEnabled = getProjectMountEnabled(project.id);
-    // 未长期挂载的已选目录由短生命周期 workspace 容器按需挂载并执行。
-    const workspaceRoot = nodeType === 'local' ? safeProjectMountPath(project.workingDir) : '';
+    // 本地未挂载目录走短生命周期 workspace 容器;SSH 节点直接在远端主机上读写,TCP 只有 Docker API。
+    const sshHost = nodeType === 'ssh';
+    const workspaceRoot = (nodeType === 'local' || sshHost) ? safeProjectMountPath(project.workingDir) : '';
     project.workspaceAvailable = !!workspaceRoot && project.composeFiles.length > 0 &&
       project.composeFiles.every((file) => {
         const normalized = path.posix.normalize(file);
         return path.posix.isAbsolute(normalized) && normalized.startsWith(`${workspaceRoot}/`);
       });
+    if (project.mounted) project.mountState = 'ready';
+    else if (!project.workingDir) project.mountState = 'metadata_missing';
+    else if (nodeType === 'tcp') project.mountState = 'remote_api_only';
+    else if (sshHost && project.workspaceAvailable) project.mountState = 'remote_ssh';
+    else if (!project.workingDirReachable) project.mountState = 'directory_unreachable';
+    else project.mountState = 'compose_files_unreachable';
     project.editable = project.managed && project.mountEnabled && (project.mounted || project.workspaceAvailable);
     project.composeMode = project.editable ? (project.mounted ? 'direct' : 'workspace') : 'containers';
     project.favorite = !!preference.favorite;

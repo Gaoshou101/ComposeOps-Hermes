@@ -70,11 +70,13 @@ export function createBackgroundTask({ sessionId = 0, projectId = null, label = 
   Promise.resolve()
     .then(() => run((chunk) => pushOutput(task, chunk), (child) => { task.child = child; }))
     .then((result) => {
-      task.status = 'completed';
+      const stopped = task.status === 'stopped';
+      if (!stopped) task.status = 'completed';
       task.exitCode = Number(result?.exitCode ?? result ?? 0);
       if (result?.output) pushOutput(task, `\n${result.output}`);
     })
     .catch((error) => {
+      if (task.status === 'stopped') return;
       task.status = 'failed';
       task.error = String(error?.message || error).slice(0, 2000);
       pushOutput(task, `\n[error] ${task.error}`);

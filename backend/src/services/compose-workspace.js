@@ -7,6 +7,8 @@ import { demuxStream } from '../lib/docker-streams.js';
 import { validateYaml } from '../lib/files.js';
 import { addComposeBackup } from '../lib/db.js';
 import { safeProjectMountPath } from './mount-plan.js';
+import { getActiveHost, getActiveHostType } from './docker-hosts.js';
+import { sshExec, sshReadFile, sshWriteFile } from './remote-shell.js';
 
 let runnerImagePromise;
 const workspaceRunners = new Map();
@@ -160,6 +162,15 @@ async function acquireRunner(project) {
 }
 
 async function withRunner(project, callback) {
+  if (getActiveHostType() === 'ssh') {
+    try {
+      projectPaths(project);
+      return await callback({ __ssh: true, host: getActiveHost() });
+    } catch (error) {
+      if (!error.statusCode) error.statusCode = 409;
+      throw error;
+    }
+  }
   let lease;
   try {
     lease = await acquireRunner(project);
@@ -206,6 +217,12 @@ export function workspaceRunnerStats() {
 }
 
 async function execInRunner(container, cmd, { input, onOutput = () => {}, onExec = null, timeoutMs = 300000 } = {}) {
+  if (container?.__ssh) {
+    if (input !== undefined) {
+      throw Object.assign(new Error('远端 SSH 执行不接受标准输入'), { statusCode: 400 });
+    }
+    return sshExec(container.host, cmd, { onOutput, onExec, timeoutMs });
+  }
   const instance = await container.exec({
     Cmd: cmd,
     AttachStdin: input !== undefined,
@@ -263,6 +280,7 @@ async function execInRunner(container, cmd, { input, onOutput = () => {}, onExec
 }
 
 async function readArchiveFile(container, filePath) {
+  if (container?.__ssh) return sshReadFile(container.host, filePath);
   const archive = await container.getArchive({ path: filePath });
   const extract = tar.extract();
   return new Promise((resolve, reject) => {
@@ -290,6 +308,12 @@ async function readArchiveFile(container, filePath) {
 }
 
 async function putArchiveFile(container, directory, name, content, header) {
+  if (container?.__ssh) {
+    if (typeof name !== 'string' || !name || name.includes('/') || name.includes('..')) {
+      throw Object.assign(new Error('远端文件名不合法'), { statusCode: 400 });
+    }
+    return sshWriteFile(container.host, path.posix.join(directory, name), content, header);
+  }
   const pack = tar.pack();
   pack.entry({
     name,

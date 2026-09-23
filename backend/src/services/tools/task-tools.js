@@ -37,7 +37,7 @@ export function registerTaskTools(agent) {
       },
     })
     .registerTool('task.stop', {
-      description: '终止一个仍在运行的后台任务(SIGTERM,5 秒后强制 SIGKILL)',
+      description: '终止一个仍在运行的后台任务。compose 模式会 SIGTERM,5 秒后 SIGKILL;workspace 模式只断开执行流;仅控制已有容器时标记终止,系统调用会自行结束',
       category: 'maintenance',
       requiredPermission: 'managed',
       confirmationRequired: true,
