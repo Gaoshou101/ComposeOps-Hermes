@@ -2,7 +2,7 @@
   <div class="page-shell">
     <div class="page-header"><div><h1 class="page-title">设置</h1><p class="page-subtitle">个人偏好、通知、更新与维护</p></div></div>
     <div class="tabs">
-      <button v-for="item in tabs" :key="item.id" :class="{ active: tab === item.id }" @click="tab = item.id"><component :is="item.icon" class="w-4 h-4" />{{ item.label }}</button>
+      <button v-for="item in tabs" :key="item.id" :class="{ active: tab === item.id }" @click="setTab(item.id)"><component :is="item.icon" class="w-4 h-4" />{{ item.label }}</button>
     </div>
     <p v-if="message" class="alert-success">{{ message }}</p><p v-if="error" class="alert-error">{{ error }}</p>
 
@@ -172,7 +172,7 @@
 
 <script setup>
 import { computed, markRaw, onMounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { Activity, Bell, Bot, Check, Download, FolderCog, HardDrive, Info, KeyRound, Pencil, RefreshCw, Save, Send, Server, ShieldCheck, SlidersHorizontal, Trash2, Upload, Wrench, Zap } from 'lucide-vue-next';
 import { api } from '../api/client.js'; import { useAiStore } from '../stores/ai.js'; import { useHostsStore } from '../stores/hosts.js'; import { useToastStore } from '../stores/toast.js'; import StatCard from '../components/StatCard.vue';
 import EmptyState from '../components/common/EmptyState.vue';
@@ -181,6 +181,7 @@ import ConfirmDialog from '../components/common/ConfirmDialog.vue';
 import BaseModal from '../components/common/BaseModal.vue';
 const tabs = [{ id: 'ai', label: 'AI', icon: markRaw(Bot) }, { id: 'personal', label: '偏好', icon: markRaw(SlidersHorizontal) }, { id: 'notifications', label: '通知', icon: markRaw(Bell) }, { id: 'maintenance', label: '维护', icon: markRaw(Wrench) }, { id: 'mounts', label: '项目纳管', icon: markRaw(FolderCog) }, { id: 'hosts', label: 'Docker 节点', icon: markRaw(Server) }, { id: 'about', label: '关于', icon: markRaw(Info) }];
 const route = useRoute();
+const router = useRouter();
 const initialTab = tabs.some((item) => item.id === route.query.tab) ? route.query.tab : 'ai';
 const tab = ref(initialTab); const message = ref(''); const error = ref(''); const aiStore = useAiStore(); const hostsStore = useHostsStore(); const ai = ref({}); const aiMasked = ref(false); const preferences = ref({ refreshInterval: 5, logTail: 200 }); const password = ref({ currentPassword: '', nextPassword: '' }); const notifications = ref({}); const updates = ref({ autoEnabled: false, intervalHours: 24 }); const updateResults = ref([]); const checkingUpdates = ref(false); const usage = ref(null); const capabilities = ref({}); const storageModal = ref(false); const alertEvents = ref(['exit', 'oom', 'unhealthy']);
 const toast = useToastStore();
@@ -356,6 +357,13 @@ async function confirmSaveManagement() {
 function projectAccessLabel(project) { if (!project.managed) return '未纳管'; if (!project.mountEnabled) return '仅管理容器'; if (project.editable) return project.mounted ? 'Compose 直连' : 'Compose 按需'; return 'Compose 路径需处理'; }
 function imageStatusLabel(status) { return ({ updated: '已拉取，待应用', current: '已是最新', failed: '检查失败' })[status] || status; }
 function formatBytes(value = 0) { const units = ['B','KB','MB','GB','TB']; let n = value; let i = 0; while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; } return `${n.toFixed(i ? 1 : 0)} ${units[i]}`; }
-watch(() => route.query.tab, (value) => { if (tabs.some((item) => item.id === value)) tab.value = value; });
+function setTab(next) {
+  tab.value = next;
+  const query = { ...route.query };
+  if (next === 'ai') delete query.tab;
+  else query.tab = next;
+  router.replace({ query });
+}
+watch(() => route.query.tab, (value) => { tab.value = tabs.some((item) => item.id === value) ? value : 'ai'; });
 watch(selectedProjectIds, (ids) => { selectedMountProjectIds.value = selectedMountProjectIds.value.filter((id) => ids.includes(id)); }, { deep: true });
 </script>
