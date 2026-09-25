@@ -33,8 +33,8 @@ Auto-discover Compose projects, manage services, edit configs, stream logs, diag
 > | # | Change | Status |
 > | --- | --- | --- |
 > | 1 | Fork setup and CI baseline | ✅ Done |
-> | 2 | New `/mcp` (Streamable HTTP) endpoint in the backend: registers the built-in agent tools as MCP tools behind a dedicated bearer token, without changing existing tool semantics | ⏳ Planned |
-> | 3 | Deployment & integration docs (Hermes `config.yaml` snippet, recommended tool allowlist) | ⏳ Planned |
+> | 2 | New `/mcp` (Streamable HTTP) endpoint in the backend: registers the built-in agent tools as MCP tools behind a dedicated bearer token, without changing existing tool semantics | ✅ Done |
+> | 3 | Deployment & integration docs (Hermes `config.yaml` snippet, recommended tool allowlist) | 🚧 In progress (integration docs below, NAS deployment pending) |
 >
 > Upstream feature requests and PRs belong in the [upstream repository](https://github.com/StanlySGY/ComposeOps).
 
@@ -99,6 +99,41 @@ Single chat entry (the standalone AI diagnosis page has been merged in), powered
 - 🖼️ **Rich rendering**: markdown tables / embedded HTML / SVG diagrams, with in-page zoom
 - 💬 **Tool traces**: request/execute/result status and duration for every tool call
 - 📄 Global page-agent drawer with automatic page context; streaming output, session history, quick prompts
+
+### 🔌 MCP Integration (added by this fork)
+
+Exposes the dashboard's already-packaged operations tools over **MCP (Model Context Protocol)** so an external agent (e.g. [Hermes Agent](https://hermes-agent.nousresearch.com/docs)) can drive them: the agent reasons and orchestrates, ComposeOps observes and executes on the Docker / Compose side.
+
+- 🧰 **Tools reused as-is**: names, descriptions and parameter JSON Schemas come straight from the built-in agent registry, and execution goes through `agent.executeTool()` — preconditions, the four-tier permission gate, parameter validation, per-project operation lock and post-condition checks are the exact same path the in-panel agent uses
+- 🔤 **Name mapping**: MCP tool names allow only `[a-zA-Z0-9_-]`, so `compose.up` is exposed as `compose_up` and `macro.safe_restart` as `macro_safe_restart`
+- ⚠️ **Confirmation flag for risky tools**: `high` / `critical` tools only run when the caller passes `confirm: true` (the MCP channel has no confirmation dialog, so an explicit flag replaces it); risk level and required permission are written into each tool description
+- 🚫 **Default denylist**: `maintenance.clean`, `app.deploy`, `compose.exec` and `server.command` are not exposed unless you override it via `MCP_EXCLUDE_TOOLS` (empty string disables the extra denylist)
+- 🔐 **Separate auth**: `Authorization: Bearer <MCP_TOKEN>`, never the dashboard session cookie; with no `MCP_TOKEN` configured the endpoint answers 503 and stays closed instead of falling open
+- 🧾 **Redacted results**: responses are value-redacted and truncated to 24 KB so secrets and huge logs never flood the caller's context
+- 🧵 **Stateless**: one server + transport per request, no session to keep; tool calls use JSON responses rather than a long-lived SSE stream
+
+Configuration (`docker-compose.yml` or `.env`):
+
+```bash
+MCP_TOKEN=<random string, 16+ chars>   # required: without it the /mcp endpoint stays closed
+# MCP_EXCLUDE_TOOLS=maintenance.clean,app.deploy   # optional: override the default denylist, empty = no extra denylist
+# MCP_WEB_SEARCH=1                     # optional: enable the web.search tool (off by default)
+```
+
+Client setup (`~/.hermes/config.yaml`):
+
+```yaml
+mcp_servers:
+  composeops:
+    url: http://<panel-host>:28765/mcp
+    headers:
+      Authorization: Bearer <MCP_TOKEN>
+    connect_timeout: 15
+    timeout: 600
+    enabled: true
+    tools:
+      exclude: [maintenance_clean, app_deploy, compose_exec, server_command]
+```
 
 ### 🔔 Alerts & Notifications
 

@@ -38,8 +38,8 @@
 > | # | 改动 | 状态 |
 > | --- | --- | --- |
 > | 1 | 建立 fork 与 CI 基线 | ✅ 已完成 |
-> | 2 | 后端新增 `/mcp`（Streamable HTTP）端点：把内置 Agent 工具注册为 MCP tool，使用独立 Bearer Token 鉴权，不改动原有工具语义 | ⏳ 规划中 |
-> | 3 | 部署与接入说明（Hermes 侧 `config.yaml` 配置、工具白名单建议） | ⏳ 规划中 |
+> | 2 | 后端新增 `/mcp`（Streamable HTTP）端点：把内置 Agent 工具注册为 MCP tool，使用独立 Bearer Token 鉴权，不改动原有工具语义 | ✅ 已完成 |
+> | 3 | 部署与接入说明（Hermes 侧 `config.yaml` 配置、工具白名单建议） | 🚧 进行中（接入文档见下方「MCP 接入」，NAS 部署待做） |
 >
 > 上游功能相关的问题与 PR 请提交到[上游仓库](https://github.com/StanlySGY/ComposeOps)。
 
@@ -150,6 +150,41 @@ ComposeOps 解决的是：
 - 💬 **工具轨迹**：每个工具调用的请求/执行/结果状态与耗时实时可见
 - 📄 全局页面 Agent 抽屉：任意页面唤起，自动携带当前页面上下文
 - 🔁 聊天流式输出、会话自动保存、常用指令库
+
+### 🔌 MCP 接入（本 fork 新增）
+
+把面板里已经封装好的运维工具通过 **MCP（Model Context Protocol）** 暴露给外部 Agent（如 [Hermes Agent](https://hermes-agent.nousresearch.com/docs)）：外部 Agent 负责推理与编排，ComposeOps 负责 Docker / Compose 侧的观测与执行。
+
+- 🧰 **工具原样复用**：名称、描述、参数 JSON Schema 全部取自内置 Agent 注册表，执行统一走 `agent.executeTool()` —— 前置条件检查、四档权限门、参数校验、项目操作锁与后置验收与面板内完全同一条路径
+- 🔤 **命名转换**：MCP 工具名只允许 `[a-zA-Z0-9_-]`，因此 `compose.up` 暴露为 `compose_up`、`macro.safe_restart` 暴露为 `macro_safe_restart`
+- ⚠️ **高危确认位**：`high` / `critical` 级工具必须在调用参数里显式带 `confirm: true` 才执行（MCP 通道没有确认弹窗，用显式开关代替），风险等级与权限要求直接写进工具描述
+- 🚫 **默认屏蔽**：`maintenance.clean`、`app.deploy`、`compose.exec`、`server.command` 默认不暴露，可用 `MCP_EXCLUDE_TOOLS` 覆盖（传空串即不额外屏蔽）
+- 🔐 **独立鉴权**：走 `Authorization: Bearer <MCP_TOKEN>`，不认面板的会话 Cookie；未配置 `MCP_TOKEN` 时端点直接返回 503 关闭，不做默认放行
+- 🧾 **结果脱敏**：返回值经值级脱敏并截断到 24 KB，避免密钥与超长日志灌进调用方上下文
+- 🧵 **无状态**：每个请求一套 server + transport，不维持会话；工具调用走 JSON 响应，不开常驻 SSE 流
+
+配置（`docker-compose.yml` 或 `.env`）：
+
+```bash
+MCP_TOKEN=<至少 16 位的随机串>        # 必填：不配置则 /mcp 端点关闭
+# MCP_EXCLUDE_TOOLS=maintenance.clean,app.deploy   # 可选：覆盖默认屏蔽清单，空串表示不屏蔽
+# MCP_WEB_SEARCH=1                    # 可选：放开 web.search 工具（默认关闭）
+```
+
+接入示例（`~/.hermes/config.yaml`）：
+
+```yaml
+mcp_servers:
+  composeops:
+    url: http://<面板地址>:28765/mcp
+    headers:
+      Authorization: Bearer <MCP_TOKEN>
+    connect_timeout: 15
+    timeout: 600
+    enabled: true
+    tools:
+      exclude: [maintenance_clean, app_deploy, compose_exec, server_command]
+```
 
 ### 💾 数据保护
 
