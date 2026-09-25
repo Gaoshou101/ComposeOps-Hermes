@@ -34,7 +34,11 @@ Auto-discover Compose projects, manage services, edit configs, stream logs, diag
 > | --- | --- | --- |
 > | 1 | Fork setup and CI baseline | ✅ Done |
 > | 2 | New `/mcp` (Streamable HTTP) endpoint in the backend: registers the built-in agent tools as MCP tools behind a dedicated bearer token, without changing existing tool semantics | ✅ Done |
-> | 3 | Deployment & integration docs (Hermes `config.yaml` snippet, recommended tool allowlist) | 🚧 In progress (integration docs below, NAS deployment pending) |
+> | 3 | Deployment & integration docs (Hermes `config.yaml` snippet, recommended tool allowlist) | ✅ Done (NAS deployment + MCP integration + end-to-end verified) |
+> | 4 | Image publishing workflow: pushes `wit7zz/composeops-hermes` (`latest` + `sha-<short>`) to Docker Hub on every `main` change | ✅ Done |
+> | 5 | Deployment switched to `docker compose pull` updates — no rebuild on the target host | ✅ Done |
+>
+> **Image**: `docker pull wit7zz/composeops-hermes:latest`. Update on the target host: `docker compose pull && docker compose up -d`; if Docker Hub is unreachable, `docker compose up -d --build` still builds from source.
 >
 > Upstream feature requests and PRs belong in the [upstream repository](https://github.com/StanlySGY/ComposeOps).
 

@@ -39,7 +39,11 @@
 > | --- | --- | --- |
 > | 1 | 建立 fork 与 CI 基线 | ✅ 已完成 |
 > | 2 | 后端新增 `/mcp`（Streamable HTTP）端点：把内置 Agent 工具注册为 MCP tool，使用独立 Bearer Token 鉴权，不改动原有工具语义 | ✅ 已完成 |
-> | 3 | 部署与接入说明（Hermes 侧 `config.yaml` 配置、工具白名单建议） | 🚧 进行中（接入文档见下方「MCP 接入」，NAS 部署待做） |
+> | 3 | 部署与接入说明（Hermes 侧 `config.yaml` 配置、工具白名单建议） | ✅ 已完成（NAS 部署 + MCP 接入 + 端到端验证） |
+> | 4 | 镜像发布工作流：`main` 变更时自动构建并推送 Docker Hub `wit7zz/composeops-hermes`（`latest` + `sha-<短哈希>`） | ✅ 已完成 |
+> | 5 | 部署端改为 `docker compose pull` 更新，无需在目标机重新构建 | ✅ 已完成 |
+>
+> **镜像**：`docker pull wit7zz/composeops-hermes:latest`。目标机更新：`docker compose pull && docker compose up -d`；Docker Hub 不可达时仍可用 `docker compose up -d --build` 从源码构建。
 >
 > 上游功能相关的问题与 PR 请提交到[上游仓库](https://github.com/StanlySGY/ComposeOps)。
 
