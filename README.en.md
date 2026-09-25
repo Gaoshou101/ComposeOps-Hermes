@@ -7,7 +7,8 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED.svg?logo=docker)](https://docs.docker.com/compose/)
-[![CI](https://github.com/StanlySGY/ComposeOps/actions/workflows/ci.yml/badge.svg)](https://github.com/StanlySGY/ComposeOps/actions/workflows/ci.yml)
+[![CI](https://github.com/Gaoshou101/ComposeOps-Hermes/actions/workflows/ci.yml/badge.svg)](https://github.com/Gaoshou101/ComposeOps-Hermes/actions/workflows/ci.yml)
+[![Fork of StanlySGY/ComposeOps](https://img.shields.io/badge/fork%20of-StanlySGY%2FComposeOps-blue.svg)](https://github.com/StanlySGY/ComposeOps)
 [![Release](https://img.shields.io/github/v/release/StanlySGY/ComposeOps?include_prereleases)](https://github.com/StanlySGY/ComposeOps/releases)
 
 Auto-discover Compose projects, manage services, edit configs, stream logs, diagnose with AI, and monitor resources — all in a single web interface
@@ -20,6 +21,22 @@ Auto-discover Compose projects, manage services, edit configs, stream logs, diag
 > **What it is**: a single-user ops dashboard for your own server. Docker socket access equals root; UI is currently Chinese-only (English UI is planned).
 > **What it is not**: no multi-tenant or team support (use Portainer for that); not a PaaS — it does not take over your build/release pipeline (see Coolify or Komodo).
 > **Where it stands**: among compose-panel tools, ComposeOps' differentiator is the **AI Ops Agent** — it doesn't just show state, it can investigate and act on your approval.
+
+---
+
+> ### 🐾 This repository is a Hermes-tailored fork
+>
+> - **Upstream**: [StanlySGY/ComposeOps](https://github.com/StanlySGY/ComposeOps) by [@StanlySGY](https://github.com/StanlySGY) (MIT License). All original features and design belong to the upstream author — many thanks.
+> - **Goal**: expose ComposeOps' already-packaged operations capabilities (built-in agent tools + REST endpoints) over **MCP (Model Context Protocol)** to [Hermes Agent](https://hermes-agent.nousresearch.com/docs), so Hermes can treat it as its operations layer — Hermes reasons and orchestrates, ComposeOps observes and executes on the Docker / Compose side.
+> - **Changes in this fork** (everything else stays in sync with upstream):
+>
+> | # | Change | Status |
+> | --- | --- | --- |
+> | 1 | Fork setup and CI baseline | ✅ Done |
+> | 2 | New `/mcp` (Streamable HTTP) endpoint in the backend: registers the built-in agent tools as MCP tools behind a dedicated bearer token, without changing existing tool semantics | ⏳ Planned |
+> | 3 | Deployment & integration docs (Hermes `config.yaml` snippet, recommended tool allowlist) | ⏳ Planned |
+>
+> Upstream feature requests and PRs belong in the [upstream repository](https://github.com/StanlySGY/ComposeOps).
 
 ---
 

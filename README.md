@@ -7,7 +7,8 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/docker-compose-2496ED.svg?logo=docker)](https://docs.docker.com/compose/)
-[![CI](https://github.com/StanlySGY/ComposeOps/actions/workflows/ci.yml/badge.svg)](https://github.com/StanlySGY/ComposeOps/actions/workflows/ci.yml)
+[![CI](https://github.com/Gaoshou101/ComposeOps-Hermes/actions/workflows/ci.yml/badge.svg)](https://github.com/Gaoshou101/ComposeOps-Hermes/actions/workflows/ci.yml)
+[![Fork of StanlySGY/ComposeOps](https://img.shields.io/badge/fork%20of-StanlySGY%2FComposeOps-blue.svg)](https://github.com/StanlySGY/ComposeOps)
 [![Release](https://img.shields.io/github/v/release/StanlySGY/ComposeOps?include_prereleases)](https://github.com/StanlySGY/ComposeOps/releases)
 
 自动发现 Compose 项目，集成服务控制、配置编辑、实时日志、数据卷备份、GitOps、AI 运维 Agent 与资源监控于单一 Web 界面
@@ -25,6 +26,22 @@
 > **这是什么**：给自己服务器用的单用户运维面板。Docker Socket 等价 root，界面为中文（英文界面在规划中）。
 > **这不是什么**：不支持多租户与团队协作（多人请用 Portainer）；不是 PaaS，不接管构建发布流程（那请看 Coolify / Komodo）。
 > **定位**：在这类工具里，ComposeOps 的差异点是 **AI 运维 Agent**——不止能看，还能在你确认后替你动手排障。
+
+---
+
+> ### 🐾 本仓库是 Hermes 定制 fork
+>
+> - **上游项目**：[StanlySGY/ComposeOps](https://github.com/StanlySGY/ComposeOps)（作者 [@StanlySGY](https://github.com/StanlySGY)，MIT License）。本 fork 的原始功能与设计归上游作者所有，在此致谢。
+> - **改造目标**：把 ComposeOps 已经封装好的运维能力（内置 Agent 工具 + REST 端点）以 **MCP（Model Context Protocol）** 暴露给 [Hermes Agent](https://hermes-agent.nousresearch.com/docs)，让 Hermes 把它当作自己的运维工具层——Hermes 负责推理与编排，ComposeOps 负责 Docker / Compose 侧的观测与执行。
+> - **本 fork 的改动**（其余部分与上游保持一致）：
+>
+> | # | 改动 | 状态 |
+> | --- | --- | --- |
+> | 1 | 建立 fork 与 CI 基线 | ✅ 已完成 |
+> | 2 | 后端新增 `/mcp`（Streamable HTTP）端点：把内置 Agent 工具注册为 MCP tool，使用独立 Bearer Token 鉴权，不改动原有工具语义 | ⏳ 规划中 |
+> | 3 | 部署与接入说明（Hermes 侧 `config.yaml` 配置、工具白名单建议） | ⏳ 规划中 |
+>
+> 上游功能相关的问题与 PR 请提交到[上游仓库](https://github.com/StanlySGY/ComposeOps)。
 
 ## 🚀 为什么选择 ComposeOps
 
